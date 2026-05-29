@@ -2,24 +2,24 @@
 
 ## 第一阶段：项目搭建
 
-- [ ] Task 1: 创建项目根目录结构
-  - [ ] SubTask 1.1: 创建 Cargo 工作空间
-  - [ ] SubTask 1.2: 创建 AI_CONTEXT.md
-  - [ ] SubTask 1.3: 创建开发脚本
+- [x] Task 1: 创建项目根目录结构
+  - [x] SubTask 1.1: 创建 Cargo 工作空间
+  - [x] SubTask 1.2: 创建 AI_CONTEXT.md
+  - [x] SubTask 1.3: 创建开发脚本
 
-- [ ] Task 2: 创建 rust-core 多 crate 结构
-  - [ ] SubTask 2.1: 创建 audio-core
-  - [ ] SubTask 2.2: 创建 audio-capture
-  - [ ] SubTask 2.3: 创建 audio-playback
-  - [ ] SubTask 2.4: 创建 audio-codec
-  - [ ] SubTask 2.5: 创建 audio-processor
-  - [ ] SubTask 2.6: 创建 audio-mixer
-  - [ ] SubTask 2.7: 创建 network
-  - [ ] SubTask 2.8: 创建 discovery
-  - [ ] SubTask 2.9: 创建 protocol
-  - [ ] SubTask 2.10: 创建 ffi-bindings (C API)
+- [x] Task 2: 创建 rust-core 多 crate 结构
+  - [x] SubTask 2.1: 创建 audio-core
+  - [x] SubTask 2.2: 创建 audio-capture
+  - [x] SubTask 2.3: 创建 audio-playback
+  - [x] SubTask 2.4: 创建 audio-codec
+  - [x] SubTask 2.5: 创建 audio-processor
+  - [x] SubTask 2.6: 创建 audio-mixer
+  - [x] SubTask 2.7: 创建 network
+  - [x] SubTask 2.8: 创建 discovery
+  - [x] SubTask 2.9: 创建 protocol
+  - [x] SubTask 2.10: 创建 ffi-bindings (C API)
 
-- [ ] Task 3: 为每个 crate 创建 AI_GUIDE.md
+- [x] Task 3: 为每个 crate 创建 AI_GUIDE.md
 
 ## 第二阶段：核心音频引擎
 
@@ -40,11 +40,11 @@
   - [ ] SubTask 6.3: 统一 API 抽象
   - [ ] SubTask 6.4: 测试
 
-- [ ] Task 7: 实现 audio-codec (Opus)
-  - [ ] SubTask 7.1: 集成 opus-rs
-  - [ ] SubTask 7.2: 编码器实现
-  - [ ] SubTask 7.3: 解码器实现
-  - [ ] SubTask 7.4: 测试 + 基准测试
+- [x] Task 7: 实现 audio-codec (Opus)
+  - [x] SubTask 7.1: 集成 opus-rs
+  - [x] SubTask 7.2: 编码器实现
+  - [x] SubTask 7.3: 解码器实现
+  - [x] SubTask 7.4: 测试 + 基准测试
 
 - [ ] Task 8: 实现 audio-mixer
   - [ ] SubTask 8.1: 基础混音算法
