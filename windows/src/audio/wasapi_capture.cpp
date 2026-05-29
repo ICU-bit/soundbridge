@@ -1,0 +1,251 @@
+#include "wasapi_capture.h"
+
+#include <functiondiscoverykeys_devpkey.h>
+#include <spdlog/spdlog.h>
+#include <stdexcept>
+
+#pragma comment(lib, "ole32.lib")
+#pragma comment(lib, "mmdevapi.lib")
+
+namespace soundbridge {
+
+WasapiCapture::WasapiCapture() = default;
+
+WasapiCapture::~WasapiCapture() {
+    shutdown();
+}
+
+bool WasapiCapture::initialize(const AudioFormat& format) {
+    if (initialized_) {
+        spdlog::warn("WasapiCapture already initialized");
+        return false;
+    }
+
+    format_ = format;
+
+    if (!init_com()) {
+        return false;
+    }
+
+    if (!find_render_device()) {
+        return false;
+    }
+
+    if (!init_audio_client()) {
+        return false;
+    }
+
+    initialized_ = true;
+    spdlog::info("WasapiCapture initialized");
+    return true;
+}
+
+void WasapiCapture::shutdown() {
+    stop();
+
+    if (event_handle_) {
+        CloseHandle(event_handle_);
+        event_handle_ = nullptr;
+    }
+
+    if (wave_format_) {
+        CoTaskMemFree(wave_format_);
+        wave_format_ = nullptr;
+    }
+
+    capture_client_.Reset();
+    audio_client_.Reset();
+    device_.Reset();
+    enumerator_.Reset();
+
+    initialized_ = false;
+    spdlog::info("WasapiCapture shutdown");
+}
+
+bool WasapiCapture::start() {
+    if (!initialized_ || running_) {
+        return false;
+    }
+
+    HRESULT hr = audio_client_->Start();
+    if (FAILED(hr)) {
+        spdlog::error("Failed to start audio client: 0x{:08X}", static_cast<uint32_t>(hr));
+        return false;
+    }
+
+    running_ = true;
+    spdlog::info("WasapiCapture started");
+    return true;
+}
+
+void WasapiCapture::stop() {
+    if (!running_) {
+        return;
+    }
+
+    running_ = false;
+
+    if (audio_client_) {
+        audio_client_->Stop();
+    }
+
+    spdlog::info("WasapiCapture stopped");
+}
+
+bool WasapiCapture::read(float* buffer, uint32_t frame_count, uint32_t& frames_read) {
+    if (!initialized_ || !running_ || !capture_client_) {
+        frames_read = 0;
+        return false;
+    }
+
+    frames_read = 0;
+    UINT32 packet_length = 0;
+    HRESULT hr = capture_client_->GetNextPacketSize(&packet_length);
+
+    if (FAILED(hr)) {
+        spdlog::error("GetNextPacketSize failed: 0x{:08X}", static_cast<uint32_t>(hr));
+        return false;
+    }
+
+    while (packet_length > 0 && frames_read < frame_count) {
+        BYTE* data = nullptr;
+        UINT32 num_frames = 0;
+        DWORD flags = 0;
+
+        hr = capture_client_->GetBuffer(&data, &num_frames, &flags, nullptr, nullptr);
+        if (FAILED(hr)) {
+            spdlog::error("GetBuffer failed: 0x{:08X}", static_cast<uint32_t>(hr));
+            return false;
+        }
+
+        const uint32_t frames_to_copy = std::min(num_frames, frame_count - frames_read);
+        const uint32_t samples_to_copy = frames_to_copy * format_.channels;
+
+        if (flags & AUDCLNT_BUFFERFLAGS_SILENT) {
+            std::memset(buffer + frames_read * format_.channels, 0, samples_to_copy * sizeof(float));
+        } else if (format_.sample_format == AudioSampleFormat::Float32) {
+            std::memcpy(buffer + frames_read * format_.channels, data, samples_to_copy * sizeof(float));
+        } else if (format_.sample_format == AudioSampleFormat::Int16) {
+            const int16_t* src = reinterpret_cast<const int16_t*>(data);
+            float* dst = buffer + frames_read * format_.channels;
+            for (uint32_t i = 0; i < samples_to_copy; ++i) {
+                dst[i] = static_cast<float>(src[i]) / 32768.0f;
+            }
+        }
+
+        frames_read += frames_to_copy;
+        capture_client_->ReleaseBuffer(num_frames);
+
+        hr = capture_client_->GetNextPacketSize(&packet_length);
+        if (FAILED(hr)) {
+            break;
+        }
+    }
+
+    return true;
+}
+
+bool WasapiCapture::init_com() {
+    HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    if (FAILED(hr) && hr != RPC_E_CHANGED_MODE) {
+        spdlog::error("CoInitializeEx failed: 0x{:08X}", static_cast<uint32_t>(hr));
+        return false;
+    }
+
+    hr = CoCreateInstance(
+        __uuidof(MMDeviceEnumerator),
+        nullptr,
+        CLSCTX_ALL,
+        __uuidof(IMMDeviceEnumerator),
+        reinterpret_cast<void**>(enumerator_.GetAddressOf())
+    );
+
+    if (FAILED(hr)) {
+        spdlog::error("Failed to create device enumerator: 0x{:08X}", static_cast<uint32_t>(hr));
+        return false;
+    }
+
+    return true;
+}
+
+bool WasapiCapture::find_render_device() {
+    HRESULT hr = enumerator_->GetDefaultAudioEndpoint(
+        eRender,
+        eConsole,
+        device_.GetAddressOf()
+    );
+
+    if (FAILED(hr)) {
+        spdlog::error("Failed to get default audio endpoint: 0x{:08X}", static_cast<uint32_t>(hr));
+        return false;
+    }
+
+    return true;
+}
+
+bool WasapiCapture::init_audio_client() {
+    HRESULT hr = device_->Activate(
+        __uuidof(IAudioClient),
+        CLSCTX_ALL,
+        nullptr,
+        reinterpret_cast<void**>(audio_client_.GetAddressOf())
+    );
+
+    if (FAILED(hr)) {
+        spdlog::error("Failed to activate audio client: 0x{:08X}", static_cast<uint32_t>(hr));
+        return false;
+    }
+
+    WAVEFORMATEX wfx = {};
+    wfx.wFormatTag = WAVE_FORMAT_IEEE_FLOAT;
+    wfx.nChannels = format_.channels;
+    wfx.nSamplesPerSec = format_.sample_rate;
+    wfx.wBitsPerSample = 32;
+    wfx.nBlockAlign = wfx.nChannels * wfx.wBitsPerSample / 8;
+    wfx.nAvgByteSec = wfx.nSamplesPerSec * wfx.nBlockAlign;
+
+    WAVEFORMATEX* closest = nullptr;
+    hr = audio_client_->IsFormatSupported(
+        AUDCLNT_SHAREMODE_SHARED,
+        &wfx,
+        &closest
+    );
+
+    if (hr == S_FALSE && closest) {
+        wfx = *closest;
+        CoTaskMemFree(closest);
+    } else if (FAILED(hr)) {
+        spdlog::error("Format not supported: 0x{:08X}", static_cast<uint32_t>(hr));
+        return false;
+    }
+
+    const REFERENCE_TIME buffer_duration = 10000000;
+
+    hr = audio_client_->Initialize(
+        AUDCLNT_SHAREMODE_SHARED,
+        AUDCLNT_STREAMFLAGS_LOOPBACK,
+        buffer_duration,
+        0,
+        &wfx,
+        nullptr
+    );
+
+    if (FAILED(hr)) {
+        spdlog::error("Failed to initialize audio client: 0x{:08X}", static_cast<uint32_t>(hr));
+        return false;
+    }
+
+    hr = audio_client_->GetService(
+        __uuidof(IAudioCaptureClient),
+        reinterpret_cast<void**>(capture_client_.GetAddressOf())
+    );
+
+    if (FAILED(hr)) {
+        spdlog::error("Failed to get capture client: 0x{:08X}", static_cast<uint32_t>(hr));
+        return false;
+    }
+
+    return true;
+}
+
+} // namespace soundbridge

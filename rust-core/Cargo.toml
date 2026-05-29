@@ -1,0 +1,39 @@
+[workspace]
+members = [
+    "crates/audio-core",
+    "crates/audio-capture",
+    "crates/audio-playback",
+    "crates/audio-codec",
+    "crates/audio-processor",
+    "crates/audio-mixer",
+    "crates/network",
+    "crates/discovery",
+    "crates/protocol",
+    "crates/ffi-bindings",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/your-org/soundbridge"
+authors = ["SoundBridge Team"]
+
+[workspace.dependencies]
+cpal = "0.15.2"
+opus = "0.3.0"
+tokio = { version = "1.35", features = ["full"] }
+quinn = "0.10"
+mdns-sd = "0.7"
+bytes = "1.5"
+thiserror = "1.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+criterion = "0.5"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+crossbeam-channel = "0.5"
+parking_lot = "0.12"
+dashmap = "5.5"
+rand = "0.8"

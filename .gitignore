@@ -1,0 +1,49 @@
+# Rust
+/target/
+**/*.rs.bk
+*.pdb
+Cargo.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Windows
+Thumbs.db
+*.exe
+*.dll
+*.so
+
+# Android
+android-app/.gradle/
+android-app/build/
+android-app/local.properties
+android-app/.DS_Store
+
+# Windows app
+windows-app/bin/
+windows-app/obj/
+windows-app/*.suo
+windows-app/*.user
+windows-app/*.userosscache
+
+# Build artifacts
+cmake-build-*/
+build/
+out/
+*.o
+*.obj
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+.DS_Store
+
+# Criterion benchmark files
+criterion/

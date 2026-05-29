@@ -1,0 +1,26 @@
+[package]
+name = "ffi-bindings"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lib]
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+audio-core = { path = "../audio-core" }
+audio-capture = { path = "../audio-capture" }
+audio-playback = { path = "../audio-playback" }
+audio-codec = { path = "../audio-codec" }
+audio-processor = { path = "../audio-processor" }
+audio-mixer = { path = "../audio-mixer" }
+network = { path = "../network" }
+discovery = { path = "../discovery" }
+protocol = { path = "../protocol" }
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true

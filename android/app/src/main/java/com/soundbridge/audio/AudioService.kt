@@ -1,0 +1,116 @@
+package com.soundbridge.audio
+
+import android.app.Notification
+import android.app.PendingIntent
+import android.app.Service
+import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.os.Binder
+import android.os.Build
+import android.os.IBinder
+import androidx.core.app.NotificationCompat
+import com.soundbridge.MainActivity
+import com.soundbridge.R
+import com.soundbridge.SoundBridgeApp
+import com.soundbridge.native.NativeAudioEngine
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+
+class AudioService : Service() {
+
+    private val binder = AudioServiceBinder()
+    private var engineHandle: Long = 0L
+
+    private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
+    val connectionState: StateFlow<ConnectionState> = _connectionState
+
+    private val _audioLevel = MutableStateFlow(0f)
+    val audioLevel: StateFlow<Float> = _audioLevel
+
+    enum class ConnectionState {
+        DISCONNECTED, CONNECTING, CONNECTED
+    }
+
+    inner class AudioServiceBinder : Binder() {
+        fun getService(): AudioService = this@AudioService
+    }
+
+    override fun onBind(intent: Intent?): IBinder = binder
+
+    override fun onCreate() {
+        super.onCreate()
+        initializeEngine()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            ACTION_START -> startForegroundService()
+            ACTION_STOP -> stopForegroundService()
+        }
+        return START_STICKY
+    }
+
+    private fun initializeEngine() {
+        engineHandle = NativeAudioEngine.nativeInit(
+            AudioCaptureManager.SAMPLE_RATE,
+            1,
+            AudioCaptureManager.FRAME_SIZE
+        )
+    }
+
+    private fun startForegroundService() {
+        val notification = createNotification()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
+        _connectionState.value = ConnectionState.CONNECTING
+    }
+
+    private fun stopForegroundService() {
+        _connectionState.value = ConnectionState.DISCONNECTED
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
+    private fun createNotification(): Notification {
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE
+        )
+
+        return NotificationCompat.Builder(this, SoundBridgeApp.NOTIFICATION_CHANNEL_ID)
+            .setContentTitle("SoundBridge")
+            .setContentText("Audio processing active")
+            .setSmallIcon(R.drawable.ic_audio)
+            .setContentIntent(pendingIntent)
+            .setOngoing(true)
+            .build()
+    }
+
+    fun connectToServer(address: String, port: Int) {
+        _connectionState.value = ConnectionState.CONNECTING
+        // TODO: Implement connection logic
+    }
+
+    fun disconnect() {
+        _connectionState.value = ConnectionState.DISCONNECTED
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (engineHandle != 0L) {
+            NativeAudioEngine.nativeRelease(engineHandle)
+            engineHandle = 0L
+        }
+    }
+
+    companion object {
+        const val ACTION_START = "com.soundbridge.ACTION_START"
+        const val ACTION_STOP = "com.soundbridge.ACTION_STOP"
+        const val NOTIFICATION_ID = 1001
+    }
+}
