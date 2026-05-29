@@ -10,7 +10,6 @@ authors.workspace = true
 audio-core = { path = "../audio-core" }
 opus.workspace = true
 thiserror.workspace = true
-tracing.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true

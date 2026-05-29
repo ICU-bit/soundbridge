@@ -1,6 +1,3 @@
-use std::marker::PhantomData;
-
-use bytes::Bytes;
 use thiserror::Error;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -47,23 +44,26 @@ impl Sample for f64 {
 }
 
 pub struct AudioBuffer<T: Sample> {
-    data: Bytes,
+    data: Vec<u8>,
+    sample_count: usize,
     format: AudioFormat,
-    _phantom: PhantomData<T>,
+    _phantom: std::marker::PhantomData<T>,
 }
 
 impl<T: Sample> AudioBuffer<T> {
-    pub fn new(data: impl Into<Bytes>, format: AudioFormat) -> Result<Self, AudioError> {
-        let data = data.into();
-        let sample_size = std::mem::size_of::<T>();
-        let expected_size = (format.channels as usize) * (format.sample_rate as usize);
-        if data.len() % sample_size != 0 {
-            return Err(AudioError::InvalidBufferSize);
-        }
+    pub fn new(data: Vec<T>, format: AudioFormat) -> Result<Self, AudioError> {
+        let sample_count = data.len();
+        let byte_count = sample_count * std::mem::size_of::<T>();
+        let mut byte_vec = Vec::with_capacity(byte_count);
+        let src = unsafe {
+            std::slice::from_raw_parts(data.as_ptr() as *const u8, byte_count)
+        };
+        byte_vec.extend_from_slice(src);
         Ok(Self {
-            data,
+            data: byte_vec,
+            sample_count,
             format,
-            _phantom: PhantomData,
+            _phantom: std::marker::PhantomData,
         })
     }
 
@@ -71,25 +71,32 @@ impl<T: Sample> AudioBuffer<T> {
         self.format
     }
 
-    pub fn as_bytes(&self) -> &Bytes {
+    pub fn as_bytes(&self) -> &[u8] {
         &self.data
     }
 
     pub fn samples(&self) -> &[T] {
+        let align = std::mem::align_of::<T>();
+        assert_eq!(
+            self.data.as_ptr() as usize % align,
+            0,
+            "AudioBuffer data is not properly aligned for type {}",
+            std::any::type_name::<T>()
+        );
         unsafe {
             std::slice::from_raw_parts(
                 self.data.as_ptr() as *const T,
-                self.data.len() / std::mem::size_of::<T>(),
+                self.sample_count,
             )
         }
     }
 
     pub fn sample_count(&self) -> usize {
-        self.data.len() / std::mem::size_of::<T>()
+        self.sample_count
     }
 
     pub fn frame_count(&self) -> usize {
-        self.sample_count() / self.format.channels as usize
+        self.sample_count / self.format.channels as usize
     }
 }
 
@@ -97,8 +104,9 @@ impl<T: Sample> Clone for AudioBuffer<T> {
     fn clone(&self) -> Self {
         Self {
             data: self.data.clone(),
+            sample_count: self.sample_count,
             format: self.format,
-            _phantom: PhantomData,
+            _phantom: std::marker::PhantomData,
         }
     }
 }
