@@ -1,5 +1,5 @@
-use audio_codec::{
-    OpusCodec, OpusConfig, OpusEncoderCodec, OpusDecoderCodec, SampleRate, Channels, Bitrate, FrameSize,
+﻿use audio_codec::{
+    OpusCodec, OpusConfig, OpusEncoderCodec, OpusDecoderCodec, SampleRate, ChannelConfig, Bitrate, FrameSize,
 };
 use audio_core::AudioBuffer;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
@@ -22,7 +22,7 @@ fn create_sine_wave_samples(count: usize, frequency: f32, sample_rate: u32) -> V
 fn benchmark_opus_encode(c: &mut Criterion) {
     let config = OpusConfig::new(
         SampleRate::Hz48000,
-        Channels::Mono,
+        ChannelConfig::Mono,
         Bitrate::Kbps128,
         FrameSize::Ms20,
     );
@@ -43,7 +43,7 @@ fn benchmark_opus_encode(c: &mut Criterion) {
 fn benchmark_opus_decode(c: &mut Criterion) {
     let config = OpusConfig::new(
         SampleRate::Hz48000,
-        Channels::Mono,
+        ChannelConfig::Mono,
         Bitrate::Kbps128,
         FrameSize::Ms20,
     );
@@ -67,7 +67,7 @@ fn benchmark_opus_decode(c: &mut Criterion) {
 fn benchmark_opus_encode_stereo(c: &mut Criterion) {
     let config = OpusConfig::new(
         SampleRate::Hz48000,
-        Channels::Stereo,
+        ChannelConfig::Stereo,
         Bitrate::Kbps128,
         FrameSize::Ms20,
     );
@@ -88,7 +88,7 @@ fn benchmark_opus_encode_stereo(c: &mut Criterion) {
 fn benchmark_opus_decode_stereo(c: &mut Criterion) {
     let config = OpusConfig::new(
         SampleRate::Hz48000,
-        Channels::Stereo,
+        ChannelConfig::Stereo,
         Bitrate::Kbps128,
         FrameSize::Ms20,
     );
@@ -111,7 +111,7 @@ fn benchmark_opus_decode_stereo(c: &mut Criterion) {
 
 fn benchmark_opus_different_bitrate(c: &mut Criterion) {
     let sample_rate = SampleRate::Hz48000;
-    let channels = Channels::Mono;
+    let channels = ChannelConfig::Mono;
     let frame_size = FrameSize::Ms20;
     let samples = create_sine_wave_samples(960, 440.0, 48000);
 
@@ -136,7 +136,7 @@ fn benchmark_opus_different_bitrate(c: &mut Criterion) {
 
 fn benchmark_opus_different_frame_sizes(c: &mut Criterion) {
     let sample_rate = SampleRate::Hz48000;
-    let channels = Channels::Mono;
+    let channels = ChannelConfig::Mono;
     let bitrate = Bitrate::Kbps128;
 
     let mut group = c.benchmark_group("opus_encode_different_frame_sizes");
@@ -166,7 +166,7 @@ fn benchmark_opus_different_frame_sizes(c: &mut Criterion) {
 fn benchmark_opus_roundtrip(c: &mut Criterion) {
     let config = OpusConfig::new(
         SampleRate::Hz48000,
-        Channels::Mono,
+        ChannelConfig::Mono,
         Bitrate::Kbps128,
         FrameSize::Ms20,
     );
@@ -188,7 +188,7 @@ fn benchmark_opus_roundtrip(c: &mut Criterion) {
 fn benchmark_opus_compression_ratio(c: &mut Criterion) {
     let config = OpusConfig::new(
         SampleRate::Hz48000,
-        Channels::Mono,
+        ChannelConfig::Mono,
         Bitrate::Kbps64,
         FrameSize::Ms20,
     );
@@ -218,3 +218,4 @@ criterion_group!(
     benchmark_opus_compression_ratio,
 );
 criterion_main!(benches);
+
