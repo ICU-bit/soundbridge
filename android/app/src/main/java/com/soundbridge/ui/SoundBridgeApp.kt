@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
 import com.soundbridge.R
+import com.soundbridge.audio.AudioService
 
 sealed class Screen(val route: String, val title: String, val icon: ImageVector) {
     object Home : Screen("home", "Home", Icons.Default.Home)
@@ -20,7 +21,7 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SoundBridgeApp() {
+fun SoundBridgeApp(audioService: AudioService? = null) {
     var currentScreen by remember { mutableStateOf<Screen>(Screen.Home) }
 
     Scaffold(
@@ -56,7 +57,7 @@ fun SoundBridgeApp() {
                 .padding(paddingValues)
         ) {
             when (currentScreen) {
-                Screen.Home -> HomeScreen()
+                Screen.Home -> HomeScreen(audioService = audioService)
                 Screen.Settings -> SettingsScreen()
             }
         }

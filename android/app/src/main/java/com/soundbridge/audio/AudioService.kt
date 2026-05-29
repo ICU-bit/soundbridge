@@ -92,11 +92,43 @@ class AudioService : Service() {
     }
 
     fun connectToServer(address: String, port: Int) {
+        if (engineHandle == 0L) {
+            _connectionState.value = ConnectionState.DISCONNECTED
+            return
+        }
         _connectionState.value = ConnectionState.CONNECTING
-        // TODO: Implement connection logic
+
+        // 绑定本地 UDP 端口（0 = 自动分配）
+        val bindResult = NativeAudioEngine.nativeBind(engineHandle, 0)
+        if (bindResult != 0) {
+            _connectionState.value = ConnectionState.DISCONNECTED
+            return
+        }
+
+        // 设置目标地址
+        val connectResult = NativeAudioEngine.nativeConnect(engineHandle, "$address:$port")
+        if (connectResult != 0) {
+            _connectionState.value = ConnectionState.DISCONNECTED
+            return
+        }
+
+        // 启动采集和播放
+        NativeAudioEngine.nativeStart(engineHandle)
+
+        // 启动管线（采集→编码→发送 / 接收→解码→播放）
+        val pipelineResult = NativeAudioEngine.nativePipelineStart(engineHandle)
+        if (pipelineResult == 0) {
+            _connectionState.value = ConnectionState.CONNECTED
+        } else {
+            _connectionState.value = ConnectionState.DISCONNECTED
+        }
     }
 
     fun disconnect() {
+        if (engineHandle != 0L) {
+            NativeAudioEngine.nativePipelineStop(engineHandle)
+            NativeAudioEngine.nativeStop(engineHandle)
+        }
         _connectionState.value = ConnectionState.DISCONNECTED
     }
 

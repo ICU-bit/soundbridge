@@ -21,15 +21,18 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.soundbridge.audio.AudioService
 import com.soundbridge.ui.theme.*
 
 @Composable
-fun HomeScreen() {
-    var isConnected by remember { mutableStateOf(false) }
+fun HomeScreen(audioService: AudioService? = null) {
+    val isConnected by (audioService?.connectionState?.collectAsState() ?: remember { mutableStateOf(AudioService.ConnectionState.DISCONNECTED) })
+    val audioLevel by (audioService?.audioLevel?.collectAsState() ?: remember { mutableFloatStateOf(0f) })
     var isMuted by remember { mutableStateOf(false) }
-    var audioLevel by remember { mutableFloatStateOf(0f) }
     var serverAddress by remember { mutableStateOf("192.168.1.100") }
     var serverPort by remember { mutableStateOf("8080") }
+
+    val connected = isConnected == AudioService.ConnectionState.CONNECTED
 
     Column(
         modifier = Modifier
@@ -45,7 +48,7 @@ fun HomeScreen() {
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        ConnectionStatusCard(isConnected)
+        ConnectionStatusCard(connected)
 
         Spacer(modifier = Modifier.height(32.dp))
 
@@ -54,9 +57,16 @@ fun HomeScreen() {
         Spacer(modifier = Modifier.height(32.dp))
 
         ControlButtons(
-            isConnected = isConnected,
+            isConnected = connected,
             isMuted = isMuted,
-            onConnectClick = { isConnected = !isConnected },
+            onConnectClick = {
+                if (connected) {
+                    audioService?.disconnect()
+                } else {
+                    val port = serverPort.toIntOrNull() ?: 8080
+                    audioService?.connectToServer(serverAddress, port)
+                }
+            },
             onMuteClick = { isMuted = !isMuted }
         )
 
