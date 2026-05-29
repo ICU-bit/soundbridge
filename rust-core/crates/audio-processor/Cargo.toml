@@ -8,8 +8,14 @@ authors.workspace = true
 
 [dependencies]
 audio-core = { path = "../audio-core" }
+webrtc-audio-processing = { version = "2.1", optional = true }
 thiserror.workspace = true
 tracing.workspace = true
+
+[features]
+default = ["basic"]
+basic = []
+webrtc = ["webrtc-audio-processing"]
 
 [dev-dependencies]
 criterion.workspace = true

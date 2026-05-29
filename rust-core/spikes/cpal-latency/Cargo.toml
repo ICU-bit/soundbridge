@@ -1,0 +1,12 @@
+[package]
+name = "cpal-latency"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+cpal = "0.15"
+tracing = "0.1"
+tracing-subscriber = "0.3"

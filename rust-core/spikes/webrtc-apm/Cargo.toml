@@ -1,0 +1,10 @@
+[package]
+name = "webrtc-apm-spike"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+webrtc-audio-processing = "2.1"

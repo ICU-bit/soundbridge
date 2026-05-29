@@ -1,5 +1,29 @@
 use thiserror::Error;
 
+pub mod ring_buffer;
+pub use ring_buffer::RingBuffer;
+
+pub mod audio_mode;
+pub use audio_mode::{AudioMode, AudioModeConfig, AudioModeManager};
+
+pub mod level_indicator;
+pub use level_indicator::{LevelIndicator, LevelIndicatorConfig, LevelData};
+
+pub mod pipeline;
+pub use pipeline::{AudioPipeline, PipelineConfig, PipelineState, PipelineStats, PipelineError, MixMode};
+
+pub mod full_pipeline;
+pub use full_pipeline::{FullPipeline, FullPipelineConfig, FullPipelineState, FullPipelineStats};
+
+pub mod auto_start;
+pub use auto_start::{AutoStartConfig, AutoStartManager};
+
+pub mod hotkeys;
+pub use hotkeys::{HotkeyAction, HotkeyConfig, HotkeyManager};
+
+pub mod notifications;
+pub use notifications::{NotificationType, NotificationConfig, NotificationManager};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SampleFormat {
     I16,

@@ -16,6 +16,30 @@
 - **AudioFormat**: 音频格式描述 (采样率、通道数、样本格式)
 - **Sample Trait**: 样本类型抽象
 - **AudioBuffer<T>**: 零拷贝音频缓冲区，支持多种样本类型
+- **RingBuffer<T>**: Lock-free SPSC 环形缓冲区，用于线程间音频数据传递
+
+## RingBuffer 使用
+
+```rust
+use audio_core::RingBuffer;
+
+// 创建缓冲区（容量必须是 2 的幂）
+let rb = RingBuffer::<f32>::new(1024);
+
+// 写入数据（生产者线程）
+let data = [1.0f32, 2.0, 3.0];
+rb.write(&data);
+
+// 读取数据（消费者线程）
+let mut output = [0.0f32; 3];
+rb.read(&mut output);
+```
+
+**特性**:
+- Lock-free（无锁）
+- SPSC（单生产者单消费者）
+- 容量自动向上取整到 2 的幂
+- 线程安全（实现了 Send + Sync）
 
 ## 未来扩展方向
 
