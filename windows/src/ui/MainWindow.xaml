@@ -1,0 +1,93 @@
+<Window
+    x:Class="SoundBridge.UI.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:vm="using:SoundBridge.UI"
+    mc:Ignorable="d"
+    Title="SoundBridge"
+    MinWidth="400"
+    MinHeight="600"
+    Width="450"
+    Height="700"
+    Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+
+    <Grid Padding="24" RowSpacing="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- 连接状态卡片 -->
+        <Border Grid.Row="0"
+                Background="{x:Bind ViewModel.IsConnected, Converter={StaticResource BoolToColorConverter}, Mode=OneWay}"
+                CornerRadius="12"
+                Padding="16">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8">
+                <Ellipse Width="12" Height="12"
+                         Fill="{x:Bind ViewModel.IsConnected, Converter={StaticResource BoolToStatusColorConverter}, Mode=OneWay}"/>
+                <TextBlock Text="{x:Bind ViewModel.StatusText, Mode=OneWay}"
+                           FontSize="16" FontWeight="SemiBold"
+                           Foreground="White"/>
+            </StackPanel>
+        </Border>
+
+        <!-- 音频电平 -->
+        <Grid Grid.Row="1" Height="200" HorizontalAlignment="Center">
+            <ProgressRing Value="{x:Bind ViewModel.AudioLevel, Mode=OneWay}"
+                          Maximum="1"
+                          Width="180" Height="180"
+                          StrokeThickness="12"
+                          Foreground="{x:Bind ViewModel.AudioLevel, Converter={StaticResource LevelToColorConverter}, Mode=OneWay}"/>
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                <TextBlock Text="{x:Bind ViewModel.AudioLevel, Converter={StaticResource LevelToPercentConverter}, Mode=OneWay}"
+                           FontSize="36" FontWeight="Bold"
+                           HorizontalAlignment="Center"/>
+                <TextBlock Text="Audio Level" FontSize="14"
+                           Opacity="0.7" HorizontalAlignment="Center"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- 控制按钮 -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="12">
+            <Button Command="{x:Bind ViewModel.ToggleConnectionCommand}"
+                    Height="56" MinWidth="160"
+                    Style="{StaticResource AccentButtonStyle}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon Glyph="{x:Bind ViewModel.IsConnected, Converter={StaticResource BoolToIconConverter}, Mode=OneWay}"/>
+                    <TextBlock Text="{x:Bind ViewModel.IsConnected, Converter={StaticResource BoolToConnectTextConverter}, Mode=OneWay}"/>
+                </StackPanel>
+            </Button>
+
+            <Button Command="{x:Bind ViewModel.ToggleMuteCommand}"
+                    Height="56" MinWidth="120">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon Glyph="{x:Bind ViewModel.IsMuted, Converter={StaticResource BoolToMuteIconConverter}, Mode=OneWay}"/>
+                    <TextBlock Text="{x:Bind ViewModel.IsMuted, Converter={StaticResource BoolToMuteTextConverter}, Mode=OneWay}"/>
+                </StackPanel>
+            </Button>
+        </StackPanel>
+
+        <!-- 服务器配置 -->
+        <Border Grid.Row="3" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                CornerRadius="12" Padding="16">
+            <StackPanel Spacing="12">
+                <TextBlock Text="Server Configuration" FontSize="16" FontWeight="SemiBold"/>
+                <TextBox Header="Server Address"
+                         Text="{x:Bind ViewModel.ServerAddress, Mode=TwoWay}"
+                         PlaceholderText="192.168.1.100"/>
+                <TextBox Header="Port"
+                         Text="{x:Bind ViewModel.ServerPort, Mode=TwoWay}"
+                         PlaceholderText="8080"
+                         InputScope="Number"/>
+            </StackPanel>
+        </Border>
+
+        <!-- 占位（扩展区域） -->
+        <Grid Grid.Row="4"/>
+    </Grid>
+</Window>

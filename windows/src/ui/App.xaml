@@ -8,6 +8,14 @@
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
             </ResourceDictionary.MergedDictionaries>
+            <local:BoolToColorConverter x:Key="BoolToColorConverter"/>
+            <local:BoolToStatusColorConverter x:Key="BoolToStatusColorConverter"/>
+            <local:LevelToColorConverter x:Key="LevelToColorConverter"/>
+            <local:LevelToPercentConverter x:Key="LevelToPercentConverter"/>
+            <local:BoolToIconConverter x:Key="BoolToIconConverter"/>
+            <local:BoolToConnectTextConverter x:Key="BoolToConnectTextConverter"/>
+            <local:BoolToMuteIconConverter x:Key="BoolToMuteIconConverter"/>
+            <local:BoolToMuteTextConverter x:Key="BoolToMuteTextConverter"/>
         </ResourceDictionary>
     </Application.Resources>
 </Application>
