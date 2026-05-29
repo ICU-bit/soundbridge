@@ -82,7 +82,7 @@ impl AudioMixer {
 
         // 检查所有输入长度一致
         let len = inputs[0].len();
-        for (i, input) in inputs.iter().enumerate() {
+        for (_i, input) in inputs.iter().enumerate() {
             if input.len() != len {
                 return Err(MixerError::LengthMismatch {
                     expected: len,

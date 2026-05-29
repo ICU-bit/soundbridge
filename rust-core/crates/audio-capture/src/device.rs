@@ -240,6 +240,23 @@ impl CaptureDevice {
     pub fn device_name(&self) -> String {
         self.device.name().unwrap_or_else(|_| "未知设备".to_string())
     }
+
+    /// 获取采集 ring buffer 的共享引用
+    ///
+    /// 用于管线线程直接从 ring buffer 读取采集数据。
+    pub fn ring_buffer(&self) -> Arc<RingBuffer<f32>> {
+        self.ring_buffer.clone()
+    }
+
+    /// 获取帧大小（每帧采样数，不含通道展开）
+    pub fn frame_size(&self) -> usize {
+        self.config.buffer_size as usize
+    }
+
+    /// 获取通道数
+    pub fn channels(&self) -> u16 {
+        self.config.channels
+    }
 }
 
 impl Drop for CaptureDevice {

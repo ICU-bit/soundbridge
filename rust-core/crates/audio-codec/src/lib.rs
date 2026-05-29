@@ -153,6 +153,7 @@ impl OpusConfig {
     }
 }
 
+#[allow(dead_code)]
 const MAX_PACKET_SIZE: usize = 4000;
 
 pub struct OpusEncoderCodec {
