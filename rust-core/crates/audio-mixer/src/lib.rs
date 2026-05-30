@@ -189,9 +189,11 @@ mod tests {
         let input1 = vec![1.0f32; 100];
         let input2 = vec![1.0f32; 100];
         let result = mixer.mix_two(&input1, 1.0, input2.as_slice(), 1.0).unwrap();
-        // 输出应该被限制在合理范围内
+        // tanh 软削波将输出限制在 (-1, 1) 范围内
+        // tanh(2.0) ≈ 0.964
         for sample in result.iter() {
-            assert!(*sample <= 2.0 && *sample >= -2.0);
+            assert!(*sample < 1.0 && *sample > -1.0, "sample={} should be in (-1, 1)", sample);
+            assert!(*sample > 0.9, "sample={} should be close to 1.0 (tanh(2.0)≈0.964)", sample);
         }
     }
 
