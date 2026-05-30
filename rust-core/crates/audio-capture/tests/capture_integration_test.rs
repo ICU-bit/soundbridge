@@ -139,6 +139,7 @@ fn test_device_info_debug() {
 // ============================================================================
 
 #[test]
+#[ignore] // Requires audio hardware, crashes on CI
 fn test_capture_device_default_device() {
     let result = CaptureDevice::default_device();
     // May fail in CI without audio devices, that's OK
@@ -149,6 +150,7 @@ fn test_capture_device_default_device() {
 }
 
 #[test]
+#[ignore] // Requires audio hardware, crashes on CI
 fn test_capture_device_new_default() {
     let config = CaptureConfig::default();
     let result = CaptureDevice::new_default(config);
@@ -163,6 +165,7 @@ fn test_capture_device_new_default() {
 }
 
 #[test]
+#[ignore] // Requires audio hardware, crashes on CI
 fn test_capture_device_new_with_specific_device() {
     let devices = CaptureDevice::list_devices().unwrap();
     if let Some(device_info) = devices.first() {
@@ -175,6 +178,7 @@ fn test_capture_device_new_with_specific_device() {
 }
 
 #[test]
+#[ignore] // Requires audio hardware, crashes on CI
 fn test_capture_device_ring_buffer() {
     let config = CaptureConfig::default();
     if let Ok(device) = CaptureDevice::new_default(config) {
