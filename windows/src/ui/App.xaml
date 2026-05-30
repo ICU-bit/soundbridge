@@ -22,6 +22,11 @@
             <local:VolumeToIconConverter x:Key="VolumeToIconConverter"/>
             <local:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
             <local:MixRatioToPercentConverter x:Key="MixRatioToPercentConverter"/>
+            <local:InvertBoolConverter x:Key="InvertBoolConverter"/>
+            <local:InvertBoolToVisibilityConverter x:Key="InvertBoolToVisibilityConverter"/>
+            <local:BoolToScanTextConverter x:Key="BoolToScanTextConverter"/>
+            <local:CollectionToVisibilityConverter x:Key="CollectionToVisibilityConverter"/>
+            <local:EmptyCollectionToVisibilityConverter x:Key="EmptyCollectionToVisibilityConverter"/>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

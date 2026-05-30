@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using System;
 using System.Collections.Generic;
 
@@ -65,6 +66,15 @@ public sealed partial class MainWindow : Window
             HotkeyManager.MOD_CONTROL | HotkeyManager.MOD_ALT,
             0x53, // 'S'
             () => this.Activate());
+    }
+
+    /// <summary>设备列表选择变更 → 填入服务器地址和端口</summary>
+    private void DeviceList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is ListView listView && listView.SelectedItem is string deviceJson)
+        {
+            ViewModel.SelectDeviceCommand.Execute(deviceJson);
+        }
     }
 
     protected override IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam, ref bool handled)

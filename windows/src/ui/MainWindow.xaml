@@ -23,6 +23,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
@@ -82,10 +83,18 @@
         <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="12">
             <Button Command="{x:Bind ViewModel.ToggleConnectionCommand}"
                     Height="56" MinWidth="160"
+                    IsEnabled="{x:Bind ViewModel.IsConnecting, Converter={StaticResource InvertBoolConverter}, Mode=OneWay}"
                     Style="{StaticResource AccentButtonStyle}">
                 <StackPanel Orientation="Horizontal" Spacing="8">
-                    <FontIcon Glyph="{x:Bind ViewModel.IsConnected, Converter={StaticResource BoolToIconConverter}, Mode=OneWay}"/>
-                    <TextBlock Text="{x:Bind ViewModel.IsConnected, Converter={StaticResource BoolToConnectTextConverter}, Mode=OneWay}"/>
+                    <ProgressRing IsActive="{x:Bind ViewModel.IsConnecting, Mode=OneWay}"
+                                  Width="20" Height="20"
+                                  Visibility="{x:Bind ViewModel.IsConnecting, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"/>
+                    <FontIcon Glyph="{x:Bind ViewModel.IsConnected, Converter={StaticResource BoolToIconConverter}, Mode=OneWay}"
+                              Visibility="{x:Bind ViewModel.IsConnecting, Converter={StaticResource InvertBoolToVisibilityConverter}, Mode=OneWay}"/>
+                    <TextBlock Text="Connecting..."
+                               Visibility="{x:Bind ViewModel.IsConnecting, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"/>
+                    <TextBlock Text="{x:Bind ViewModel.IsConnected, Converter={StaticResource BoolToConnectTextConverter}, Mode=OneWay}"
+                               Visibility="{x:Bind ViewModel.IsConnecting, Converter={StaticResource InvertBoolToVisibilityConverter}, Mode=OneWay}"/>
                 </StackPanel>
             </Button>
 
@@ -139,8 +148,53 @@
             </StackPanel>
         </Border>
 
-        <!-- 音频模式 -->
+        <!-- 设备发现 -->
         <Border Grid.Row="6" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                CornerRadius="12" Padding="16">
+            <StackPanel Spacing="12">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon Glyph="\uE774" VerticalAlignment="Center"/>
+                    <TextBlock Text="Device Discovery" FontSize="16" FontWeight="SemiBold"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+                <TextBlock Text="Scan for SoundBridge devices on your local network."
+                           FontSize="12" Opacity="0.6" TextWrapping="Wrap"/>
+                <Button Command="{x:Bind ViewModel.ScanDevicesCommand}"
+                        IsEnabled="{x:Bind ViewModel.IsScanning, Converter={StaticResource InvertBoolConverter}, Mode=OneWay}"
+                        HorizontalAlignment="Stretch">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ProgressRing IsActive="{x:Bind ViewModel.IsScanning, Mode=OneWay}"
+                                      Width="16" Height="16"
+                                      Visibility="{x:Bind ViewModel.IsScanning, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"/>
+                        <FontIcon Glyph="\uE721"
+                                  Visibility="{x:Bind ViewModel.IsScanning, Converter={StaticResource InvertBoolToVisibilityConverter}, Mode=OneWay}"
+                                  FontSize="14"/>
+                        <TextBlock Text="{x:Bind ViewModel.IsScanning, Converter={StaticResource BoolToScanTextConverter}, Mode=OneWay}"/>
+                    </StackPanel>
+                </Button>
+                <ListView ItemsSource="{x:Bind ViewModel.DiscoveredDevices}"
+                          Visibility="{x:Bind ViewModel.DiscoveredDevices, Converter={StaticResource CollectionToVisibilityConverter}, Mode=OneWay}"
+                          MaxHeight="200"
+                          SelectionChanged="DeviceList_SelectionChanged">
+                    <ListView.ItemTemplate>
+                        <DataTemplate x:DataType="x:String">
+                            <Grid Padding="4">
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <FontIcon Glyph="\uE702" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{x:Bind}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+                <TextBlock Text="No devices found"
+                           FontSize="12" Opacity="0.6"
+                           Visibility="{x:Bind ViewModel.DiscoveredDevices, Converter={StaticResource EmptyCollectionToVisibilityConverter}, Mode=OneWay}"/>
+            </StackPanel>
+        </Border>
+
+        <!-- 音频模式 -->
+        <Border Grid.Row="7" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                 CornerRadius="12" Padding="16">
             <StackPanel Spacing="12">
                 <StackPanel Orientation="Horizontal" Spacing="8">
@@ -157,7 +211,7 @@
         </Border>
 
         <!-- 混音比例 -->
-        <Border Grid.Row="7" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+        <Border Grid.Row="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                 CornerRadius="12" Padding="16">
             <StackPanel Spacing="8">
                 <StackPanel Orientation="Horizontal" Spacing="8">
@@ -189,6 +243,6 @@
         </Border>
 
         <!-- 占位（扩展区域） -->
-        <Grid Grid.Row="8"/>
+        <Grid Grid.Row="9"/>
     </Grid>
 </Window>

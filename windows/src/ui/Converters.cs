@@ -226,3 +226,83 @@ public class MixRatioToPercentConverter : IValueConverter
     public object ConvertBack(object value, Type targetType, object parameter, string language) =>
         throw new NotImplementedException();
 }
+
+/// <summary>
+/// bool → 取反 bool
+/// </summary>
+public class InvertBoolConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        bool b = value is bool v && v;
+        return !b;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+    {
+        bool b = value is bool v && v;
+        return !b;
+    }
+}
+
+/// <summary>
+/// bool → 取反 Visibility（true=Collapsed, false=Visible）
+/// </summary>
+public class InvertBoolToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        bool b = value is bool v && v;
+        return b ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language) =>
+        throw new NotImplementedException();
+}
+
+/// <summary>
+/// bool → "Stop" / "Scan"
+/// </summary>
+public class BoolToScanTextConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        bool isScanning = value is bool v && v;
+        return isScanning ? "Stop" : "Scan";
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language) =>
+        throw new NotImplementedException();
+}
+
+/// <summary>
+/// ICollection → Visibility（非空=Visible, 空=Collapsed）
+/// </summary>
+public class CollectionToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        if (value is System.Collections.ICollection collection)
+            return collection.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        return Visibility.Collapsed;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language) =>
+        throw new NotImplementedException();
+}
+
+/// <summary>
+/// ICollection → 反 Visibility（空=Visible, 非空=Collapsed）
+/// </summary>
+public class EmptyCollectionToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        if (value is System.Collections.ICollection collection)
+            return collection.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        return Visibility.Visible;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language) =>
+        throw new NotImplementedException();
+}
