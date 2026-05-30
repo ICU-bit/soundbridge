@@ -35,6 +35,26 @@ enum class TransportType : uint8_t {
     QUIC = 1
 };
 
+enum class EncryptionMode : uint8_t {
+    None = 0,    // 明文传输（仅测试用）
+    SRTP = 1     // AES-128-CM + HMAC-SHA1-80
+};
+
+enum class DtlsState : uint8_t {
+    Idle = 0,
+    WaitingClientHello,
+    ServerHelloSent,
+    Established,
+    Failed
+};
+
+struct SecurityConfig {
+    EncryptionMode encryption = EncryptionMode::SRTP;
+    uint32_t handshake_timeout_ms = 5000;
+    uint32_t max_retries = 3;
+    bool enable_auth_tag = true;
+};
+
 enum class AudioStreamState : uint8_t {
     Idle = 0,
     Starting,
@@ -59,6 +79,7 @@ struct SessionConfig {
     bool enable_noise_suppression = true;
     bool enable_agc = true;
     int opus_bitrate = 64000;
+    SecurityConfig security;
 };
 
 using AudioFrameCallback = std::function<void(const float* data, uint32_t frame_count, uint8_t channels)>;

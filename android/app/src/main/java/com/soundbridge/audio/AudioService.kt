@@ -15,6 +15,7 @@ import com.soundbridge.SoundBridgeApp
 import com.soundbridge.native.NativeAudioEngine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import java.security.SecureRandom
 
 class AudioService : Service() {
 
@@ -38,6 +39,19 @@ class AudioService : Service() {
     /** 是否正在扫描 */
     val isScanning: StateFlow<Boolean>
         get() = discoveryManager?.isScanning ?: MutableStateFlow(false)
+
+    /** 加密状态 */
+    enum class EncryptionState {
+        DISABLED, ENABLED
+    }
+
+    private val _encryptionState = MutableStateFlow(EncryptionState.DISABLED)
+    val encryptionState: StateFlow<EncryptionState> = _encryptionState
+
+    /** SRTP 主密钥（16 字节），启用加密时生成 */
+    private var srtpMasterKey: ByteArray? = null
+    /** SRTP 主盐值（14 字节），启用加密时生成 */
+    private var srtpMasterSalt: ByteArray? = null
 
     enum class ConnectionState {
         DISCONNECTED, CONNECTING, CONNECTED
@@ -170,6 +184,46 @@ class AudioService : Service() {
             return Pair(result[0], result[1])
         }
         return null
+    }
+
+    /** 启用 DTLS/SRTP 加密传输。管线运行中不允许修改。 */
+    fun enableEncryption() {
+        if (engineHandle == 0L) return
+
+        // 生成随机 SRTP 主密钥（16 字节）和主盐值（14 字节）
+        val random = SecureRandom()
+        val key = ByteArray(16)
+        val salt = ByteArray(14)
+        random.nextBytes(key)
+        random.nextBytes(salt)
+
+        val result = NativeAudioEngine.nativeSetEncryptionEnabled(engineHandle, true, key, salt)
+        if (result == 0) {
+            srtpMasterKey = key
+            srtpMasterSalt = salt
+            _encryptionState.value = EncryptionState.ENABLED
+        }
+    }
+
+    /** 禁用加密传输。管线运行中不允许修改。 */
+    fun disableEncryption() {
+        if (engineHandle == 0L) return
+
+        val result = NativeAudioEngine.nativeSetEncryptionEnabled(engineHandle, false, null, null)
+        if (result == 0) {
+            srtpMasterKey = null
+            srtpMasterSalt = null
+            _encryptionState.value = EncryptionState.DISABLED
+        }
+    }
+
+    /** 切换加密状态 */
+    fun toggleEncryption() {
+        if (_encryptionState.value == EncryptionState.ENABLED) {
+            disableEncryption()
+        } else {
+            enableEncryption()
+        }
     }
 
     override fun onDestroy() {

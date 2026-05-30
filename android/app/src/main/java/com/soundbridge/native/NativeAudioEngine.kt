@@ -64,4 +64,8 @@ object NativeAudioEngine {
     external fun nativeBtState(engineHandle: Long): Int
     external fun nativeBtSetState(engineHandle: Long, state: Int): Int
     external fun nativeSetExclusiveMode(engineHandle: Long, exclusive: Boolean): Int
+
+    // === 安全/加密（DTLS/SRTP）===
+    external fun nativeSetEncryptionEnabled(engineHandle: Long, enabled: Boolean, masterKey: ByteArray?, masterSalt: ByteArray?): Int
+    external fun nativeIsEncryptionEnabled(engineHandle: Long): Int
 }

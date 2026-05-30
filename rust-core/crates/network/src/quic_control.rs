@@ -1,4 +1,4 @@
-//! QUIC 控制信令通道
+//! # QUIC 控制信令通道
 //!
 //! 使用 QUIC 协议提供可靠加密的控制信令通道，
 //! 替代 UDP 控制信令，支持会话管理、音频参数协商、网络统计上报和设备发现。
@@ -6,8 +6,50 @@
 //! ## 协议格式
 //!
 //! 每条消息通过 QUIC 双向流传输，帧格式：
-//! - 4 字节：消息长度（u32 大端序）
-//! - N 字节：bincode 序列化的 ControlMessage
+//!
+//! ```text
+//! ┌──────────────────┬────────────────────────────┐
+//! │ 消息长度（4 字节） │ bincode 序列化的消息体      │
+//! │ u32 大端序        │ ControlMessage              │
+//! └──────────────────┴────────────────────────────┘
+//! ```
+//!
+//! ## 架构
+//!
+//! ```text
+//! ┌─────────────────┐     QUIC/TLS 1.3     ┌─────────────────┐
+//! │   QuicClient    │◄─────────────────────►│   QuicServer    │
+//! │                 │    双向流 / 单向流      │                 │
+//! │  send_and_recv  │                       │  accept_and_reply│
+//! │  send_uni       │                       │  accept          │
+//! └─────────────────┘                       └─────────────────┘
+//! ```
+//!
+//! ## 快速开始
+//!
+//! ```rust,no_run
+//! use network::quic_control::*;
+//! use std::net::SocketAddr;
+//!
+//! # async fn example() -> network::Result<()> {
+//! // 服务器端
+//! let server = QuicServer::new("127.0.0.1:0".parse().unwrap()).await?;
+//! let server_addr = server.local_addr()?;
+//! let cert = server.certificate();
+//!
+//! // 客户端
+//! let client = QuicClient::new(cert).await?;
+//! let conn = client.connect(server_addr, "localhost").await?;
+//!
+//! // 发送请求
+//! let msg = ControlMessage::SessionCreate {
+//!     session_id: "test".into(),
+//!     device_name: "PC".into(),
+//! };
+//! let response = conn.send_and_recv(&msg).await?;
+//! # Ok(())
+//! # }
+//! ```
 
 use crate::{NetworkError, Result};
 use rcgen::Certificate;
@@ -18,16 +60,134 @@ use std::sync::Arc;
 // ──────────────────────────────── 消息类型 ────────────────────────────────
 
 /// 音频配置参数
+///
+/// 用于 QUIC 控制通道中的音频参数协商。
+///
+/// # 默认值
+///
+/// | 参数 | 默认值 |
+/// |------|--------|
+/// | sample_rate | 48000 Hz |
+/// | channels | 1（单声道） |
+/// | bitrate | 128000 bps |
+/// | frame_size | 960 samples |
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AudioConfig {
     /// 采样率（Hz）
     pub sample_rate: u32,
-    /// 通道数
+    /// 通道数（1=单声道, 2=立体声）
     pub channels: u8,
     /// 比特率（bps）
     pub bitrate: u32,
     /// 帧大小（samples）
     pub frame_size: u32,
+}
+
+/// 网络统计数据
+///
+/// 通过 QUIC 控制通道上报的网络质量指标。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct NetworkStatsData {
+    /// 往返时延（毫秒）
+    pub rtt_ms: f32,
+    /// 丢包率（0.0 ~ 1.0）
+    pub loss_rate: f32,
+    /// 带宽估计（bps）
+    pub bandwidth_bps: u64,
+    /// 抖动（毫秒）
+    pub jitter_ms: f32,
+}
+
+/// 设备信息
+///
+/// 用于设备发现功能，描述网络中的一个 SoundBridge 设备。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DeviceInfo {
+    /// 设备唯一标识
+    pub device_id: String,
+    /// 设备显示名称
+    pub device_name: String,
+    /// 设备网络地址
+    pub address: SocketAddr,
+}
+
+/// 控制消息类型
+///
+/// 涵盖四类控制场景：
+/// - **会话管理**：SessionCreate / SessionAccept / SessionReject / SessionClose
+/// - **音频参数协商**：AudioConfigRequest / AudioConfigResponse
+/// - **网络统计上报**：NetworkStatsReport
+/// - **设备发现**：DeviceAnnounce / DeviceQuery / DeviceResponse
+///
+/// # 序列化
+///
+/// 使用 bincode 序列化，通过 QUIC 双向流或单向流传输。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ControlMessage {
+    // ── 会话管理 ──────────────────────────────────────────────
+    /// 请求创建会话（客户端 → 服务器）
+    SessionCreate {
+        /// 会话 ID
+        session_id: String,
+        /// 请求方设备名称
+        device_name: String,
+    },
+    /// 接受会话（服务器 → 客户端）
+    SessionAccept {
+        /// 会话 ID
+        session_id: String,
+    },
+    /// 拒绝会话（服务器 → 客户端）
+    SessionReject {
+        /// 会话 ID
+        session_id: String,
+        /// 拒绝原因
+        reason: String,
+    },
+    /// 关闭会话（双向）
+    SessionClose {
+        /// 会话 ID
+        session_id: String,
+    },
+
+    // ── 音频参数协商 ──────────────────────────────────────────
+    /// 请求协商音频配置（客户端 → 服务器）
+    AudioConfigRequest {
+        /// 期望的音频配置
+        config: AudioConfig,
+    },
+    /// 响应音频配置协商（服务器 → 客户端）
+    AudioConfigResponse {
+        /// 是否接受请求的配置
+        accepted: bool,
+        /// 最终确定的音频配置
+        config: AudioConfig,
+    },
+
+    // ── 网络统计上报 ──────────────────────────────────────────
+    /// 上报网络统计（双向）
+    NetworkStatsReport {
+        /// 网络统计数据
+        stats: NetworkStatsData,
+    },
+
+    // ── 设备发现 ──────────────────────────────────────────────
+    /// 广播设备上线（单向推送）
+    DeviceAnnounce {
+        /// 设备 ID
+        device_id: String,
+        /// 设备名称
+        device_name: String,
+        /// 设备地址
+        address: SocketAddr,
+    },
+    /// 查询在线设备（客户端 → 服务器）
+    DeviceQuery,
+    /// 响应设备列表（服务器 → 客户端）
+    DeviceResponse {
+        /// 在线设备列表
+        devices: Vec<DeviceInfo>,
+    },
 }
 
 impl Default for AudioConfig {
@@ -39,71 +199,6 @@ impl Default for AudioConfig {
             frame_size: 960,
         }
     }
-}
-
-/// 网络统计数据
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct NetworkStatsData {
-    /// 往返时延（毫秒）
-    pub rtt_ms: f32,
-    /// 丢包率（0.0 - 1.0）
-    pub loss_rate: f32,
-    /// 带宽估计（bps）
-    pub bandwidth_bps: u64,
-    /// 抖动（毫秒）
-    pub jitter_ms: f32,
-}
-
-/// 设备信息
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct DeviceInfo {
-    /// 设备唯一标识
-    pub device_id: String,
-    /// 设备显示名称
-    pub device_name: String,
-    /// 设备地址
-    pub address: SocketAddr,
-}
-
-/// 控制消息类型
-///
-/// 涵盖四类控制场景：会话管理、音频参数协商、网络统计上报、设备发现。
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum ControlMessage {
-    // ── 会话管理 ──────────────────────────────────────────────
-    /// 请求创建会话
-    SessionCreate {
-        session_id: String,
-        device_name: String,
-    },
-    /// 接受会话
-    SessionAccept { session_id: String },
-    /// 拒绝会话
-    SessionReject { session_id: String, reason: String },
-    /// 关闭会话
-    SessionClose { session_id: String },
-
-    // ── 音频参数协商 ──────────────────────────────────────────
-    /// 请求协商音频配置
-    AudioConfigRequest { config: AudioConfig },
-    /// 响应音频配置协商
-    AudioConfigResponse { accepted: bool, config: AudioConfig },
-
-    // ── 网络统计上报 ──────────────────────────────────────────
-    /// 上报网络统计
-    NetworkStatsReport { stats: NetworkStatsData },
-
-    // ── 设备发现 ──────────────────────────────────────────────
-    /// 广播设备上线
-    DeviceAnnounce {
-        device_id: String,
-        device_name: String,
-        address: SocketAddr,
-    },
-    /// 查询在线设备
-    DeviceQuery,
-    /// 响应设备列表
-    DeviceResponse { devices: Vec<DeviceInfo> },
 }
 
 // ──────────────────────────────── TLS 辅助 ────────────────────────────────
@@ -199,18 +294,45 @@ const MAX_MESSAGE_SIZE: usize = 1024 * 1024;
 
 /// QUIC 连接封装
 ///
-/// 提供双向流消息收发和单向流消息推送。
+/// 封装一个已建立的 QUIC 连接，提供双向流消息收发和单向流消息推送。
+///
+/// # 消息模式
+///
+/// - **双向流**（[`send_and_recv`](Self::send_and_recv) / [`accept_and_reply`](Self::accept_and_reply)）：
+///   请求-响应模式，客户端发送请求，服务器处理后返回响应
+/// - **单向流**（[`send_uni`](Self::send_uni) / [`recv_uni`](Self::recv_uni)）：
+///   推送模式，无需响应
 pub struct QuicConnection {
     conn: quinn::Connection,
 }
 
 impl QuicConnection {
-    /// 获取远程地址
+    /// 获取远程对端地址
+    ///
+    /// # Returns
+    ///
+    /// 对端的 `SocketAddr`（IP + 端口）。
     pub fn remote_addr(&self) -> SocketAddr {
         self.conn.remote_address()
     }
 
-    /// 发送请求并等待响应（双向流）
+    /// 发送请求并等待响应（双向流，客户端使用）
+    ///
+    /// 打开一个 QUIC 双向流，发送请求消息，等待服务器响应。
+    ///
+    /// # Arguments
+    ///
+    /// * `msg` - 要发送的控制消息
+    ///
+    /// # Returns
+    ///
+    /// 服务器返回的响应消息。
+    ///
+    /// # Errors
+    ///
+    /// - [`NetworkError::SendFailed`] — 打开流或发送失败
+    /// - [`NetworkError::ReceiveFailed`] — 接收响应失败
+    /// - [`NetworkError::SerializationError`] — 消息编解码失败
     pub async fn send_and_recv(&self, msg: &ControlMessage) -> Result<ControlMessage> {
         let (mut send, mut recv) = self
             .conn
@@ -229,6 +351,18 @@ impl QuicConnection {
     }
 
     /// 接受一个请求并发送响应（双向流，服务器端使用）
+    ///
+    /// 等待客户端发送请求，调用 `handler` 处理后返回响应。
+    ///
+    /// # Arguments
+    ///
+    /// * `handler` - 请求处理函数，接收请求消息，返回响应消息
+    ///
+    /// # Errors
+    ///
+    /// - [`NetworkError::ReceiveFailed`] — 接收请求失败
+    /// - [`NetworkError::SendFailed`] — 发送响应失败
+    /// - [`NetworkError::SerializationError`] — 消息编解码失败
     pub async fn accept_and_reply<F>(&self, handler: F) -> Result<()>
     where
         F: FnOnce(ControlMessage) -> ControlMessage,
@@ -252,6 +386,18 @@ impl QuicConnection {
     }
 
     /// 发送单向消息（无需响应）
+    ///
+    /// 打开一个 QUIC 单向流，发送消息后关闭流。
+    /// 适用于通知类消息（如 DeviceAnnounce、NetworkStatsReport）。
+    ///
+    /// # Arguments
+    ///
+    /// * `msg` - 要发送的控制消息
+    ///
+    /// # Errors
+    ///
+    /// - [`NetworkError::SendFailed`] — 打开流或发送失败
+    /// - [`NetworkError::SerializationError`] — 消息序列化失败
     pub async fn send_uni(&self, msg: &ControlMessage) -> Result<()> {
         let mut send = self
             .conn
@@ -269,6 +415,17 @@ impl QuicConnection {
     }
 
     /// 接受单向消息
+    ///
+    /// 等待并接收一个来自对端的单向流消息。
+    ///
+    /// # Returns
+    ///
+    /// 接收到的控制消息。
+    ///
+    /// # Errors
+    ///
+    /// - [`NetworkError::ReceiveFailed`] — 接收失败
+    /// - [`NetworkError::SerializationError`] — 消息反序列化失败
     pub async fn recv_uni(&self) -> Result<ControlMessage> {
         let mut recv = self
             .conn
@@ -280,6 +437,11 @@ impl QuicConnection {
     }
 
     /// 主动关闭连接
+    ///
+    /// # Arguments
+    ///
+    /// * `error_code` - 关闭错误码（0 表示正常关闭）
+    /// * `reason` - 关闭原因描述
     pub fn close(&self, error_code: u32, reason: &[u8]) {
         self.conn.close(error_code.into(), reason);
     }
@@ -290,7 +452,25 @@ impl QuicConnection {
 /// QUIC 控制信令服务器
 ///
 /// 绑定 UDP 端口，接受来自客户端的 QUIC 连接。
-/// 自动生成自签名证书，通过 `certificate()` 提供给客户端用于 TLS 验证。
+/// 自动生成自签名证书，通过 [`certificate()`](Self::certificate) 提供给客户端用于 TLS 验证。
+///
+/// # 示例
+///
+/// ```rust,no_run
+/// use network::quic_control::QuicServer;
+///
+/// # async fn example() -> network::Result<()> {
+/// let server = QuicServer::new("127.0.0.1:0".parse().unwrap()).await?;
+/// let addr = server.local_addr()?;
+/// let cert = server.certificate();
+///
+/// // 接受连接
+/// if let Some(conn) = server.accept().await {
+///     println!("新连接来自: {}", conn.remote_addr());
+/// }
+/// # Ok(())
+/// # }
+/// ```
 pub struct QuicServer {
     endpoint: quinn::Endpoint,
     cert_der: Vec<u8>,
@@ -299,7 +479,28 @@ pub struct QuicServer {
 impl QuicServer {
     /// 创建服务器并绑定到指定地址
     ///
-    /// 使用 `0.0.0.0:0` 让操作系统分配可用端口。
+    /// 自动生成自签名 TLS 证书，使用 `0.0.0.0:0` 让操作系统分配可用端口。
+    ///
+    /// # Arguments
+    ///
+    /// * `bind_addr` - 绑定地址（如 `0.0.0.0:0` 或 `127.0.0.1:8443`）
+    ///
+    /// # Errors
+    ///
+    /// - [`NetworkError::BindFailed`] — Socket 绑定失败
+    /// - [`NetworkError::QuicError`] — TLS 证书生成失败
+    ///
+    /// # 示例
+    ///
+    /// ```rust,no_run
+    /// use network::quic_control::QuicServer;
+    ///
+    /// # async fn example() -> network::Result<()> {
+    /// let server = QuicServer::new("0.0.0.0:0".parse().unwrap()).await?;
+    /// println!("服务器监听: {}", server.local_addr()?);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn new(bind_addr: SocketAddr) -> Result<Self> {
         let (cert, key) = generate_self_signed_cert()?;
         let cert_der = cert.0.clone();
@@ -312,25 +513,40 @@ impl QuicServer {
     }
 
     /// 获取服务器绑定的本地地址
+    ///
+    /// # Errors
+    ///
+    /// 如果获取地址失败，返回 [`NetworkError::BindFailed`]。
     pub fn local_addr(&self) -> Result<SocketAddr> {
         self.endpoint
             .local_addr()
             .map_err(|e| NetworkError::BindFailed(e.to_string()))
     }
 
-    /// 获取服务器证书（DER 编码），供客户端信任
+    /// 获取服务器证书的 DER 编码字节
+    ///
+    /// 客户端可使用此证书配置 TLS 信任。
     pub fn certificate_der(&self) -> &[u8] {
         &self.cert_der
     }
 
     /// 获取 `rustls::Certificate` 供客户端配置使用
+    ///
+    /// # Returns
+    ///
+    /// 包含 DER 编码证书的 `rustls::Certificate` 实例。
     pub fn certificate(&self) -> rustls::Certificate {
         rustls::Certificate(self.cert_der.clone())
     }
 
     /// 接受下一个入站连接
     ///
-    /// 返回 `None` 表示 Endpoint 已关闭。
+    /// 异步等待并接受一个客户端 QUIC 连接。
+    ///
+    /// # Returns
+    ///
+    /// - `Some(QuicConnection)` — 成功接受的连接
+    /// - `None` — Endpoint 已关闭
     pub async fn accept(&self) -> Option<QuicConnection> {
         let incoming = self.endpoint.accept().await?;
         let conn = incoming.await.ok()?;
@@ -338,6 +554,8 @@ impl QuicServer {
     }
 
     /// 关闭服务器
+    ///
+    /// 关闭 Endpoint，拒绝新的连接请求。已建立的连接不受影响。
     pub fn close(&self) {
         self.endpoint.close(0u32.into(), b"server shutdown");
     }
@@ -347,7 +565,23 @@ impl QuicServer {
 
 /// QUIC 控制信令客户端
 ///
-/// 连接到 QUIC 服务器，支持双向流消息收发。
+/// 连接到 QUIC 服务器，支持双向流和单向流消息收发。
+///
+/// # 示例
+///
+/// ```rust,no_run
+/// use network::quic_control::{QuicClient, ControlMessage};
+/// use std::net::SocketAddr;
+///
+/// # async fn example(server_cert: rustls::Certificate, server_addr: SocketAddr) -> network::Result<()> {
+/// let client = QuicClient::new(server_cert).await?;
+/// let conn = client.connect(server_addr, "localhost").await?;
+///
+/// let msg = ControlMessage::DeviceQuery;
+/// let response = conn.send_and_recv(&msg).await?;
+/// # Ok(())
+/// # }
+/// ```
 pub struct QuicClient {
     endpoint: quinn::Endpoint,
 }
@@ -355,7 +589,15 @@ pub struct QuicClient {
 impl QuicClient {
     /// 创建客户端
     ///
-    /// `server_cert` 为服务器证书，用于 TLS 验证。
+    /// 配置 TLS 信任指定的服务器证书。
+    ///
+    /// # Arguments
+    ///
+    /// * `server_cert` - 服务器证书（DER 编码），用于 TLS 验证
+    ///
+    /// # Errors
+    ///
+    /// - [`NetworkError::ConnectionFailed`] — Endpoint 创建失败
     pub async fn new(server_cert: rustls::Certificate) -> Result<Self> {
         let client_config = make_client_config(server_cert)?;
 
@@ -369,7 +611,18 @@ impl QuicClient {
 
     /// 连接到指定服务器
     ///
-    /// `server_name` 用于 TLS SNI，自签名场景下通常为 `"localhost"`。
+    /// # Arguments
+    ///
+    /// * `server_addr` - 服务器地址
+    /// * `server_name` - TLS SNI 主机名（自签名场景下通常为 `"localhost"`）
+    ///
+    /// # Returns
+    ///
+    /// 建立的 [`QuicConnection`] 连接实例。
+    ///
+    /// # Errors
+    ///
+    /// - [`NetworkError::ConnectionFailed`] — 连接失败（地址不可达、证书不匹配等）
     pub async fn connect(
         &self,
         server_addr: SocketAddr,
@@ -386,6 +639,8 @@ impl QuicClient {
     }
 
     /// 关闭客户端
+    ///
+    /// 关闭 Endpoint 和所有关联连接。
     pub fn close(&self) {
         self.endpoint.close(0u32.into(), b"client shutdown");
     }

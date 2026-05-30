@@ -227,9 +227,23 @@ impl Default for OpusConfig {
 }
 
 /// 会话能力声明
+///
+/// 在握手阶段由客户端和服务器双方交换，声明各自支持的传输协议、
+/// 加密模式和音频配置。服务器根据双方能力选择最优的协商参数。
+///
+/// # 示例
+///
+/// ```rust
+/// use network::session::{Capability, TransportProtocol, EncryptionMode};
+///
+/// let cap = Capability::default();
+/// assert!(cap.transport_protocols.contains(&TransportProtocol::Udp));
+/// assert!(cap.encryption_modes.contains(&EncryptionMode::Srtp));
+/// assert_eq!(cap.opus_config.sample_rate, 48000);
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Capability {
-    /// 协议版本
+    /// 协议版本号
     pub version: u16,
     /// 支持的传输协议列表（按优先级排序）
     pub transport_protocols: Vec<TransportProtocol>,
@@ -237,9 +251,9 @@ pub struct Capability {
     pub encryption_modes: Vec<EncryptionMode>,
     /// Opus 编解码器配置
     pub opus_config: OpusConfig,
-    /// 设备标识
+    /// 设备唯一标识（UUID 格式）
     pub device_id: String,
-    /// 设备名称
+    /// 设备显示名称
     pub device_name: String,
 }
 
@@ -257,6 +271,21 @@ impl Default for Capability {
 }
 
 /// 协商结果
+///
+/// 服务器根据双方能力声明选择的最终参数，客户端确认后生效。
+///
+/// # 示例
+///
+/// ```rust
+/// use network::session::{NegotiatedParams, TransportProtocol, EncryptionMode, OpusConfig};
+///
+/// let params = NegotiatedParams {
+///     transport_protocol: TransportProtocol::Udp,
+///     encryption_mode: EncryptionMode::Srtp,
+///     opus_config: OpusConfig::default(),
+/// };
+/// assert_eq!(params.transport_protocol, TransportProtocol::Udp);
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NegotiatedParams {
     /// 选定的传输协议
@@ -269,41 +298,65 @@ pub struct NegotiatedParams {
 
 // ──────────────────────────────── 握手消息 ────────────────────────────────
 
-/// ECDH 公钥（模拟，使用 32 字节随机数代替真实 ECDH）
+/// ECDH 公钥
+///
+/// 用于密钥交换阶段。当前为模拟实现，使用 32 字节随机数代替真实 ECDH 公钥。
+///
+/// # 示例
+///
+/// ```rust
+/// use network::session::EcdhPublicKey;
+///
+/// let key1 = EcdhPublicKey::generate();
+/// let key2 = EcdhPublicKey::generate();
+/// assert_ne!(key1, key2); // 每次生成的公钥都不同
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EcdhPublicKey(pub [u8; 32]);
 
 impl EcdhPublicKey {
-    /// 生成模拟公钥
+    /// 生成随机模拟公钥
+    ///
+    /// # Returns
+    ///
+    /// 包含 32 字节随机数据的 ECDH 公钥。
     pub fn generate() -> Self {
         Self(rand::random())
     }
 }
 
 /// 握手消息
+///
+/// 定义会话握手过程中的所有消息类型，涵盖：
+/// - 握手建立（ClientHello、ServerHello、KeyExchange、Finished）
+/// - 心跳维持（Heartbeat、HeartbeatAck）
+/// - 优雅断开（Disconnect）
+///
+/// 所有消息通过 [`Session::serialize_message`] / [`Session::deserialize_message`]
+/// 进行 bincode 序列化/反序列化。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum HandshakeMessage {
-    /// 客户端发起握手，声明能力
+    /// 客户端发起握手，声明能力和 ECDH 公钥
     ClientHello {
-        /// 会话 ID
+        /// 会话 ID（UUID 格式）
         session_id: String,
-        /// 客户端能力
+        /// 客户端能力声明
         capabilities: Capability,
         /// 客户端 ECDH 公钥
         client_public_key: EcdhPublicKey,
     },
-    /// 服务器响应，选择能力
+    /// 服务器响应，选择协商参数并返回 ECDH 公钥
     ServerHello {
         /// 会话 ID
         session_id: String,
-        /// 服务器能力
+        /// 服务器能力声明
         capabilities: Capability,
         /// 服务器选择的协商参数
         negotiated: NegotiatedParams,
         /// 服务器 ECDH 公钥
         server_public_key: EcdhPublicKey,
     },
-    /// 密钥交换确认
+    /// 客户端确认协商参数（密钥交换完成）
     KeyExchange {
         /// 会话 ID
         session_id: String,
@@ -312,29 +365,29 @@ pub enum HandshakeMessage {
         /// 客户端最终公钥（可能更新）
         client_public_key: EcdhPublicKey,
     },
-    /// 握手完成
+    /// 服务器发送握手完成确认（含握手摘要）
     Finished {
         /// 会话 ID
         session_id: String,
         /// 握手摘要（HMAC）
         handshake_hash: Vec<u8>,
     },
-    /// 心跳消息
+    /// 心跳消息（维持连接活跃度）
     Heartbeat {
         /// 会话 ID
         session_id: String,
-        /// 序列号
+        /// 心跳序列号（递增）
         sequence: u32,
-        /// 时间戳（微秒）
+        /// 发送时间戳（微秒）
         timestamp_us: u64,
     },
     /// 心跳响应
     HeartbeatAck {
         /// 会话 ID
         session_id: String,
-        /// 序列号
+        /// 对应的心跳序列号
         sequence: u32,
-        /// 原始时间戳
+        /// 原始心跳时间戳（用于 RTT 计算）
         timestamp_us: u64,
     },
     /// 优雅断开请求
@@ -347,17 +400,28 @@ pub enum HandshakeMessage {
 }
 
 /// 断开原因
+///
+/// 在 [`HandshakeMessage::Disconnect`] 消息中携带，说明会话断开的具体原因。
+///
+/// # 示例
+///
+/// ```rust
+/// use network::session::DisconnectReason;
+///
+/// assert_eq!(format!("{}", DisconnectReason::UserInitiated), "User initiated");
+/// assert_eq!(format!("{}", DisconnectReason::HeartbeatTimeout), "Heartbeat timeout");
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DisconnectReason {
     /// 用户主动断开
     UserInitiated,
-    /// 心跳超时
+    /// 心跳超时（对端无响应）
     HeartbeatTimeout,
-    /// 握手失败
+    /// 握手失败（超时或重试耗尽）
     HandshakeFailed,
-    /// 协议错误
+    /// 协议错误（消息格式或状态不匹配）
     ProtocolError,
-    /// 关机
+    /// 关机（应用或系统关闭）
     Shutdown,
 }
 
@@ -376,20 +440,26 @@ impl std::fmt::Display for DisconnectReason {
 // ──────────────────────────────── 会话管理 ────────────────────────────────
 
 /// 心跳统计
+///
+/// 跟踪心跳消息的发送、接收和丢失情况，用于网络质量评估。
 #[derive(Debug, Clone, Default)]
 pub struct HeartbeatStats {
-    /// 已发送心跳数
+    /// 已发送的心跳数
     pub sent: u32,
-    /// 已接收响应数
+    /// 已收到响应的心跳数
     pub acked: u32,
-    /// 丢失的心跳数
+    /// 丢失的心跳数（未收到响应）
     pub lost: u32,
-    /// 最后一个 RTT（微秒）
+    /// 最近一次 RTT（微秒）
     pub last_rtt_us: Option<u64>,
 }
 
 impl HeartbeatStats {
-    /// 心跳丢失率
+    /// 计算心跳丢失率
+    ///
+    /// # Returns
+    ///
+    /// 丢失率（0.0 ~ 1.0），未发送过心跳时返回 0.0。
     pub fn loss_rate(&self) -> f32 {
         if self.sent == 0 {
             return 0.0;
@@ -398,25 +468,41 @@ impl HeartbeatStats {
     }
 }
 
-/// 会话统计
+/// 会话统计信息
+///
+/// 收集会话生命周期内的关键指标。
 #[derive(Debug, Clone, Default)]
 pub struct SessionStats {
     /// 心跳统计
     pub heartbeat: HeartbeatStats,
-    /// 会话开始时间
+    /// 会话建立时间
     pub started_at: Option<Instant>,
     /// 握手耗时（毫秒）
     pub handshake_duration_ms: Option<u64>,
 }
 
 /// 会话配置
+///
+/// 控制心跳间隔、超时时间和握手重试行为。
+///
+/// # 示例
+///
+/// ```rust
+/// use network::session::SessionConfig;
+///
+/// let config = SessionConfig::default();
+/// assert_eq!(config.heartbeat_interval_ms, 5000);
+/// assert_eq!(config.heartbeat_timeout_ms, 15000);
+/// assert_eq!(config.handshake_timeout_ms, 10000);
+/// assert_eq!(config.max_handshake_retries, 3);
+/// ```
 #[derive(Debug, Clone)]
 pub struct SessionConfig {
-    /// 心跳间隔（毫秒）
+    /// 心跳发送间隔（毫秒）
     pub heartbeat_interval_ms: u64,
-    /// 心跳超时（毫秒）
+    /// 心跳超时时间（毫秒），超过此时间无响应认为对端离线
     pub heartbeat_timeout_ms: u64,
-    /// 握手超时（毫秒）
+    /// 握手超时时间（毫秒）
     pub handshake_timeout_ms: u64,
     /// 最大握手重试次数
     pub max_handshake_retries: u32,
@@ -434,18 +520,47 @@ impl Default for SessionConfig {
 }
 
 /// 会话角色
+///
+/// 决定会话在握手过程中的行为模式。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionRole {
-    /// 发起握手的客户端
+    /// 客户端（发起握手方）
     Client,
-    /// 接受握手的服务器
+    /// 服务器（接受握手方）
     Server,
 }
 
 /// 会话句柄
 ///
-/// 管理单个音频传输会话的完整生命周期：
-/// 握手 → 建立 → 心跳维持 → 优雅断开。
+/// 管理单个音频传输会话的完整生命周期：握手 → 建立 → 心跳维持 → 优雅断开。
+///
+/// # 生命周期
+///
+/// 1. **创建**：通过 [`Session::new_client`] 或 [`Session::new_server`] 创建
+/// 2. **握手**：客户端调用 [`Session::initiate_handshake`]，双方交换握手消息
+/// 3. **建立**：状态到达 `Established` 后可收发数据
+/// 4. **心跳**：定期调用 [`Session::create_heartbeat`] 维持连接
+/// 5. **断开**：调用 [`Session::initiate_disconnect`] 优雅断开
+///
+/// # 示例
+///
+/// ```rust,no_run
+/// use network::session::*;
+///
+/// let session_id = generate_session_id();
+/// let config = SessionConfig::default();
+///
+/// // 创建客户端会话
+/// let mut client = Session::new_client(
+///     session_id.clone(),
+///     Capability::default(),
+///     config.clone(),
+/// );
+///
+/// // 发起握手
+/// let client_hello = client.initiate_handshake().unwrap();
+/// // ... 发送 client_hello 到服务器，接收 server_hello ...
+/// ```
 pub struct Session {
     /// 会话 ID（UUID 格式）
     session_id: String,
@@ -483,6 +598,18 @@ impl Session {
     // ── 工厂方法 ──────────────────────────────────────────────
 
     /// 创建客户端会话
+    ///
+    /// 客户端负责发起握手（发送 ClientHello）。
+    ///
+    /// # Arguments
+    ///
+    /// * `session_id` - 会话唯一标识（UUID 格式）
+    /// * `capability` - 本端能力声明
+    /// * `config` - 会话配置
+    ///
+    /// # Returns
+    ///
+    /// 初始状态为 `Idle` 的客户端会话。
     pub fn new_client(session_id: String, capability: Capability, config: SessionConfig) -> Self {
         Self {
             session_id,
@@ -504,6 +631,18 @@ impl Session {
     }
 
     /// 创建服务器会话
+    ///
+    /// 服务器等待客户端的 ClientHello 并响应 ServerHello。
+    ///
+    /// # Arguments
+    ///
+    /// * `session_id` - 会话唯一标识（可为空，从 ClientHello 获取）
+    /// * `capability` - 本端能力声明
+    /// * `config` - 会话配置
+    ///
+    /// # Returns
+    ///
+    /// 初始状态为 `Idle` 的服务器会话。
     pub fn new_server(session_id: String, capability: Capability, config: SessionConfig) -> Self {
         Self {
             session_id,
@@ -527,46 +666,68 @@ impl Session {
     // ── 访问器 ──────────────────────────────────────────────
 
     /// 获取会话 ID
+    ///
+    /// # Returns
+    ///
+    /// UUID 格式的会话标识字符串。
     pub fn session_id(&self) -> &str {
         &self.session_id
     }
 
-    /// 获取当前状态
+    /// 获取当前会话状态
+    ///
+    /// # Returns
+    ///
+    /// 当前 [`SessionState`] 枚举值。
     pub fn state(&self) -> SessionState {
         self.state
     }
 
     /// 获取会话角色
+    ///
+    /// # Returns
+    ///
+    /// [`SessionRole::Client`] 或 [`SessionRole::Server`]。
     pub fn role(&self) -> SessionRole {
         self.role
     }
 
-    /// 获取本端能力
+    /// 获取本端能力声明
     pub fn local_capability(&self) -> &Capability {
         &self.local_capability
     }
 
-    /// 获取远端能力
+    /// 获取远端能力声明
+    ///
+    /// # Returns
+    ///
+    /// - `Some(&Capability)` — 已收到远端能力
+    /// - `None` — 尚未收到
     pub fn remote_capability(&self) -> Option<&Capability> {
         self.remote_capability.as_ref()
     }
 
     /// 获取协商参数
+    ///
+    /// # Returns
+    ///
+    /// - `Some(&NegotiatedParams)` — 协商已完成
+    /// - `None` — 尚未完成协商
     pub fn negotiated(&self) -> Option<&NegotiatedParams> {
         self.negotiated.as_ref()
     }
 
-    /// 获取统计信息
+    /// 获取会话统计信息
     pub fn stats(&self) -> &SessionStats {
         &self.stats
     }
 
-    /// 是否已建立
+    /// 判断会话是否已建立（状态为 `Established`）
     pub fn is_established(&self) -> bool {
         self.state == SessionState::Established
     }
 
-    /// 是否已关闭
+    /// 判断会话是否已关闭（状态为 `Closed`）
     pub fn is_closed(&self) -> bool {
         self.state == SessionState::Closed
     }
@@ -574,6 +735,18 @@ impl Session {
     // ── 客户端握手 ────────────────────────────────────────────
 
     /// 发起握手（客户端），生成 ClientHello 消息
+    ///
+    /// 将状态从 `Idle` 转换为 `ClientHelloSent`，并生成包含本端能力声明
+    /// 和 ECDH 公钥的 ClientHello 消息。
+    ///
+    /// # Returns
+    ///
+    /// 需要发送给服务器的 [`HandshakeMessage::ClientHello`] 消息。
+    ///
+    /// # Errors
+    ///
+    /// - [`NetworkError::ConnectionFailed`] — 非客户端角色
+    /// - [`NetworkError::ConnectionFailed`] — 当前状态不是 `Idle`
     pub fn initiate_handshake(&mut self) -> Result<HandshakeMessage> {
         if self.role != SessionRole::Client {
             return Err(NetworkError::ConnectionFailed(
@@ -599,6 +772,23 @@ impl Session {
     }
 
     /// 处理 ServerHello（客户端）
+    ///
+    /// 验证服务器返回的协商参数，派生共享密钥，生成 KeyExchange 响应。
+    ///
+    /// # Arguments
+    ///
+    /// * `msg` - 服务器发来的 ServerHello 消息
+    ///
+    /// # Returns
+    ///
+    /// 需要发送回服务器的 [`HandshakeMessage::KeyExchange`] 消息。
+    ///
+    /// # Errors
+    ///
+    /// - [`NetworkError::ConnectionFailed`] — 非客户端角色
+    /// - [`NetworkError::ConnectionFailed`] — 当前状态不是 `ClientHelloSent`
+    /// - [`NetworkError::ConnectionFailed`] — 会话 ID 不匹配
+    /// - [`NetworkError::ConnectionFailed`] — 协商参数不被本端支持
     pub fn handle_server_hello(&mut self, msg: &HandshakeMessage) -> Result<HandshakeMessage> {
         if self.role != SessionRole::Client {
             return Err(NetworkError::ConnectionFailed(
@@ -652,6 +842,19 @@ impl Session {
     }
 
     /// 处理 Finished（客户端）
+    ///
+    /// 收到服务器的 Finished 消息后，将状态设为 `Established`，
+    /// 记录握手耗时和会话开始时间。
+    ///
+    /// # Arguments
+    ///
+    /// * `msg` - 服务器发来的 Finished 消息
+    ///
+    /// # Errors
+    ///
+    /// - [`NetworkError::ConnectionFailed`] — 非客户端角色
+    /// - [`NetworkError::ConnectionFailed`] — 当前状态不是 `KeyExchangeSent`
+    /// - [`NetworkError::ConnectionFailed`] — 会话 ID 不匹配
     pub fn handle_finished_client(&mut self, msg: &HandshakeMessage) -> Result<()> {
         if self.role != SessionRole::Client {
             return Err(NetworkError::ConnectionFailed(
@@ -694,6 +897,22 @@ impl Session {
     // ── 服务器握手 ────────────────────────────────────────────
 
     /// 处理 ClientHello（服务器），生成 ServerHello 消息
+    ///
+    /// 接收客户端的能力声明，执行能力协商，派生共享密钥，
+    /// 生成包含协商结果的 ServerHello 响应。
+    ///
+    /// # Arguments
+    ///
+    /// * `msg` - 客户端发来的 ClientHello 消息
+    ///
+    /// # Returns
+    ///
+    /// 需要发送回客户端的 [`HandshakeMessage::ServerHello`] 消息。
+    ///
+    /// # Errors
+    ///
+    /// - [`NetworkError::ConnectionFailed`] — 非服务器角色
+    /// - [`NetworkError::ConnectionFailed`] — 当前状态不是 `Idle`
     pub fn handle_client_hello(&mut self, msg: &HandshakeMessage) -> Result<HandshakeMessage> {
         if self.role != SessionRole::Server {
             return Err(NetworkError::ConnectionFailed(
@@ -742,6 +961,23 @@ impl Session {
     }
 
     /// 处理 KeyExchange（服务器），生成 Finished 消息
+    ///
+    /// 验证客户端确认的协商参数一致性，将状态设为 `Established`，
+    /// 生成包含握手摘要的 Finished 响应。
+    ///
+    /// # Arguments
+    ///
+    /// * `msg` - 客户端发来的 KeyExchange 消息
+    ///
+    /// # Returns
+    ///
+    /// 需要发送回客户端的 [`HandshakeMessage::Finished`] 消息。
+    ///
+    /// # Errors
+    ///
+    /// - [`NetworkError::ConnectionFailed`] — 非服务器角色
+    /// - [`NetworkError::ConnectionFailed`] — 当前状态不是 `ServerHelloSent`
+    /// - [`NetworkError::ConnectionFailed`] — 会话 ID 或协商参数不匹配
     pub fn handle_key_exchange(&mut self, msg: &HandshakeMessage) -> Result<HandshakeMessage> {
         if self.role != SessionRole::Server {
             return Err(NetworkError::ConnectionFailed(
@@ -806,6 +1042,16 @@ impl Session {
     // ── 心跳 ────────────────────────────────────────────────
 
     /// 生成心跳消息
+    ///
+    /// 仅在 `Established` 状态下可用。自动递增心跳序列号并更新统计。
+    ///
+    /// # Returns
+    ///
+    /// 需要发送给对端的 [`HandshakeMessage::Heartbeat`] 消息。
+    ///
+    /// # Errors
+    ///
+    /// 如果当前状态不是 `Established`，返回 [`NetworkError::ConnectionFailed`]。
     pub fn create_heartbeat(&mut self) -> Result<HandshakeMessage> {
         if self.state != SessionState::Established {
             return Err(NetworkError::ConnectionFailed(format!(
@@ -826,6 +1072,21 @@ impl Session {
     }
 
     /// 处理心跳消息，生成心跳响应
+    ///
+    /// 验证会话 ID 后，返回对应的 HeartbeatAck 消息。
+    ///
+    /// # Arguments
+    ///
+    /// * `msg` - 对端发来的 Heartbeat 消息
+    ///
+    /// # Returns
+    ///
+    /// 需要发送回对端的 [`HandshakeMessage::HeartbeatAck`] 消息。
+    ///
+    /// # Errors
+    ///
+    /// - 当前状态不是 `Established`
+    /// - 会话 ID 不匹配
     pub fn handle_heartbeat(&mut self, msg: &HandshakeMessage) -> Result<HandshakeMessage> {
         if self.state != SessionState::Established {
             return Err(NetworkError::ConnectionFailed(format!(
@@ -863,7 +1124,17 @@ impl Session {
         })
     }
 
-    /// 处理心跳响应
+    /// 处理心跳响应，计算 RTT
+    ///
+    /// 更新心跳统计信息，计算并记录往返时延（RTT）。
+    ///
+    /// # Arguments
+    ///
+    /// * `msg` - 对端发来的 HeartbeatAck 消息
+    ///
+    /// # Errors
+    ///
+    /// - 会话 ID 不匹配
     pub fn handle_heartbeat_ack(&mut self, msg: &HandshakeMessage) -> Result<()> {
         let (session_id, _sequence, timestamp_us) = match msg {
             HandshakeMessage::HeartbeatAck {
@@ -896,6 +1167,12 @@ impl Session {
     }
 
     /// 检查是否需要发送心跳
+    ///
+    /// 当距离上次活动时间超过心跳间隔时返回 `true`。
+    ///
+    /// # Returns
+    ///
+    /// `true` 表示应该立即发送心跳消息。
     pub fn should_send_heartbeat(&self) -> bool {
         if self.state != SessionState::Established {
             return false;
@@ -904,6 +1181,13 @@ impl Session {
     }
 
     /// 检查心跳是否超时
+    ///
+    /// 当距离上次活动时间超过心跳超时时间时返回 `true`，
+    /// 表示对端可能已离线。
+    ///
+    /// # Returns
+    ///
+    /// `true` 表示心跳超时，应考虑断开连接。
     pub fn check_heartbeat_timeout(&self) -> bool {
         if self.state != SessionState::Established {
             return false;
@@ -912,6 +1196,13 @@ impl Session {
     }
 
     /// 检查握手是否超时
+    ///
+    /// 当握手已开始且耗时超过配置的超时时间时返回 `true`。
+    /// 终态（Established 或 Closed）下始终返回 `false`。
+    ///
+    /// # Returns
+    ///
+    /// `true` 表示握手超时，应放弃握手。
     pub fn check_handshake_timeout(&self) -> bool {
         if self.state.is_terminal() {
             return false;
@@ -926,6 +1217,21 @@ impl Session {
     // ── 断开 ────────────────────────────────────────────────
 
     /// 发起优雅断开
+    ///
+    /// 生成 Disconnect 消息发送给对端。本端不会立即关闭，
+    /// 等待对端确认或超时后自行关闭。
+    ///
+    /// # Arguments
+    ///
+    /// * `reason` - 断开原因
+    ///
+    /// # Returns
+    ///
+    /// 需要发送给对端的 [`HandshakeMessage::Disconnect`] 消息。
+    ///
+    /// # Errors
+    ///
+    /// 如果会话已关闭，返回 [`NetworkError::ConnectionFailed`]。
     pub fn initiate_disconnect(&mut self, reason: DisconnectReason) -> Result<HandshakeMessage> {
         if self.state == SessionState::Closed {
             return Err(NetworkError::ConnectionFailed(
@@ -942,6 +1248,16 @@ impl Session {
     }
 
     /// 处理断开请求
+    ///
+    /// 收到对端的 Disconnect 消息后，将状态设为 `Closed`。
+    ///
+    /// # Arguments
+    ///
+    /// * `msg` - 对端发来的 Disconnect 消息
+    ///
+    /// # Errors
+    ///
+    /// - 会话 ID 不匹配
     pub fn handle_disconnect(&mut self, msg: &HandshakeMessage) -> Result<()> {
         let (session_id, reason) = match msg {
             HandshakeMessage::Disconnect { session_id, reason } => (session_id, reason),
@@ -972,7 +1288,10 @@ impl Session {
         Ok(())
     }
 
-    /// 关闭会话
+    /// 直接关闭会话
+    ///
+    /// 将状态设为 `Closed`，不发送 Disconnect 消息。
+    /// 用于异常情况或已收到对端断开确认后。
     pub fn close(&mut self) {
         self.state = SessionState::Closed;
     }
@@ -980,11 +1299,37 @@ impl Session {
     // ── 序列化 ──────────────────────────────────────────────
 
     /// 序列化握手消息为字节
+    ///
+    /// 使用 bincode 序列化，用于网络传输。
+    ///
+    /// # Arguments
+    ///
+    /// * `msg` - 要序列化的握手消息
+    ///
+    /// # Returns
+    ///
+    /// 序列化后的字节数组。
+    ///
+    /// # Errors
+    ///
+    /// 如果序列化失败，返回 [`NetworkError::SerializationError`]。
     pub fn serialize_message(msg: &HandshakeMessage) -> Result<Vec<u8>> {
         bincode::serialize(msg).map_err(|e| NetworkError::SerializationError(e.to_string()))
     }
 
     /// 从字节反序列化握手消息
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - 序列化的字节数据
+    ///
+    /// # Returns
+    ///
+    /// 反序列化后的握手消息。
+    ///
+    /// # Errors
+    ///
+    /// 如果反序列化失败，返回 [`NetworkError::SerializationError`]。
     pub fn deserialize_message(data: &[u8]) -> Result<HandshakeMessage> {
         bincode::deserialize(data).map_err(|e| NetworkError::SerializationError(e.to_string()))
     }
@@ -1082,6 +1427,24 @@ impl Session {
 // ──────────────────────────────── 工具函数 ────────────────────────────────
 
 /// 生成 UUID v4 格式的会话 ID
+///
+/// 使用密码学安全随机数生成符合 UUID v4 规范的会话标识符。
+///
+/// # Returns
+///
+/// 格式为 `xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx` 的 UUID 字符串。
+///
+/// # 示例
+///
+/// ```rust
+/// use network::session::generate_session_id;
+///
+/// let id1 = generate_session_id();
+/// let id2 = generate_session_id();
+/// assert_ne!(id1, id2);
+/// assert_eq!(id1.len(), 36); // UUID 格式长度
+/// assert!(id1.contains('-'));
+/// ```
 pub fn generate_session_id() -> String {
     let bytes: [u8; 16] = rand::random();
 

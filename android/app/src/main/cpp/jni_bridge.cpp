@@ -575,4 +575,63 @@ Java_com_soundbridge_native_NativeAudioEngine_nativeSetExclusiveMode(
     return 0; // OK
 }
 
+// ============================================================
+// 安全/加密（DTLS/SRTP 存根实现）
+// ============================================================
+
+static bool g_encryption_enabled = false;
+static uint8_t g_srtp_master_key[16] = {0};
+static uint8_t g_srtp_master_salt[14] = {0};
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeSetEncryptionEnabled(
+        JNIEnv* env, jobject thiz, jlong engineHandle, jboolean enabled,
+        jbyteArray masterKey, jbyteArray masterSalt) {
+    auto* engine = getEngine(engineHandle);
+    if (!engine) return -1;
+
+    if (enabled) {
+        if (!masterKey || !masterSalt) {
+            LOGE("Encryption enabled but masterKey or masterSalt is null");
+            return -1;
+        }
+        jint keyLen = env->GetArrayLength(masterKey);
+        jint saltLen = env->GetArrayLength(masterSalt);
+        if (keyLen != 16 || saltLen != 14) {
+            LOGE("Invalid key length: %d (expected 16), salt length: %d (expected 14)",
+                 keyLen, saltLen);
+            return -1;
+        }
+
+        jbyte* key = env->GetByteArrayElements(masterKey, nullptr);
+        jbyte* salt = env->GetByteArrayElements(masterSalt, nullptr);
+        if (!key || !salt) {
+            if (key) env->ReleaseByteArrayElements(masterKey, key, JNI_ABORT);
+            if (salt) env->ReleaseByteArrayElements(masterSalt, salt, JNI_ABORT);
+            return -1;
+        }
+
+        memcpy(g_srtp_master_key, key, 16);
+        memcpy(g_srtp_master_salt, salt, 14);
+        env->ReleaseByteArrayElements(masterKey, key, JNI_ABORT);
+        env->ReleaseByteArrayElements(masterSalt, salt, JNI_ABORT);
+
+        g_encryption_enabled = true;
+        LOGI("Encryption enabled with SRTP keys (stub)");
+    } else {
+        g_encryption_enabled = false;
+        memset(g_srtp_master_key, 0, sizeof(g_srtp_master_key));
+        memset(g_srtp_master_salt, 0, sizeof(g_srtp_master_salt));
+        LOGI("Encryption disabled (stub)");
+    }
+    return 0; // OK
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeIsEncryptionEnabled(
+        JNIEnv* env, jobject thiz, jlong engineHandle) {
+    if (!getEngine(engineHandle)) return -1; // error
+    return g_encryption_enabled ? 1 : 0;
+}
+
 } // extern "C"
