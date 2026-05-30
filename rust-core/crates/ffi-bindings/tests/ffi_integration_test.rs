@@ -5,7 +5,7 @@
 //! engine lifecycle, audio mode, connection type, mix ratio, mute, device store, etc.
 
 use ffi_bindings::*;
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
 use std::os::raw::c_void;
 use std::ptr;
 
