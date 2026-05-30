@@ -21,7 +21,7 @@
 ## ✨ 功能特性
 
 ### 🔗 连接方式
-- ✅ WiFi 局域网（自动发现）
+- ✅ WiFi 局域网（自动发现 - mDNS _soundbridge._udp）
 - ⚠️ WiFi 直连（热点模式）- 未实现
 - ⚠️ USB 有线连接 - 未实现
 - ⚠️ 蓝牙连接 - 未实现
@@ -46,6 +46,7 @@
 
 ### ✨ 附加功能
 - ✅ 设备自动记忆 - DeviceStore + JSON 持久化（%LocalAppData%/SoundBridge/devices.json）
+- ✅ 设备自动发现 - mDNS（Windows sb_discovery_* FFI + Android NsdManager）
 - ✅ 启动自启 - Windows Registry（HKCU\...\Run）
 - ✅ 连接状态通知 - ConnectionNotificationService + Toast 通知
 - ✅ 回声消除（AEC）- NLMS 自适应滤波器
