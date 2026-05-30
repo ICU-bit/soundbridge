@@ -1048,6 +1048,308 @@ pub unsafe extern "C" fn sb_pipeline_stats(
     SbError::Ok as c_int
 }
 
+// ============================================================
+// 设备存储（DeviceStore）FFI
+// ============================================================
+
+use discovery::DeviceStore;
+
+/// 打开设备存储（JSON 文件持久化）
+///
+/// `path` 必须是有效的 UTF-8 文件路径。
+/// 文件不存在时自动创建。
+///
+/// # Safety
+/// 返回的句柄必须通过 `sb_device_store_close` 释放。
+#[no_mangle]
+pub unsafe extern "C" fn sb_device_store_open(path: *const c_char) -> *mut c_void {
+    clear_error();
+
+    if path.is_null() {
+        set_error("path is null");
+        return ptr::null_mut();
+    }
+
+    let path_str = unsafe { CStr::from_ptr(path) }.to_string_lossy().to_string();
+    let path = std::path::Path::new(&path_str);
+
+    let store = DeviceStore::with_file(path);
+    Box::into_raw(Box::new(store)) as *mut c_void
+}
+
+/// 关闭设备存储
+///
+/// # Safety
+/// `store` 必须是通过 `sb_device_store_open` 创建的有效指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_device_store_close(store: *mut c_void) {
+    clear_error();
+
+    if store.is_null() {
+        return;
+    }
+
+    unsafe {
+        let _ = Box::from_raw(store as *mut DeviceStore);
+    }
+}
+
+/// 添加或更新设备
+///
+/// # Safety
+/// `store` 和 `name` 必须是有效的指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_device_store_add(
+    store: *mut c_void,
+    name: *const c_char,
+    address: *const c_char,
+    port: u16,
+) -> c_int {
+    clear_error();
+
+    if store.is_null() || name.is_null() || address.is_null() {
+        set_error("null argument");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let store = unsafe { &mut *(store as *mut DeviceStore) };
+    let name = unsafe { CStr::from_ptr(name) }.to_string_lossy().to_string();
+    let addr_str = unsafe { CStr::from_ptr(address) }.to_string_lossy().to_string();
+
+    match addr_str.parse::<std::net::IpAddr>() {
+        Ok(addr) => {
+            store.add_device(&name, addr, port);
+            SbError::Ok as c_int
+        }
+        Err(e) => {
+            set_error(&format!("invalid address '{}': {}", addr_str, e));
+            SbError::InvalidArgument as c_int
+        }
+    }
+}
+
+/// 删除设备
+///
+/// # Safety
+/// `store` 和 `name` 必须是有效的指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_device_store_remove(
+    store: *mut c_void,
+    name: *const c_char,
+) -> c_int {
+    clear_error();
+
+    if store.is_null() || name.is_null() {
+        set_error("null argument");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let store = unsafe { &mut *(store as *mut DeviceStore) };
+    let name = unsafe { CStr::from_ptr(name) }.to_string_lossy().to_string();
+
+    if store.remove_device(&name) {
+        SbError::Ok as c_int
+    } else {
+        set_error("device not found");
+        SbError::DeviceNotFound as c_int
+    }
+}
+
+/// 设置设备自动连接
+///
+/// # Safety
+/// `store` 和 `name` 必须是有效的指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_device_store_set_auto_connect(
+    store: *mut c_void,
+    name: *const c_char,
+    auto_connect: bool,
+) -> c_int {
+    clear_error();
+
+    if store.is_null() || name.is_null() {
+        set_error("null argument");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let store = unsafe { &mut *(store as *mut DeviceStore) };
+    let name = unsafe { CStr::from_ptr(name) }.to_string_lossy().to_string();
+
+    store.set_auto_connect(&name, auto_connect);
+    SbError::Ok as c_int
+}
+
+/// 获取设备数量
+///
+/// # Safety
+/// `store` 必须是有效的指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_device_store_count(
+    store: *mut c_void,
+    count: *mut usize,
+) -> c_int {
+    clear_error();
+
+    if store.is_null() || count.is_null() {
+        set_error("null argument");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let store = unsafe { &*(store as *const DeviceStore) };
+    unsafe {
+        *count = store.len();
+    }
+
+    SbError::Ok as c_int
+}
+
+/// 检查设备是否存在
+///
+/// # Safety
+/// `store` 和 `name` 必须是有效的指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_device_store_has(
+    store: *mut c_void,
+    name: *const c_char,
+) -> c_int {
+    clear_error();
+
+    if store.is_null() || name.is_null() {
+        set_error("null argument");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let store = unsafe { &*(store as *const DeviceStore) };
+    let name = unsafe { CStr::from_ptr(name) }.to_string_lossy().to_string();
+
+    if store.has_device(&name) { 1 } else { 0 }
+}
+
+/// 清除所有设备
+///
+/// # Safety
+/// `store` 必须是有效的指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_device_store_clear(store: *mut c_void) {
+    clear_error();
+
+    if store.is_null() {
+        return;
+    }
+
+    let store = unsafe { &mut *(store as *mut DeviceStore) };
+    store.clear();
+}
+
+/// 获取设备地址（写入 buf，返回写入字节数，不含 null）
+///
+/// # Safety
+/// `store`、`name`、`buf` 必须是有效的指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_device_store_get_address(
+    store: *mut c_void,
+    name: *const c_char,
+    buf: *mut c_char,
+    buf_len: usize,
+) -> c_int {
+    clear_error();
+
+    if store.is_null() || name.is_null() || buf.is_null() {
+        set_error("null argument");
+        return -1;
+    }
+
+    let store = unsafe { &*(store as *const DeviceStore) };
+    let name = unsafe { CStr::from_ptr(name) }.to_string_lossy().to_string();
+
+    match store.get_device(&name) {
+        Some(device) => {
+            let addr = &device.address;
+            let bytes = addr.as_bytes();
+            let copy_len = bytes.len().min(buf_len - 1);
+            unsafe {
+                ptr::copy_nonoverlapping(bytes.as_ptr(), buf as *mut u8, copy_len);
+                *buf.add(copy_len) = 0; // null terminator
+            }
+            copy_len as c_int
+        }
+        None => {
+            set_error("device not found");
+            -1
+        }
+    }
+}
+
+/// 获取设备端口
+///
+/// # Safety
+/// `store` 和 `name` 必须是有效的指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_device_store_get_port(
+    store: *mut c_void,
+    name: *const c_char,
+    port: *mut u16,
+) -> c_int {
+    clear_error();
+
+    if store.is_null() || name.is_null() || port.is_null() {
+        set_error("null argument");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let store = unsafe { &*(store as *const DeviceStore) };
+    let name = unsafe { CStr::from_ptr(name) }.to_string_lossy().to_string();
+
+    match store.get_device(&name) {
+        Some(device) => {
+            unsafe {
+                *port = device.port;
+            }
+            SbError::Ok as c_int
+        }
+        None => {
+            set_error("device not found");
+            SbError::DeviceNotFound as c_int
+        }
+    }
+}
+
+/// 获取第 N 个设备的名称（按添加顺序）
+///
+/// # Safety
+/// `store` 和 `buf` 必须是有效的指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_device_store_get_name_at(
+    store: *mut c_void,
+    index: usize,
+    buf: *mut c_char,
+    buf_len: usize,
+) -> c_int {
+    clear_error();
+
+    if store.is_null() || buf.is_null() {
+        set_error("null argument");
+        return -1;
+    }
+
+    let store = unsafe { &*(store as *const DeviceStore) };
+    let devices: Vec<_> = store.get_all_devices();
+
+    if index >= devices.len() {
+        set_error("index out of range");
+        return -1;
+    }
+
+    let name = &devices[index].name;
+    let bytes = name.as_bytes();
+    let copy_len = bytes.len().min(buf_len - 1);
+    unsafe {
+        ptr::copy_nonoverlapping(bytes.as_ptr(), buf as *mut u8, copy_len);
+        *buf.add(copy_len) = 0;
+    }
+    copy_len as c_int
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

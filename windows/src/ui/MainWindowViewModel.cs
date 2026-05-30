@@ -11,12 +11,15 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 {
     private readonly ILogger<MainWindowViewModel> _logger;
     private IntPtr _engine;
+    private IntPtr _deviceStore;
     private CancellationTokenSource? _statsCts;
     private bool _disposed;
 
     public MainWindowViewModel(ILogger<MainWindowViewModel> logger)
     {
         _logger = logger;
+
+        // 创建引擎
         _engine = NativeMethods.sb_engine_create();
         if (_engine == IntPtr.Zero)
         {
@@ -26,6 +29,18 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         else
         {
             _logger.LogInformation("Engine created: 0x{Addr}", _engine.ToString("X"));
+        }
+
+        // 打开设备存储（持久化到文件）
+        string storePath = System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "SoundBridge", "devices.json");
+        _deviceStore = NativeMethods.sb_device_store_open(storePath);
+        if (_deviceStore != IntPtr.Zero)
+        {
+            _logger.LogInformation("Device store opened: {Path}", storePath);
+            // 恢复上次的服务器地址
+            LoadLastServer();
         }
     }
 
@@ -170,6 +185,9 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             IsConnected = true;
             StatusText = $"Connected to {ServerAddress}:{ServerPort} (local:{LocalPort})";
 
+            // 保存服务器地址到设备存储
+            SaveLastServer();
+
             // 启动统计轮询
             StartStatsPolling();
         }
@@ -260,6 +278,104 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     }
 
     // ============================================================
+    // Device Store
+    // ============================================================
+
+    private const string LastServerName = "last_server";
+
+    private void LoadLastServer()
+    {
+        if (_deviceStore == IntPtr.Zero) return;
+
+        try
+        {
+            int has = NativeMethods.sb_device_store_has(_deviceStore, LastServerName);
+            if (has != 1) return;
+
+            // 读取地址
+            byte[] addrBuf = new byte[256];
+            int addrLen = NativeMethods.sb_device_store_get_address(_deviceStore, LastServerName, addrBuf, 256);
+            if (addrLen <= 0) return;
+            string address = System.Text.Encoding.UTF8.GetString(addrBuf, 0, addrLen);
+
+            // 读取端口
+            int rc = NativeMethods.sb_device_store_get_port(_deviceStore, LastServerName, out ushort port);
+            if (rc != NativeMethods.SB_OK) return;
+
+            ServerAddress = address;
+            ServerPort = port.ToString();
+            _logger.LogInformation("Restored last server: {Addr}:{Port}", address, port);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load last server");
+        }
+    }
+
+    private void SaveLastServer()
+    {
+        if (_deviceStore == IntPtr.Zero) return;
+
+        try
+        {
+            if (ushort.TryParse(ServerPort, out ushort port))
+            {
+                NativeMethods.sb_device_store_add(_deviceStore, LastServerName, ServerAddress, port);
+                _logger.LogInformation("Saved last server: {Addr}:{Port}", ServerAddress, port);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to save last server");
+        }
+    }
+
+    // ============================================================
+    // Auto-start (Windows Registry)
+    // ============================================================
+
+    private const string AppName = "SoundBridge";
+    private const string RunKeyPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
+
+    /// <summary>检查是否已设置开机自启</summary>
+    public static bool IsAutoStartEnabled()
+    {
+        try
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(RunKeyPath, false);
+            return key?.GetValue(AppName) != null;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>设置开机自启</summary>
+    public static void SetAutoStart(bool enable)
+    {
+        try
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(RunKeyPath, true);
+            if (key == null) return;
+
+            if (enable)
+            {
+                string exePath = Environment.ProcessPath ?? "";
+                key.SetValue(AppName, $"\"{exePath}\" --minimized");
+            }
+            else
+            {
+                key.DeleteValue(AppName, false);
+            }
+        }
+        catch (Exception)
+        {
+            // 忽略注册表操作失败
+        }
+    }
+
+    // ============================================================
     // Dispose
     // ============================================================
 
@@ -279,6 +395,13 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             NativeMethods.sb_engine_destroy(_engine);
             _engine = IntPtr.Zero;
             _logger.LogInformation("Engine destroyed");
+        }
+
+        if (_deviceStore != IntPtr.Zero)
+        {
+            NativeMethods.sb_device_store_close(_deviceStore);
+            _deviceStore = IntPtr.Zero;
+            _logger.LogInformation("Device store closed");
         }
 
         GC.SuppressFinalize(this);

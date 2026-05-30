@@ -155,6 +155,72 @@ internal static partial class NativeMethods
     }
 
     // ============================================================
+    // 设备存储（DeviceStore）
+    // ============================================================
+
+    /// <summary>打开设备存储（JSON 文件持久化）</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+    internal static extern IntPtr sb_device_store_open([MarshalAs(UnmanagedType.LPStr)] string path);
+
+    /// <summary>关闭设备存储</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void sb_device_store_close(IntPtr store);
+
+    /// <summary>添加或更新设备</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+    internal static extern int sb_device_store_add(
+        IntPtr store,
+        [MarshalAs(UnmanagedType.LPStr)] string name,
+        [MarshalAs(UnmanagedType.LPStr)] string address,
+        ushort port);
+
+    /// <summary>删除设备</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+    internal static extern int sb_device_store_remove(IntPtr store, [MarshalAs(UnmanagedType.LPStr)] string name);
+
+    /// <summary>设置设备自动连接</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+    internal static extern int sb_device_store_set_auto_connect(
+        IntPtr store,
+        [MarshalAs(UnmanagedType.LPStr)] string name,
+        [MarshalAs(UnmanagedType.I1)] bool autoConnect);
+
+    /// <summary>获取设备数量</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int sb_device_store_count(IntPtr store, out nuint count);
+
+    /// <summary>检查设备是否存在（返回 1=true, 0=false）</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+    internal static extern int sb_device_store_has(IntPtr store, [MarshalAs(UnmanagedType.LPStr)] string name);
+
+    /// <summary>清除所有设备</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void sb_device_store_clear(IntPtr store);
+
+    /// <summary>获取设备地址（写入 buf，返回写入字节数，-1=未找到）</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+    internal static extern int sb_device_store_get_address(
+        IntPtr store,
+        [MarshalAs(UnmanagedType.LPStr)] string name,
+        [Out] byte[] buf,
+        nuint bufLen);
+
+    /// <summary>获取设备端口</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+    internal static extern int sb_device_store_get_port(
+        IntPtr store,
+        [MarshalAs(UnmanagedType.LPStr)] string name,
+        out ushort port);
+
+    /// <summary>获取第 N 个设备的名称（返回写入字节数，-1=越界）</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int sb_device_store_get_name_at(
+        IntPtr store,
+        nuint index,
+        [Out] byte[] buf,
+        nuint bufLen);
+
+    // ============================================================
     // Win32 菜单 API（托盘图标上下文菜单）
     // ============================================================
 
