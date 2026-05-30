@@ -975,8 +975,8 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                 // cpal 回调持续向 ring buffer 写入数据，这里轮询读取
                 let read = sender_capture_ring.read(&mut frame_buf);
                 if read < frame_size {
-                    // 数据不足一帧，等待更多数据
-                    std::thread::sleep(std::time::Duration::from_millis(1));
+                    // 数据不足一帧，让出 CPU 时间片
+                    std::thread::yield_now();
                     continue;
                 }
 
@@ -1135,11 +1135,11 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                         }
                     }
                     Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                        std::thread::sleep(std::time::Duration::from_millis(1));
+                        std::thread::yield_now();
                     }
                     Err(e) => {
                         tracing::warn!("Recv error: {}", e);
-                        std::thread::sleep(std::time::Duration::from_millis(10));
+                        std::thread::yield_now();
                     }
                 }
             }
