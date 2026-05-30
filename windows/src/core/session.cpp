@@ -3,7 +3,7 @@
 #include "audio/network/quic_transport.h"
 #include "audio/network/dtls_session.h"
 
-#include <spdlog/spdlog.h>
+#include "log.h"
 
 namespace soundbridge {
 

@@ -7,7 +7,7 @@
 #include <modules/audio_processing/audio_processing_impl.h>
 #include <modules/audio_processing/include/audio_processing.h>
 
-#include <spdlog/spdlog.h>
+#include "log.h"
 
 namespace soundbridge {
 

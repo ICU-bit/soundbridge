@@ -1,7 +1,7 @@
 #include "udp_transport.h"
 #include "packet.h"
 
-#include <spdlog/spdlog.h>
+#include "log.h"
 
 #pragma comment(lib, "ws2_32.lib")
 

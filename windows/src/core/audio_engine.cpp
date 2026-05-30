@@ -3,7 +3,7 @@
 #include "audio/wasapi_renderer.h"
 #include "audio/webrtc_apm.h"
 
-#include <spdlog/spdlog.h>
+#include "log.h"
 
 namespace soundbridge {
 

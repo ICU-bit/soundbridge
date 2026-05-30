@@ -1,7 +1,7 @@
 #include "wasapi_renderer.h"
 
 #include <functiondiscoverykeys_devpkey.h>
-#include <spdlog/spdlog.h>
+#include "log.h"
 
 namespace soundbridge {
 

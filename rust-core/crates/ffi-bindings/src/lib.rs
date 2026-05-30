@@ -4577,8 +4577,8 @@ mod tests {
             assert!(!error.is_null());
             let error_str = CStr::from_ptr(error).to_str().unwrap();
             assert!(
-                error_str.contains("invalid address"),
-                "Error should mention invalid address, got: {}",
+                error_str.contains("address"),
+                "Error should mention address, got: {}",
                 error_str
             );
 

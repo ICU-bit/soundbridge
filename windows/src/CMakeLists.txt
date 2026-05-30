@@ -26,6 +26,11 @@ if(WebRTC_FOUND)
     target_compile_definitions(SoundBridge PRIVATE SOUNDBRIDGE_HAS_WEBRTC=1)
 endif()
 
+if(spdlog_FOUND)
+    target_link_libraries(SoundBridge PRIVATE spdlog::spdlog)
+    target_compile_definitions(SoundBridge PRIVATE SOUNDBRIDGE_HAS_SPDLOG=1)
+endif()
+
 target_include_directories(SoundBridge PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../include
 )

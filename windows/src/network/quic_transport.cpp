@@ -1,7 +1,7 @@
 #include "quic_transport.h"
 #include "packet.h"
 
-#include <spdlog/spdlog.h>
+#include "log.h"
 
 namespace soundbridge {
 

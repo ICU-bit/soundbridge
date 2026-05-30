@@ -1,7 +1,7 @@
 #include "wasapi_capture.h"
 
 #include <functiondiscoverykeys_devpkey.h>
-#include <spdlog/spdlog.h>
+#include "log.h"
 #include <stdexcept>
 
 #pragma comment(lib, "ole32.lib")

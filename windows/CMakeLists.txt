@@ -32,9 +32,13 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 find_package(Opus REQUIRED)
 find_package(WebRTC)
+find_package(spdlog CONFIG)
 if(NOT WebRTC_FOUND)
     message(WARNING "WebRTC APM not found - building without AEC/NS/AGC support. "
         "Set WEBRTC_ROOT or place headers in third_party/webrtc/ to enable.")
+endif()
+if(NOT spdlog_FOUND)
+    message(WARNING "spdlog not found - logging will use fallback.")
 endif()
 
 add_subdirectory(src)

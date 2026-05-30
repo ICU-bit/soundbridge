@@ -1,6 +1,6 @@
 #include "opus_codec.h"
 
-#include <spdlog/spdlog.h>
+#include "log.h"
 
 namespace soundbridge {
 
