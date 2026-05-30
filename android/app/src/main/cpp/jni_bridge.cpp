@@ -370,7 +370,15 @@ Java_com_soundbridge_native_NativeAudioEngine_nativeConnect(
 
     g_target_address = addrStr.substr(0, colonPos);
     std::string portStr = addrStr.substr(colonPos + 1);
-    g_target_port = static_cast<uint16_t>(std::stoi(portStr));
+
+    // 使用 strtol 替代 stoi 避免异常崩溃
+    char* endPtr = nullptr;
+    long port = strtol(portStr.c_str(), &endPtr, 10);
+    if (endPtr == portStr.c_str() || *endPtr != '\0' || port <= 0 || port > 65535) {
+        LOGE("Invalid port number: %s", portStr.c_str());
+        return -1;
+    }
+    g_target_port = static_cast<uint16_t>(port);
 
     LOGI("Pipeline target set to %s:%d", g_target_address.c_str(), g_target_port);
     return 0;

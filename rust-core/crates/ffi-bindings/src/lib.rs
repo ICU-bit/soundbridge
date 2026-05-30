@@ -1862,10 +1862,19 @@ pub unsafe extern "C" fn sb_discovery_find_devices(
                 let copy_count = count.min(buf_size);
                 for i in 0..copy_count {
                     let device = &devices[i];
-                    // 将 DeviceInfo 序列化为 JSON 字符串存储
+                    // 转义 JSON 特殊字符（避免注入）
+                    let escape_json = |s: &str| -> String {
+                        s.replace('\\', "\\\\")
+                         .replace('"', "\\\"")
+                         .replace('\n', "\\n")
+                         .replace('\r', "\\r")
+                         .replace('\t', "\\t")
+                    };
+                    let name = escape_json(&device.name);
+                    let hostname = escape_json(&device.hostname);
                     let json = format!(
                         r#"{{"name":"{}","address":"{}","port":{},"hostname":"{}"}}"#,
-                        device.name, device.address, device.port, device.hostname
+                        name, device.address, device.port, hostname
                     );
                     let c_str = CString::new(json).unwrap_or_default();
                     unsafe {
