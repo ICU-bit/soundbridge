@@ -299,6 +299,34 @@ internal static partial class NativeMethods
         nuint bufLen);
 
     // ============================================================
+    // 设备发现（DeviceDiscovery）
+    // ============================================================
+
+    /// <summary>创建设备发现服务</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern IntPtr sb_discovery_create();
+
+    /// <summary>关闭设备发现服务</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void sb_discovery_close(IntPtr discovery);
+
+    /// <summary>初始化 mDNS 守护进程</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int sb_discovery_init(IntPtr discovery);
+
+    /// <summary>注册本设备到 mDNS 网络</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+    internal static extern int sb_discovery_register(IntPtr discovery, [MarshalAs(UnmanagedType.LPStr)] string name, ushort port);
+
+    /// <summary>发现网络上的设备（返回设备数量，devicesBuf 可为 null）</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int sb_discovery_find_devices(IntPtr discovery, IntPtr devicesBuf, nuint bufSize);
+
+    /// <summary>释放发现的设备信息</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void sb_discovery_free_device_info(IntPtr deviceInfo);
+
+    // ============================================================
     // Win32 菜单 API（托盘图标上下文菜单）
     // ============================================================
 

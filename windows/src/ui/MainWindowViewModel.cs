@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using System;
+using System.Collections.ObjectModel;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -13,6 +14,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private readonly ConnectionNotificationService? _notificationService;
     private IntPtr _engine;
     private IntPtr _deviceStore;
+    private IntPtr _discovery;
     private CancellationTokenSource? _statsCts;
     private bool _disposed;
 
@@ -53,6 +55,26 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             _logger.LogInformation("Device store opened: {Path}", storePath);
             // 恢复上次的服务器地址
             LoadLastServer();
+        }
+
+        // 创建设备发现服务
+        _discovery = NativeMethods.sb_discovery_create();
+        if (_discovery != IntPtr.Zero)
+        {
+            _logger.LogInformation("Discovery service created");
+            // 初始化 mDNS（后台线程执行，避免阻塞 UI）
+            Task.Run(() =>
+            {
+                int rc = NativeMethods.sb_discovery_init(_discovery);
+                if (rc == NativeMethods.SB_OK)
+                    _logger.LogInformation("mDNS initialized");
+                else
+                    _logger.LogWarning("mDNS init failed: {Error}", NativeMethods.GetLastError());
+            });
+        }
+        else
+        {
+            _logger.LogWarning("Failed to create discovery service");
         }
     }
 
@@ -105,6 +127,12 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private int _selectedAudioMode; // 0=Balanced, 1=HighQuality, 2=LowLatency
 
+    [ObservableProperty]
+    private bool _isScanning;
+
+    /// <summary>已发现的设备列表</summary>
+    public ObservableCollection<string> DiscoveredDevices { get; } = new();
+
     // ============================================================
     // Commands
     // ============================================================
@@ -135,6 +163,102 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         // 静音通过采集层控制（暂停/恢复采集流）
         // TODO: 当 Rust FFI 支持 sb_set_mute 时接入
         _logger.LogInformation("Mute toggled: {IsMuted}", IsMuted);
+    }
+
+    [RelayCommand]
+    private async Task ScanDevicesAsync()
+    {
+        if (_discovery == IntPtr.Zero)
+        {
+            StatusText = "Discovery not available";
+            return;
+        }
+
+        if (IsScanning) return;
+
+        IsScanning = true;
+        StatusText = "Scanning for devices...";
+        DiscoveredDevices.Clear();
+
+        try
+        {
+            var devices = await Task.Run(() =>
+            {
+                // 获取设备数量
+                int count = NativeMethods.sb_discovery_find_devices(_discovery, IntPtr.Zero, 0);
+                if (count <= 0) return Array.Empty<string>();
+
+                // 分配指针数组接收设备信息
+                var ptrs = new IntPtr[count];
+                var handle = System.Runtime.InteropServices.GCHandle.Alloc(ptrs, System.Runtime.InteropServices.GCHandleType.Pinned);
+                try
+                {
+                    NativeMethods.sb_discovery_find_devices(_discovery, handle.AddrOfPinnedObject(), (nuint)count);
+                    var results = new string[count];
+                    for (int i = 0; i < count; i++)
+                    {
+                        if (ptrs[i] != IntPtr.Zero)
+                        {
+                            results[i] = System.Runtime.InteropServices.Marshal.PtrToStringAnsi(ptrs[i]) ?? $"device_{i}";
+                            NativeMethods.sb_discovery_free_device_info(ptrs[i]);
+                        }
+                        else
+                        {
+                            results[i] = $"device_{i}";
+                        }
+                    }
+                    return results;
+                }
+                finally
+                {
+                    handle.Free();
+                }
+            });
+
+            foreach (var device in devices)
+            {
+                DiscoveredDevices.Add(device);
+            }
+
+            StatusText = devices.Length > 0
+                ? $"Found {devices.Length} device(s)"
+                : "No devices found";
+            _logger.LogInformation("Scan complete: {Count} devices found", devices.Length);
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Scan failed: {ex.Message}";
+            _logger.LogError(ex, "Device scan failed");
+        }
+        finally
+        {
+            IsScanning = false;
+        }
+    }
+
+    /// <summary>从发现的设备 JSON 字符串中解析地址并填入 ServerAddress/ServerPort</summary>
+    [RelayCommand]
+    private void SelectDevice(string? deviceJson)
+    {
+        if (string.IsNullOrEmpty(deviceJson)) return;
+
+        try
+        {
+            // 解析简单 JSON: {"name":"...","address":"...","port":...,"hostname":"..."}
+            var addressMatch = System.Text.RegularExpressions.Regex.Match(deviceJson, @"""address""\s*:\s*""([^""]+)""");
+            var portMatch = System.Text.RegularExpressions.Regex.Match(deviceJson, @"""port""\s*:\s*(\d+)");
+
+            if (addressMatch.Success)
+                ServerAddress = addressMatch.Groups[1].Value;
+            if (portMatch.Success && ushort.TryParse(portMatch.Groups[1].Value, out ushort port))
+                ServerPort = port.ToString();
+
+            _logger.LogInformation("Selected device: {Addr}:{Port}", ServerAddress, ServerPort);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to parse device JSON");
+        }
     }
 
     partial void OnVolumeChanged(double value)
@@ -491,6 +615,13 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             NativeMethods.sb_device_store_close(_deviceStore);
             _deviceStore = IntPtr.Zero;
             _logger.LogInformation("Device store closed");
+        }
+
+        if (_discovery != IntPtr.Zero)
+        {
+            NativeMethods.sb_discovery_close(_discovery);
+            _discovery = IntPtr.Zero;
+            _logger.LogInformation("Discovery service closed");
         }
 
         GC.SuppressFinalize(this);
