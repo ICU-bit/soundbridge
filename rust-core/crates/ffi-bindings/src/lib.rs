@@ -963,7 +963,7 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
             let mut encoder = encoder;
             let mut frame_buf = vec![0.0f32; frame_size];
             let mut i16_buf = vec![0i16; frame_size]; // 预分配 i16 缓冲区
-            let mut opus_buf = Vec::with_capacity(1500); // 预分配编码输出缓冲区
+            let mut opus_buf = vec![0u8; 1500]; // 预分配编码输出缓冲区
             let protocol = Protocol::new();
             let mut packet_buf = Vec::with_capacity(1500); // 预分配序列化缓冲区
             let start_time = Instant::now();
@@ -984,14 +984,17 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                 sender_mix_ring.write(&frame_buf[..frame_size]);
 
                 // 编码一帧（零分配版本）
-                if let Err(e) = encoder.encode_interleaved_into(
+                let opus_len = match encoder.encode_interleaved_into(
                     &frame_buf[..frame_size],
                     &mut i16_buf,
                     &mut opus_buf,
                 ) {
-                    tracing::warn!("Encode error: {}", e);
-                    continue;
-                }
+                    Ok(len) => len,
+                    Err(e) => {
+                        tracing::warn!("Encode error: {}", e);
+                        continue;
+                    }
+                };
 
                 let seq = sender_sequence.fetch_add(1, Ordering::Relaxed);
                 let timestamp_ms = start_time.elapsed().as_millis() as u32;
@@ -1002,11 +1005,11 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                     timestamp_ms,
                     flags: 0x01, // 音频数据标志
                     channels: 1, // mono
-                    opus_length: opus_buf.len() as u16,
+                    opus_length: opus_len as u16,
                 };
 
                 // 使用零分配序列化
-                if let Err(e) = protocol.serialize_audio_into(&header, &opus_buf, &mut packet_buf) {
+                if let Err(e) = protocol.serialize_audio_into(&header, &opus_buf[..opus_len], &mut packet_buf) {
                     tracing::warn!("Serialize error: {}", e);
                     continue;
                 }
@@ -1060,9 +1063,9 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
             while receiver_running.load(Ordering::Relaxed) {
                 match recv_socket.recv_from(&mut recv_buf) {
                     Ok((len, _from)) => {
-                        match protocol.deserialize(&recv_buf[..len]) {
-                            Ok(packet) => {
-                                if let protocol::Packet::Audio { header, data } = packet {
+                        match protocol.deserialize_header(&recv_buf[..len]) {
+                            Ok((header, data, is_audio)) => {
+                                if is_audio {
                                     // 丢包检测：跟踪序列号间隙
                                     let seq = header.sequence as u64;
                                     let last_seq = receiver_stats.last_received_seq.load(Ordering::Relaxed);
@@ -1073,15 +1076,15 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                                     receiver_stats.last_received_seq.store(seq, Ordering::Relaxed);
                                     
                                     // 更新丢包率
-                                    let total_sent = receiver_stats.packets_sent.load(Ordering::Relaxed);
+                                    let total_received = receiver_stats.frames_decoded.load(Ordering::Relaxed);
                                     let total_lost = receiver_stats.packets_lost.load(Ordering::Relaxed);
-                                    if total_sent + total_lost > 0 {
-                                        let loss_rate = total_lost as f32 / (total_sent + total_lost) as f32;
+                                    if total_received + total_lost > 0 {
+                                        let loss_rate = total_lost as f32 / (total_received + total_lost) as f32;
                                         receiver_stats.loss_rate_bits.store(loss_rate.to_bits(), Ordering::Relaxed);
                                     }
                                     
                                     // 使用零分配解码路径
-                                    match decoder.decode_into(&data, &mut decode_buf) {
+                                    match decoder.decode_into(data, &mut decode_buf) {
                                         Ok(decoded_count) => {
                                             let remote_samples = &decode_buf[..decoded_count];
 

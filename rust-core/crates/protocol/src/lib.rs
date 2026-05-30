@@ -251,6 +251,26 @@ impl Protocol {
             })
         }
     }
+
+    /// 反序列化包头并返回 payload 切片引用（零分配版本）
+    pub fn deserialize_header<'a>(&self, data: &'a [u8]) -> Result<(PacketHeader, &'a [u8], bool)> {
+        let (header, _) = PacketHeader::decode(data)?;
+
+        let payload_start = PacketHeader::SIZE;
+        let payload_end = payload_start + header.opus_length as usize;
+
+        if data.len() < payload_end {
+            return Err(ProtocolError::DataTooShort {
+                needed: payload_end,
+                actual: data.len(),
+            });
+        }
+
+        let payload = &data[payload_start..payload_end];
+        let is_audio = header.flags & 0x01 != 0;
+
+        Ok((header, payload, is_audio))
+    }
 }
 
 /// 控制消息类型（对齐技术规格 §2.2.2）

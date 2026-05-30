@@ -219,8 +219,8 @@ impl OpusEncoderCodec {
         &mut self,
         samples: &[f32],
         i16_buf: &mut [i16],
-        output: &mut Vec<u8>,
-    ) -> Result<()> {
+        output: &mut [u8],
+    ) -> Result<usize> {
         let expected = self.config.total_samples();
         if samples.len() != expected {
             return Err(CodecError::BufferSizeMismatch {
@@ -242,15 +242,12 @@ impl OpusEncoderCodec {
         }
 
         let frame_size = self.config.frame_size_samples();
-        let encoded = self
+        let encoded_len = self
             .encoder
-            .encode_vec(&i16_buf[..expected], frame_size)
+            .encode(&i16_buf[..expected], output)
             .map_err(|e| CodecError::EncodingFailed(e.to_string()))?;
 
-        output.clear();
-        output.extend_from_slice(&encoded);
-
-        Ok(())
+        Ok(encoded_len)
     }
 
     pub fn config(&self) -> &OpusConfig {
