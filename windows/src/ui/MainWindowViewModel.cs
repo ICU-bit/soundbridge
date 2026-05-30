@@ -91,6 +91,9 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private float _latencyMs;
 
     [ObservableProperty]
+    private float _lossRate;
+
+    [ObservableProperty]
     private ushort _localPort;
 
     [ObservableProperty]
@@ -297,6 +300,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         FramesCaptured = 0;
         FramesPlayed = 0;
         LatencyMs = 0;
+        LossRate = 0;
         StatusText = "Disconnected";
     }
 
@@ -319,13 +323,15 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
                         _engine,
                         out ulong captured,
                         out ulong played,
-                        out float latency);
+                        out float latency,
+                        out float lossRate);
 
                     if (rc == NativeMethods.SB_OK)
                     {
                         FramesCaptured = captured;
                         FramesPlayed = played;
                         LatencyMs = latency;
+                        LossRate = lossRate;
 
                         // 音频电平：用帧编码速率估算（简化）
                         // 真实电平需要从采集 ring buffer 读取 RMS

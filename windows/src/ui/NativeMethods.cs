@@ -133,7 +133,8 @@ internal static partial class NativeMethods
         IntPtr engine,
         out ulong framesCaptured,
         out ulong framesPlayed,
-        out float latencyMs);
+        out float latencyMs,
+        out float lossRate);
 
     // ============================================================
     // 音量控制 / 暂停恢复

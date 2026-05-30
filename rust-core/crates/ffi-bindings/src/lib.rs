@@ -130,6 +130,12 @@ struct SharedPipelineStats {
     frames_decoded: AtomicU64,
     frames_dropped: AtomicU64,
     packets_sent: AtomicU64,
+    /// 最后接收到的序列号（用于丢包检测）
+    last_received_seq: AtomicU64,
+    /// 累计丢包数
+    packets_lost: AtomicU64,
+    /// 丢包率（f32 的 bits 表示，用于原子存储）
+    loss_rate_bits: AtomicU32,
 }
 
 impl SharedPipelineStats {
@@ -139,6 +145,9 @@ impl SharedPipelineStats {
             frames_decoded: AtomicU64::new(0),
             frames_dropped: AtomicU64::new(0),
             packets_sent: AtomicU64::new(0),
+            last_received_seq: AtomicU64::new(0),
+            packets_lost: AtomicU64::new(0),
+            loss_rate_bits: AtomicU32::new(0),
         }
     }
 }
@@ -1051,7 +1060,24 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                     Ok((len, _from)) => {
                         match protocol.deserialize(&recv_buf[..len]) {
                             Ok(packet) => {
-                                if let protocol::Packet::Audio { header: _, data } = packet {
+                                if let protocol::Packet::Audio { header, data } = packet {
+                                    // 丢包检测：跟踪序列号间隙
+                                    let seq = header.sequence as u64;
+                                    let last_seq = receiver_stats.last_received_seq.load(Ordering::Relaxed);
+                                    if last_seq > 0 && seq > last_seq + 1 {
+                                        let lost = seq - last_seq - 1;
+                                        receiver_stats.packets_lost.fetch_add(lost, Ordering::Relaxed);
+                                    }
+                                    receiver_stats.last_received_seq.store(seq, Ordering::Relaxed);
+                                    
+                                    // 更新丢包率
+                                    let total_sent = receiver_stats.packets_sent.load(Ordering::Relaxed);
+                                    let total_lost = receiver_stats.packets_lost.load(Ordering::Relaxed);
+                                    if total_sent + total_lost > 0 {
+                                        let loss_rate = total_lost as f32 / (total_sent + total_lost) as f32;
+                                        receiver_stats.loss_rate_bits.store(loss_rate.to_bits(), Ordering::Relaxed);
+                                    }
+                                    
                                     match decoder.decode(&data) {
                                         Ok(audio_buffer) => {
                                             let remote_samples = audio_buffer.samples();
@@ -1223,17 +1249,18 @@ pub unsafe extern "C" fn sb_pipeline_state(engine: *mut c_void, state: *mut c_in
 ///
 /// # Safety
 /// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
-/// `frames_captured` / `frames_played` / `latency_ms` 必须是有效的指针。
+/// `frames_captured` / `frames_played` / `latency_ms` / `loss_rate` 必须是有效的指针。
 #[no_mangle]
 pub unsafe extern "C" fn sb_pipeline_stats(
     engine: *mut c_void,
     frames_captured: *mut u64,
     frames_played: *mut u64,
     latency_ms: *mut f32,
+    loss_rate: *mut f32,
 ) -> c_int {
     clear_error();
 
-    if engine.is_null() || frames_captured.is_null() || frames_played.is_null() || latency_ms.is_null() {
+    if engine.is_null() || frames_captured.is_null() || frames_played.is_null() || latency_ms.is_null() || loss_rate.is_null() {
         set_error("invalid arguments");
         return SbError::InvalidArgument as c_int;
     }
@@ -1249,12 +1276,14 @@ pub unsafe extern "C" fn sb_pipeline_stats(
             // WASAPI buffer (50ms) + ring buffer (~42ms) + cpal buffer (20ms) + codec (~5ms) + network (~5ms)
             // 注：精确测量需要端到端时间戳同步，此处为保守估算
             *latency_ms = 122.0;
+            *loss_rate = f32::from_bits(stats.loss_rate_bits.load(Ordering::Relaxed));
         }
     } else {
         unsafe {
             *frames_captured = 0;
             *frames_played = 0;
             *latency_ms = 0.0;
+            *loss_rate = 0.0;
         }
     }
 
@@ -2503,6 +2532,77 @@ mod tests {
             let engine = sb_engine_create();
 
             let result = sb_get_mix_ratio(engine, ptr::null_mut(), ptr::null_mut());
+            assert_eq!(result, SbError::InvalidArgument as c_int);
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    // ============================================================
+    // 带宽自适应测试
+    // ============================================================
+
+    #[test]
+    fn test_shared_pipeline_stats_loss_rate() {
+        let stats = SharedPipelineStats::new();
+
+        // 初始状态：无丢包
+        assert_eq!(stats.packets_lost.load(Ordering::Relaxed), 0);
+        assert_eq!(stats.loss_rate_bits.load(Ordering::Relaxed), 0);
+
+        // 模拟接收 10 个包，丢失 2 个
+        stats.packets_sent.store(10, Ordering::Relaxed);
+        stats.packets_lost.store(2, Ordering::Relaxed);
+
+        // 计算丢包率
+        let total_sent = stats.packets_sent.load(Ordering::Relaxed);
+        let total_lost = stats.packets_lost.load(Ordering::Relaxed);
+        let loss_rate = total_lost as f32 / (total_sent + total_lost) as f32;
+
+        // 验证丢包率计算
+        assert!((loss_rate - 0.16666667).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_shared_pipeline_stats_sequence_tracking() {
+        let stats = SharedPipelineStats::new();
+
+        // 模拟接收序列号：1, 2, 3, 5, 6, 8（丢失 4 和 7）
+        let sequences = vec![1, 2, 3, 5, 6, 8];
+        let mut last_seq = 0u64;
+
+        for seq in sequences {
+            let seq_u64 = seq as u64;
+            if last_seq > 0 && seq_u64 > last_seq + 1 {
+                let lost = seq_u64 - last_seq - 1;
+                stats.packets_lost.fetch_add(lost, Ordering::Relaxed);
+            }
+            stats.last_received_seq.store(seq_u64, Ordering::Relaxed);
+            last_seq = seq_u64;
+        }
+
+        // 验证累计丢包数：丢失 4 和 7，共 2 个
+        assert_eq!(stats.packets_lost.load(Ordering::Relaxed), 2);
+        assert_eq!(stats.last_received_seq.load(Ordering::Relaxed), 8);
+    }
+
+    #[test]
+    fn test_pipeline_stats_null_loss_rate() {
+        unsafe {
+            let engine = sb_engine_create();
+
+            let mut frames_captured = 0u64;
+            let mut frames_played = 0u64;
+            let mut latency_ms = 0.0f32;
+
+            // 传入 null loss_rate 指针
+            let result = sb_pipeline_stats(
+                engine,
+                &mut frames_captured,
+                &mut frames_played,
+                &mut latency_ms,
+                ptr::null_mut(),
+            );
             assert_eq!(result, SbError::InvalidArgument as c_int);
 
             sb_engine_destroy(engine);
