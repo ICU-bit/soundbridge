@@ -327,4 +327,46 @@ Java_com_soundbridge_native_NativeAudioEngine_nativeGetVersion(
     return env->NewStringUTF("1.0.0");
 }
 
+// ============================================================
+// 设备发现（存根实现 - Android 应使用 NsdManager）
+// ============================================================
+
+JNIEXPORT jlong JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeDiscoveryCreate(
+        JNIEnv* env, jobject thiz) {
+    // 存根：返回 1 作为有效句柄
+    // 真正的发现功能应在 Kotlin 层使用 Android NsdManager 实现
+    LOGI("Discovery create (stub)");
+    return 1;
+}
+
+JNIEXPORT void JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeDiscoveryClose(
+        JNIEnv* env, jobject thiz, jlong discoveryHandle) {
+    LOGI("Discovery close (stub)");
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeDiscoveryInit(
+        JNIEnv* env, jobject thiz, jlong discoveryHandle) {
+    LOGI("Discovery init (stub)");
+    return 0; // OK
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeDiscoveryRegister(
+        JNIEnv* env, jobject thiz, jlong discoveryHandle, jstring name, jint port) {
+    LOGI("Discovery register (stub)");
+    return 0; // OK
+}
+
+JNIEXPORT jobjectArray JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeDiscoveryFindDevices(
+        JNIEnv* env, jobject thiz, jlong discoveryHandle) {
+    // 返回空数组 - 真正的发现应在 Kotlin NsdManager 层实现
+    LOGI("Discovery find devices (stub - use NsdManager)");
+    jclass stringClass = env->FindClass("java/lang/String");
+    return env->NewObjectArray(0, stringClass, nullptr);
+}
+
 } // extern "C"
