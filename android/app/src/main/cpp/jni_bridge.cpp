@@ -321,6 +321,113 @@ Java_com_soundbridge_native_NativeAudioEngine_nativeCloseSocket(
     }
 }
 
+// ============================================================
+// 管线控制（Pipeline Control）- 对应 Rust FFI sb_bind/sb_connect/sb_pipeline_*
+// ============================================================
+
+// 管线网络状态（静态变量，单引擎场景）
+static std::unique_ptr<soundbridge::UdpSocket> g_pipeline_socket;
+static uint16_t g_local_port = 0;
+static std::string g_target_address;
+static uint16_t g_target_port = 0;
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeBind(
+        JNIEnv* env, jobject thiz, jlong engineHandle, jint port) {
+    auto* engine = getEngine(engineHandle);
+    if (!engine) return -1;
+
+    // 创建 UDP socket 并绑定
+    g_pipeline_socket = std::make_unique<soundbridge::UdpSocket>();
+    if (!g_pipeline_socket->bind(static_cast<uint16_t>(port))) {
+        LOGE("Failed to bind UDP socket to port %d", port);
+        g_pipeline_socket.reset();
+        return -1;
+    }
+    g_local_port = static_cast<uint16_t>(port);
+    LOGI("Pipeline bound to UDP port %d", port);
+    return 0;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeConnect(
+        JNIEnv* env, jobject thiz, jlong engineHandle, jstring address) {
+    auto* engine = getEngine(engineHandle);
+    if (!engine) return -1;
+
+    const char* addr = env->GetStringUTFChars(address, nullptr);
+    if (!addr) return -1;
+
+    // 解析 "ip:port" 格式
+    std::string addrStr(addr);
+    env->ReleaseStringUTFChars(address, addr);
+
+    size_t colonPos = addrStr.find_last_of(':');
+    if (colonPos == std::string::npos) {
+        LOGE("Invalid address format (expected ip:port): %s", addrStr.c_str());
+        return -1;
+    }
+
+    g_target_address = addrStr.substr(0, colonPos);
+    std::string portStr = addrStr.substr(colonPos + 1);
+    g_target_port = static_cast<uint16_t>(std::stoi(portStr));
+
+    LOGI("Pipeline target set to %s:%d", g_target_address.c_str(), g_target_port);
+    return 0;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeGetLocalPort(
+        JNIEnv* env, jobject thiz, jlong engineHandle) {
+    return static_cast<jint>(g_local_port);
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativePipelineStart(
+        JNIEnv* env, jobject thiz, jlong engineHandle) {
+    auto* engine = getEngine(engineHandle);
+    if (!engine) return -1;
+
+    if (engine->start()) {
+        LOGI("Pipeline started");
+        return 0;
+    }
+    LOGE("Failed to start pipeline");
+    return -1;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativePipelineStop(
+        JNIEnv* env, jobject thiz, jlong engineHandle) {
+    auto* engine = getEngine(engineHandle);
+    if (!engine) return -1;
+
+    engine->stop();
+    LOGI("Pipeline stopped");
+    return 0;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativePipelineState(
+        JNIEnv* env, jobject thiz, jlong engineHandle) {
+    auto* engine = getEngine(engineHandle);
+    if (!engine) return -1; // Error
+
+    auto state = engine->getState();
+    // 映射 AudioEngineState 到 int: 0=Stopped, 1=Running, 2=Error
+    switch (state) {
+        case soundbridge::AudioEngineState::IDLE:
+        case soundbridge::AudioEngineState::INITIALIZED:
+        case soundbridge::AudioEngineState::STOPPED:
+            return 0; // Stopped
+        case soundbridge::AudioEngineState::RUNNING:
+            return 1; // Running
+        case soundbridge::AudioEngineState::ERROR:
+        default:
+            return 2; // Error
+    }
+}
+
 JNIEXPORT jstring JNICALL
 Java_com_soundbridge_native_NativeAudioEngine_nativeGetVersion(
         JNIEnv* env, jobject thiz) {
