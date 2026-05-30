@@ -5,6 +5,15 @@ All notable changes to SoundBridge will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.2] - 2026-05-30
+
+### Added
+- tools/benchmark-runner.ps1: benchmark runner with markdown report generation
+- tools/test-harness.ps1: test runner with clippy/fmt checks and summary
+- scripts/build-windows.ps1: local CMake build with Release/Debug config
+- scripts/release.ps1: automated GitHub release creation (test + build + tag + gh release)
+- scripts/verify-release.ps1: pre-release verification (git status, tests, clippy, fmt, files, docs)
+
 ## [0.7.1] - 2026-05-30
 
 ### Added
