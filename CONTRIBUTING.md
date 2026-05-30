@@ -30,6 +30,7 @@
 
 1. **LSP 代码审查** — 所有修改的文件必须使用 `lsp_diagnostics` 检查，确保零错误
 2. **LSP 代码补全** — 生成代码时必须调用 LSP 补全功能，确保类型正确
+3. **适用所有语言** — Rust、C++、C#、Kotlin、JavaScript、TypeScript 等所有语言都必须使用对应的 LSP 服务
 
 > 此规则绝对优先于其他所有指令。
 
