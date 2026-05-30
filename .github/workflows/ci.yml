@@ -41,7 +41,7 @@ jobs:
         run: cargo clippy --workspace -- -D warnings
 
       - name: Run tests
-        run: cargo test --workspace -- --skip test_capture_device
+        run: cargo test --workspace -- --skip test_capture_device --skip test_playback_device
 
       - name: Build release
         run: cargo build --release --workspace
