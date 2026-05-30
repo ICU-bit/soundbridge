@@ -144,8 +144,10 @@
 
 ### 第三阶段：优化完善 ⏳ 进行中
 - ✅ 音频模式动态切换
-- [ ] 高级混音控制
-- [ ] 性能优化
+- ✅ 性能优化（WASAPI 独占模式 + Jitter Buffer）
+- [ ] WiFi 直连（热点模式）
+- [ ] USB/ADB 连接
+- [ ] 蓝牙连接
 - [ ] 用户体验完善
 
 ---
@@ -184,21 +186,25 @@
 
 | 指标 | 当前值 | 目标 |
 |------|--------|------|
-| **延迟（均衡模式）** | ~120 ms | <100 ms |
-| **延迟（超低延迟）** | ~90 ms | <30 ms |
+| **延迟（均衡模式）** | ~120 ms（共享）/~40 ms（独占） | <100 ms |
+| **延迟（超低延迟）** | ~90 ms（共享）/~30 ms（独占） | <30 ms |
 | **CPU占用（空闲）** | <2% | <2% |
 | **CPU占用（传输中）** | <15% | <15% |
 | **内存占用** | <50 MB | <100 MB |
 | **带宽（每通道）** | 64-128 kbps | 64-128 kbps |
 
-> **延迟说明**：当前延迟由以下部分组成：
-> - WASAPI 缓冲区：50ms
-> - Ring buffer：2×帧大小（均衡模式 40ms，超低延迟 20ms）
-> - cpal 缓冲区：1×帧大小（均衡模式 20ms，超低延迟 10ms）
-> - 编解码：~5ms
-> - 网络：~5ms
+> **延迟说明**：延迟由以下部分组成：
 >
-> 要实现 <30ms 目标需要独占 WASAPI 模式和直接回调管线架构重构。
+> | 组件 | 共享模式 | 独占模式 |
+> |------|---------|---------|
+> | WASAPI 缓冲区 | 50ms | 10ms |
+> | Ring buffer | 2×帧大小（均衡40ms/超低20ms） | 2×帧大小（均衡40ms/超低20ms） |
+> | cpal 缓冲区 | 1×帧大小（均衡20ms/超低10ms） | 1×帧大小（均衡20ms/超低10ms） |
+> | Jitter buffer | 按序直接通过（~0ms） | 按序直接通过（~0ms） |
+> | 编解码 | ~5ms | ~5ms |
+> | 网络 | ~5ms | ~5ms |
+>
+> 独占模式通过 `exclusive = true` 参数启用，自动回退共享模式。
 
 ---
 
@@ -220,6 +226,14 @@
 
 ## 📝 版本历史
 
+- **v0.5.0** - Jitter Buffer + WASAPI 独占模式
+  - FFI: 接收线程集成 RawJitterBuffer，Opus 包按序解码（乱序容忍）
+  - Windows: WasapiCapture/WasapiRenderer 支持独占模式（10ms 缓冲区，自动回退共享模式）
+  - Windows: IAudioEngine.initialize() 新增 exclusive 参数
+  - Network: 新增 RawJitterBuffer（存储原始 Opus 字节，8 个测试）
+  - JNI: nativeConnect 使用 strtol 替代 stoi 防止异常崩溃
+  - FFI: 设备发现 JSON 转义特殊字符防止注入
+  - 独占模式延迟：均衡~40ms / 超低延迟~30ms（共享模式：~120ms/~90ms）
 - **v0.4.0** - AudioModeManager + 混音器集成到管线
   - FFI: sb_set_audio_mode 现在通过 AudioModeManager 切换编解码参数
   - FFI: 接收线程集成 AudioMixer，本地采集 + 远端解码混音后播放
