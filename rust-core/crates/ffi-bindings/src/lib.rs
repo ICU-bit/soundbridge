@@ -2122,7 +2122,11 @@ pub unsafe extern "C" fn sb_get_mute(engine: *mut c_void) -> c_int {
     }
 
     let engine = unsafe { &*(engine as *const SbEngine) };
-    if engine.muted { 1 } else { 0 }
+    if engine.muted {
+        1
+    } else {
+        0
+    }
 }
 
 // ============================================================
