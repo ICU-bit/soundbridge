@@ -38,7 +38,7 @@
 - ✅ 混音模式（两边音频混合播放）
 
 ### 🎛️ 控制方式
-- ✅ Windows 桌面客户端 - MainWindow + ViewModel + 8 个 Converter
+- ✅ Windows 桌面客户端 - MainWindow + ViewModel + 19 个 Converter
 - ✅ Android App - Jetpack Compose UI + NativeAudioEngine JNI
 - ✅ 系统托盘常驻 - TrayIcon.cs（Shell_NotifyIcon P/Invoke）
 - ✅ 全局快捷键 - HotkeyManager.cs（RegisterHotKey, Ctrl+Alt+T/M/S）

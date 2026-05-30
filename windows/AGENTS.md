@@ -10,10 +10,10 @@ windows/
 ├── src/
 │   ├── audio/              # WASAPI capture/renderer, Opus codec, WebRTC APM wrappers
 │   ├── core/               # AudioEngineImpl, AudioPipeline, Session implementations
-│   ├── network/            # UDP/QUIC transports, PacketBuilder (magic: 0x53424447)
+│   ├── network/            # UDP transport, PacketBuilder (magic: 0x53424447)
 │   └── ui/                 # WinUI 3 C# app (SoundBridge.csproj, App.xaml.cs)
 ├── cmake/                  # FindOpus.cmake, FindWebRTC.cmake
-└── tests/                  # GTest test .cpp files (NOT yet created)
+└── tests/                  # GTest test .cpp files (3 files: test_opus_codec, test_audio_pipeline, test_udp_transport)
 ```
 
 ## WHERE TO LOOK
@@ -32,7 +32,6 @@ windows/
 | WebRTC APM | `src/audio/webrtc_apm.h` | AEC, NS, AGC processing |
 | Packet format | `src/network/packet.h` | `PacketHeader`, `PacketBuilder`, checksum |
 | UDP transport | `src/network/udp_transport.h` | Low-latency audio streaming |
-| QUIC transport | `src/network/quic_transport.h` | Reliable control signaling |
 | Transport interface | `src/network/transport_interface.h` | Abstract transport base |
 | WinUI 3 app | `src/ui/App.xaml.cs` | C# entry point, DI container setup |
 | Build config | `CMakeLists.txt` | C++20, MSVC /utf-8 /W4 /WX |
@@ -57,5 +56,5 @@ windows/
 - Do NOT use raw pointers for engine/session ownership; always `std::unique_ptr`
 - Do NOT access `capture_state_`/`render_state_` without `std::atomic` operations
 - Do NOT modify `PacketHeader` layout without updating all platform implementations (packed struct)
-- Do NOT skip `tests/` directory; test .cpp files are declared in CMakeLists.txt but not yet created
+- Do NOT skip `tests/` directory; test .cpp files exist (test_opus_codec, test_audio_pipeline, test_udp_transport)
 - Do NOT use `std::min`/`std::max` directly; `NOMINMAX` is defined, use `<algorithm>`
