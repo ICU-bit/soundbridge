@@ -128,6 +128,9 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private int _selectedAudioMode; // 0=Balanced, 1=HighQuality, 2=LowLatency
 
     [ObservableProperty]
+    private double _mixRatio = 50; // 0=全PC, 100=全手机, 50=均衡
+
+    [ObservableProperty]
     private bool _isScanning;
 
     /// <summary>已发现的设备列表</summary>
@@ -285,6 +288,19 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
                 NativeMethods.SB_AUDIO_MODE_LOW_LATENCY => "LowLatency",
                 _ => "Balanced"
             });
+    }
+
+    partial void OnMixRatioChanged(double value)
+    {
+        if (_engine == IntPtr.Zero) return;
+        // value: 0=全PC音量, 100=全手机音量, 50=各50%
+        float pcVol = (float)((100.0 - value) / 100.0);
+        float phoneVol = (float)(value / 100.0);
+        int rc = NativeMethods.sb_set_mix_ratio(_engine, pcVol, phoneVol);
+        if (rc != NativeMethods.SB_OK)
+            _logger.LogWarning("sb_set_mix_ratio failed: {Error}", NativeMethods.GetLastError());
+        else
+            _logger.LogDebug("Mix ratio set: PC={Pc:F2}, Phone={Phone:F2}", pcVol, phoneVol);
     }
 
     [RelayCommand]

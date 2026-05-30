@@ -21,6 +21,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
@@ -137,7 +138,39 @@
             </StackPanel>
         </Border>
 
+        <!-- 混音比例 -->
+        <Border Grid.Row="6" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                CornerRadius="12" Padding="16">
+            <StackPanel Spacing="8">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon Glyph="\uE8D6" VerticalAlignment="Center"/>
+                    <TextBlock Text="Mix Ratio" FontSize="16" FontWeight="SemiBold"
+                               VerticalAlignment="Center"/>
+                    <TextBlock Text="{x:Bind ViewModel.MixRatio, Converter={StaticResource MixRatioToPercentConverter}, Mode=OneWay}"
+                               FontSize="14" Opacity="0.7"
+                               VerticalAlignment="Center"
+                               HorizontalAlignment="Right"
+                               HorizontalContentAlignment="Right"/>
+                </StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="PC" FontSize="12" Opacity="0.6"
+                               VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <Slider Grid.Column="1" Minimum="0" Maximum="100"
+                            Value="{x:Bind ViewModel.MixRatio, Mode=TwoWay}"
+                            StepFrequency="5"
+                            HorizontalAlignment="Stretch"/>
+                    <TextBlock Grid.Column="2" Text="Phone" FontSize="12" Opacity="0.6"
+                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                </Grid>
+            </StackPanel>
+        </Border>
+
         <!-- 占位（扩展区域） -->
-        <Grid Grid.Row="6"/>
+        <Grid Grid.Row="7"/>
     </Grid>
 </Window>

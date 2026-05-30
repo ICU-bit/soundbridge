@@ -209,3 +209,20 @@ public class BoolToVisibilityConverter : IValueConverter
     public object ConvertBack(object value, Type targetType, object parameter, string language) =>
         throw new NotImplementedException();
 }
+
+/// <summary>
+/// double → 混音比例描述文本（如 "PC 60% / Phone 40%"）
+/// </summary>
+public class MixRatioToPercentConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        double ratio = value is double d ? d : 50;
+        int pc = (int)(100 - ratio);
+        int phone = (int)ratio;
+        return $"PC {pc}% / Phone {phone}%";
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language) =>
+        throw new NotImplementedException();
+}
