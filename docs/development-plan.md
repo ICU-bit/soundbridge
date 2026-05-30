@@ -219,9 +219,9 @@ private:
   - ✅ 双向音频传输
   - ✅ 电平指示器
 
-### 里程碑 2：完整功能 ✅ 大部分完成
+### 里程碑 2：完整功能 ✅ 已完成
 - **交付物**：
-  - ⚠️ 多种连接方式支持 - 仅 WiFi 局域网，WiFi直连/USB/蓝牙未实现
+  - ✅ 多种连接方式支持 - WiFi LAN + WiFi Direct + USB/ADB + Bluetooth（FFI 全部实现）
   - ✅ 回声消除（NLMS）、噪声抑制（SNR）、自动增益控制（AGC）
   - ✅ 设备记忆（JSON 持久化）、启动自启（Registry）
   - ✅ 全局快捷键（Ctrl+Alt+T/M/S）
