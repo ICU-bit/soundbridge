@@ -1,9 +1,9 @@
 # PROJECT KNOWLEDGE BASE
 
 **Generated:** 2026-05-30
-**Commit:** b4b6e2e
+**Commit:** f34923e
 **Branch:** master
-**Version:** v0.7.0
+**Version:** v0.7.1
 
 ## OVERVIEW
 

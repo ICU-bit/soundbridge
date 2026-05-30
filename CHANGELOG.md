@@ -5,6 +5,27 @@ All notable changes to SoundBridge will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-05-30
+
+### Added
+- GitHub Actions CI/CD: Rust tests (clippy+fmt+test) + Windows C++ build + Android build
+- .editorconfig: UTF-8, CRLF, consistent indentation across all languages
+- rustfmt.toml: edition 2021, max_width 100, field_init_shorthand
+- scripts/bench.ps1: benchmark runner utility
+- scripts/test.ps1: test runner with clippy/fmt checks
+- CHANGELOG.md: Keep a Changelog format
+- CONTRIBUTING.md: development environment, code standards, commit conventions
+- .github/ISSUE_TEMPLATE/bug_report.md: structured bug report
+- .github/ISSUE_TEMPLATE/feature_request.md: feature request template
+- .github/pull_request_template.md: PR checklist
+
+### Fixed
+- opus_benchmark.rs: add missing rand dev-dependency
+- OpusConfig: derive Copy (all fields are Copy enums)
+- Remove unnecessary config.clone() calls (audio-codec + ffi-bindings)
+- Fix clippy "for loop over a single element" warning
+- Workspace-wide cargo fmt formatting cleanup (30 files)
+
 ## [0.7.0] - 2026-05-30
 
 ### Added
