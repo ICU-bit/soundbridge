@@ -19,7 +19,7 @@ public:
     WasapiRenderer(const WasapiRenderer&) = delete;
     WasapiRenderer& operator=(const WasapiRenderer&) = delete;
 
-    bool initialize(const AudioFormat& format);
+    bool initialize(const AudioFormat& format, bool exclusive = false);
     void shutdown();
 
     bool start();
@@ -37,6 +37,7 @@ private:
 
     AudioFormat format_;
     bool initialized_ = false;
+    bool exclusive_mode_ = false;
     std::atomic<bool> running_{false};
 
     Microsoft::WRL::ComPtr<IMMDeviceEnumerator> enumerator_;

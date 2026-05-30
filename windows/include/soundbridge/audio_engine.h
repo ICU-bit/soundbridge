@@ -11,7 +11,7 @@ class IAudioEngine {
 public:
     virtual ~IAudioEngine() = default;
 
-    virtual bool initialize(const AudioFormat& format) = 0;
+    virtual bool initialize(const AudioFormat& format, bool exclusive = false) = 0;
     virtual void shutdown() = 0;
 
     virtual bool start_capture() = 0;

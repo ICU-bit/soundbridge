@@ -11,13 +11,14 @@ WasapiRenderer::~WasapiRenderer() {
     shutdown();
 }
 
-bool WasapiRenderer::initialize(const AudioFormat& format) {
+bool WasapiRenderer::initialize(const AudioFormat& format, bool exclusive) {
     if (initialized_) {
         spdlog::warn("WasapiRenderer already initialized");
         return false;
     }
 
     format_ = format;
+    exclusive_mode_ = exclusive;
 
     if (!init_com()) {
         return false;
@@ -32,7 +33,7 @@ bool WasapiRenderer::initialize(const AudioFormat& format) {
     }
 
     initialized_ = true;
-    spdlog::info("WasapiRenderer initialized");
+    spdlog::info("WasapiRenderer initialized (mode: {})", exclusive_mode_ ? "exclusive" : "shared");
     return true;
 }
 
@@ -174,39 +175,95 @@ bool WasapiRenderer::init_audio_client() {
     wfx.nBlockAlign = wfx.nChannels * wfx.wBitsPerSample / 8;
     wfx.nAvgByteSec = wfx.nSamplesPerSec * wfx.nBlockAlign;
 
-    WAVEFORMATEX* closest = nullptr;
-    hr = audio_client_->IsFormatSupported(
-        AUDCLNT_SHAREMODE_SHARED,
-        &wfx,
-        &closest
-    );
+    // 独占模式：尝试 10ms 缓冲区（100000 * 100ns = 10ms）
+    // 共享模式：50ms 缓冲区（500000 * 100ns = 50ms）
+    const REFERENCE_TIME exclusive_duration = 100000;  // 10ms
+    const REFERENCE_TIME shared_duration = 500000;     // 50ms
 
-    if (hr == S_FALSE && closest) {
-        wfx = *closest;
-        CoTaskMemFree(closest);
-    } else if (FAILED(hr)) {
-        spdlog::error("Format not supported: 0x{:08X}", static_cast<uint32_t>(hr));
-        return false;
+    // 阶段 1：尝试独占模式
+    if (exclusive_mode_) {
+        WAVEFORMATEX* closest = nullptr;
+        hr = audio_client_->IsFormatSupported(
+            AUDCLNT_SHAREMODE_EXCLUSIVE,
+            &wfx,
+            &closest
+        );
+
+        if (hr == S_FALSE && closest) {
+            wfx = *closest;
+            CoTaskMemFree(closest);
+        }
+
+        if (SUCCEEDED(hr) || hr == S_FALSE) {
+            hr = audio_client_->Initialize(
+                AUDCLNT_SHAREMODE_EXCLUSIVE,
+                AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+                exclusive_duration,
+                exclusive_duration,
+                &wfx,
+                nullptr
+            );
+
+            if (SUCCEEDED(hr)) {
+                spdlog::info("WasapiRenderer: exclusive mode enabled (10ms buffer)");
+                goto success;
+            }
+
+            spdlog::warn("WasapiRenderer: exclusive mode failed (0x{:08X}), falling back to shared",
+                         static_cast<uint32_t>(hr));
+            exclusive_mode_ = false;
+
+            // 重新创建 audio client（独占模式失败后需要重新创建）
+            audio_client_.Reset();
+            hr = device_->Activate(
+                __uuidof(IAudioClient),
+                CLSCTX_ALL,
+                nullptr,
+                reinterpret_cast<void**>(audio_client_.GetAddressOf())
+            );
+            if (FAILED(hr)) {
+                spdlog::error("Failed to re-activate audio client: 0x{:08X}", static_cast<uint32_t>(hr));
+                return false;
+            }
+        } else {
+            spdlog::warn("WasapiRenderer: exclusive mode not supported, using shared");
+            exclusive_mode_ = false;
+        }
     }
 
-    // 低延迟模式：50ms 缓冲区（500000 * 100ns = 50ms）
-    // 共享模式下最小安全值，平衡稳定性和延迟
-    const REFERENCE_TIME buffer_duration = 500000;
+    // 阶段 2：共享模式
+    {
+        WAVEFORMATEX* closest = nullptr;
+        hr = audio_client_->IsFormatSupported(
+            AUDCLNT_SHAREMODE_SHARED,
+            &wfx,
+            &closest
+        );
 
-    hr = audio_client_->Initialize(
-        AUDCLNT_SHAREMODE_SHARED,
-        0,
-        buffer_duration,
-        0,
-        &wfx,
-        nullptr
-    );
+        if (hr == S_FALSE && closest) {
+            wfx = *closest;
+            CoTaskMemFree(closest);
+        } else if (FAILED(hr)) {
+            spdlog::error("Format not supported: 0x{:08X}", static_cast<uint32_t>(hr));
+            return false;
+        }
 
-    if (FAILED(hr)) {
-        spdlog::error("Failed to initialize audio client: 0x{:08X}", static_cast<uint32_t>(hr));
-        return false;
+        hr = audio_client_->Initialize(
+            AUDCLNT_SHAREMODE_SHARED,
+            0,
+            shared_duration,
+            0,
+            &wfx,
+            nullptr
+        );
+
+        if (FAILED(hr)) {
+            spdlog::error("Failed to initialize audio client: 0x{:08X}", static_cast<uint32_t>(hr));
+            return false;
+        }
     }
 
+success:
     hr = audio_client_->GetBufferSize(&buffer_frame_count_);
     if (FAILED(hr)) {
         spdlog::error("Failed to get buffer size: 0x{:08X}", static_cast<uint32_t>(hr));

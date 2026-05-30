@@ -21,7 +21,10 @@ public:
     WasapiCapture(const WasapiCapture&) = delete;
     WasapiCapture& operator=(const WasapiCapture&) = delete;
 
-    bool initialize(const AudioFormat& format);
+    /// 初始化音频采集
+    /// @param format 音频格式
+    /// @param exclusive 独占模式（低延迟，失败时自动回退共享模式）
+    bool initialize(const AudioFormat& format, bool exclusive = false);
     void shutdown();
 
     bool start();
@@ -39,6 +42,7 @@ private:
 
     AudioFormat format_;
     bool initialized_ = false;
+    bool exclusive_mode_ = false;
     std::atomic<bool> running_{false};
 
     Microsoft::WRL::ComPtr<IMMDeviceEnumerator> enumerator_;

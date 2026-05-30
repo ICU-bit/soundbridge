@@ -13,7 +13,7 @@ AudioEngineImpl::~AudioEngineImpl() {
     shutdown();
 }
 
-bool AudioEngineImpl::initialize(const AudioFormat& format) {
+bool AudioEngineImpl::initialize(const AudioFormat& format, bool exclusive) {
     if (capture_state_ != AudioStreamState::Idle) {
         spdlog::warn("AudioEngine already initialized");
         return false;
@@ -22,13 +22,13 @@ bool AudioEngineImpl::initialize(const AudioFormat& format) {
     format_ = format;
 
     capture_ = std::make_unique<WasapiCapture>();
-    if (!capture_->initialize(format)) {
+    if (!capture_->initialize(format, exclusive)) {
         spdlog::error("Failed to initialize WASAPI capture");
         return false;
     }
 
     renderer_ = std::make_unique<WasapiRenderer>();
-    if (!renderer_->initialize(format)) {
+    if (!renderer_->initialize(format, exclusive)) {
         spdlog::error("Failed to initialize WASAPI renderer");
         return false;
     }

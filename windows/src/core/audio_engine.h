@@ -23,7 +23,7 @@ public:
     AudioEngineImpl(const AudioEngineImpl&) = delete;
     AudioEngineImpl& operator=(const AudioEngineImpl&) = delete;
 
-    bool initialize(const AudioFormat& format) override;
+    bool initialize(const AudioFormat& format, bool exclusive = false) override;
     void shutdown() override;
 
     bool start_capture() override;
