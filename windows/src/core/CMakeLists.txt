@@ -1,6 +1,7 @@
 add_library(SoundBridgeCore OBJECT
     audio_engine.cpp
     audio_pipeline.cpp
+    audio_types.cpp
     session.cpp
 )
 

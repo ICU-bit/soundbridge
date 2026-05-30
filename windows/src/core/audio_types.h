@@ -45,6 +45,8 @@ public:
     size_t available_write() const;
 
 private:
+    size_t available_read_internal() const;
+
     std::vector<float> buffer_;
     size_t head_ = 0;
     size_t tail_ = 0;

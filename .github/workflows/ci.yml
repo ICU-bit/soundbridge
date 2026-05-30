@@ -87,5 +87,5 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
 
       - name: Build
-        run: gradle build
+        run: ./gradlew build
         working-directory: android
