@@ -8,13 +8,15 @@
     mc:Ignorable="d"
     Title="SoundBridge"
     MinWidth="400"
-    MinHeight="600"
+    MinHeight="700"
     Width="450"
-    Height="700"
+    Height="800"
     Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
 
     <Grid Padding="24" RowSpacing="20">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -52,14 +54,45 @@
             </StackPanel>
         </Grid>
 
+        <!-- 音量控制 -->
+        <Border Grid.Row="2" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                CornerRadius="12" Padding="16">
+            <StackPanel Spacing="8">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon Glyph="{x:Bind ViewModel.Volume, Converter={StaticResource VolumeToIconConverter}, Mode=OneWay}"
+                              VerticalAlignment="Center"/>
+                    <TextBlock Text="Volume" FontSize="16" FontWeight="SemiBold"
+                               VerticalAlignment="Center"/>
+                    <TextBlock Text="{x:Bind ViewModel.Volume, Converter={StaticResource VolumeToPercentConverter}, Mode=OneWay}"
+                               FontSize="14" Opacity="0.7"
+                               VerticalAlignment="Center"
+                               HorizontalAlignment="Right"
+                               HorizontalContentAlignment="Right"/>
+                </StackPanel>
+                <Slider Minimum="0" Maximum="100"
+                        Value="{x:Bind ViewModel.Volume, Mode=TwoWay}"
+                        StepFrequency="1"
+                        HorizontalAlignment="Stretch"/>
+            </StackPanel>
+        </Border>
+
         <!-- 控制按钮 -->
-        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="12">
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="12">
             <Button Command="{x:Bind ViewModel.ToggleConnectionCommand}"
                     Height="56" MinWidth="160"
                     Style="{StaticResource AccentButtonStyle}">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <FontIcon Glyph="{x:Bind ViewModel.IsConnected, Converter={StaticResource BoolToIconConverter}, Mode=OneWay}"/>
                     <TextBlock Text="{x:Bind ViewModel.IsConnected, Converter={StaticResource BoolToConnectTextConverter}, Mode=OneWay}"/>
+                </StackPanel>
+            </Button>
+
+            <Button Command="{x:Bind ViewModel.TogglePauseCommand}"
+                    Height="56" MinWidth="120"
+                    Visibility="{x:Bind ViewModel.IsConnected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon Glyph="{x:Bind ViewModel.IsPaused, Converter={StaticResource BoolToPauseIconConverter}, Mode=OneWay}"/>
+                    <TextBlock Text="{x:Bind ViewModel.IsPaused, Converter={StaticResource BoolToPauseTextConverter}, Mode=OneWay}"/>
                 </StackPanel>
             </Button>
 
@@ -73,7 +106,7 @@
         </StackPanel>
 
         <!-- 服务器配置 -->
-        <Border Grid.Row="3" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+        <Border Grid.Row="4" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                 CornerRadius="12" Padding="16">
             <StackPanel Spacing="12">
                 <TextBlock Text="Server Configuration" FontSize="16" FontWeight="SemiBold"/>
@@ -87,7 +120,24 @@
             </StackPanel>
         </Border>
 
+        <!-- 音频模式 -->
+        <Border Grid.Row="5" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                CornerRadius="12" Padding="16">
+            <StackPanel Spacing="12">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon Glyph="\uE7F4" VerticalAlignment="Center"/>
+                    <TextBlock Text="Audio Mode" FontSize="16" FontWeight="SemiBold"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+                <TextBlock Text="Balanced: 50-100ms delay. High Quality: 48kHz/24bit. Low Latency: &lt;30ms."
+                           FontSize="12" Opacity="0.6" TextWrapping="Wrap"/>
+                <ComboBox ItemsSource="{x:Bind AudioModeOptions}"
+                          SelectedIndex="{x:Bind ViewModel.SelectedAudioMode, Mode=TwoWay}"
+                          HorizontalAlignment="Stretch"/>
+            </StackPanel>
+        </Border>
+
         <!-- 占位（扩展区域） -->
-        <Grid Grid.Row="4"/>
+        <Grid Grid.Row="6"/>
     </Grid>
 </Window>

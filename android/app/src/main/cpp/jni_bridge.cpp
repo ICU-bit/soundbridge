@@ -111,6 +111,15 @@ Java_com_soundbridge_native_NativeAudioEngine_nativeSetGainControlEnabled(
     }
 }
 
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeSetAudioMode(
+        JNIEnv* env, jobject thiz, jlong engineHandle, jint mode) {
+    auto* engine = getEngine(engineHandle);
+    if (!engine) return -1;
+    engine->setAudioMode(mode);
+    return 0;
+}
+
 JNIEXPORT jlong JNICALL
 Java_com_soundbridge_native_NativeAudioEngine_nativeCreateEncoder(
         JNIEnv* env, jobject thiz, jint bitrate, jint complexity) {

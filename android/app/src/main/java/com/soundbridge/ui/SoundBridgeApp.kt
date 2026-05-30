@@ -58,7 +58,7 @@ fun SoundBridgeApp(audioService: AudioService? = null) {
         ) {
             when (currentScreen) {
                 Screen.Home -> HomeScreen(audioService = audioService)
-                Screen.Settings -> SettingsScreen()
+                Screen.Settings -> SettingsScreen(engineHandle = audioService?.handle ?: 0L)
             }
         }
     }

@@ -13,14 +13,22 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.soundbridge.native.NativeAudioEngine
+
+enum class AudioMode(val label: String, val subtitle: String) {
+    BALANCED("Balanced", "50-100ms latency"),
+    HIGH_QUALITY("High Quality", "48kHz/24bit"),
+    LOW_LATENCY("Low Latency", "<30ms latency")
+}
 
 @Composable
-fun SettingsScreen() {
+fun SettingsScreen(engineHandle: Long = 0L) {
     var echoCancellation by remember { mutableStateOf(true) }
     var noiseSuppression by remember { mutableStateOf(true) }
     var gainControl by remember { mutableStateOf(true) }
     var selectedSampleRate by remember { mutableIntStateOf(48000) }
     var selectedBitrate by remember { mutableIntStateOf(64000) }
+    var selectedAudioMode by remember { mutableStateOf(AudioMode.BALANCED) }
 
     Column(
         modifier = Modifier
@@ -51,6 +59,25 @@ fun SettingsScreen() {
                 icon = Icons.Default.VolumeUp,
                 checked = gainControl,
                 onCheckedChange = { gainControl = it }
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        SettingsSection(title = "Audio Mode") {
+            SettingsDropdown(
+                title = "Mode",
+                subtitle = selectedAudioMode.subtitle,
+                icon = Icons.Default.Tune,
+                options = AudioMode.entries,
+                selectedOption = selectedAudioMode,
+                onOptionSelected = { mode ->
+                    selectedAudioMode = mode
+                    if (engineHandle != 0L) {
+                        NativeAudioEngine.nativeSetAudioMode(engineHandle, mode.ordinal)
+                    }
+                },
+                optionLabel = { it.label }
             )
         }
 

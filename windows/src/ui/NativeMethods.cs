@@ -3,6 +3,23 @@ using System.Runtime.InteropServices;
 namespace SoundBridge.UI;
 
 /// <summary>
+/// Rust FFI 连接状态枚举（对应 SbConnectionState）
+/// </summary>
+internal enum SbConnectionState : int
+{
+    Disconnected = 0,
+    Connecting = 1,
+    Connected = 2,
+    Error = 3,
+}
+
+/// <summary>
+/// 状态回调委托（对应 SbStateCallback）
+/// </summary>
+[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+internal delegate void SbStateCallback(SbConnectionState state, IntPtr userData);
+
+/// <summary>
 /// Rust FFI 绑定 - P/Invoke 声明
 /// 对应 rust-core/crates/ffi-bindings/src/lib.rs
 /// </summary>
@@ -41,6 +58,18 @@ internal static partial class NativeMethods
     /// <summary>获取本地监听端口</summary>
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int sb_local_port(IntPtr engine, out ushort port);
+
+    // ============================================================
+    // 连接状态回调
+    // ============================================================
+
+    /// <summary>设置连接状态回调（状态变化时触发）</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int sb_set_state_callback(IntPtr engine, SbStateCallback? callback, IntPtr userData);
+
+    /// <summary>获取当前连接状态</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int sb_get_connection_state(IntPtr engine, out SbConnectionState state);
 
     // ============================================================
     // 音频采集
@@ -107,6 +136,22 @@ internal static partial class NativeMethods
         out float latencyMs);
 
     // ============================================================
+    // 音量控制 / 暂停恢复
+    // ============================================================
+
+    /// <summary>设置发送音量（0.0 ~ 1.0）</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int sb_send_volume(IntPtr engine, float volume);
+
+    /// <summary>暂停音频管线发送</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int sb_send_pause(IntPtr engine);
+
+    /// <summary>恢复音频管线发送</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int sb_send_resume(IntPtr engine);
+
+    // ============================================================
     // 音频处理
     // ============================================================
 
@@ -126,6 +171,18 @@ internal static partial class NativeMethods
         nuint outputLen);
 
     // ============================================================
+    // 音频模式
+    // ============================================================
+
+    /// <summary>设置音频模式（0=Balanced, 1=HighQuality, 2=LowLatency）</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int sb_set_audio_mode(IntPtr engine, int mode);
+
+    /// <summary>获取当前音频模式</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int sb_get_audio_mode(IntPtr engine, out int mode);
+
+    // ============================================================
     // 错误码
     // ============================================================
 
@@ -138,6 +195,14 @@ internal static partial class NativeMethods
     internal const int SB_CODEC_ERROR = -6;
     internal const int SB_NETWORK_ERROR = -7;
     internal const int SB_PIPELINE_NOT_READY = -8;
+
+    // ============================================================
+    // 音频模式常量
+    // ============================================================
+
+    internal const int SB_AUDIO_MODE_BALANCED = 0;
+    internal const int SB_AUDIO_MODE_HIGH_QUALITY = 1;
+    internal const int SB_AUDIO_MODE_LOW_LATENCY = 2;
 
     // ============================================================
     // 管线状态

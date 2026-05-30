@@ -41,6 +41,9 @@ public:
     void setNoiseSuppressionEnabled(bool enabled);
     void setGainControlEnabled(bool enabled);
 
+    // Audio mode: 0=BALANCED, 1=HIGH_QUALITY, 2=LOW_LATENCY
+    void setAudioMode(int mode);
+
     using AudioDataCallback = std::function<void(const int16_t* data, int32_t num_frames)>;
     void setAudioDataCallback(AudioDataCallback callback);
 
@@ -66,6 +69,8 @@ private:
     std::unique_ptr<int16_t[]> playback_buffer_;
 
     std::atomic<float> audio_level_;
+
+    int audio_mode_;  // 0=BALANCED, 1=HIGH_QUALITY, 2=LOW_LATENCY
 
     void* audio_stream_;
 };

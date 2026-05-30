@@ -17,6 +17,7 @@ object NativeAudioEngine {
     external fun nativeSetEchoCancellationEnabled(engineHandle: Long, enabled: Boolean)
     external fun nativeSetNoiseSuppressionEnabled(engineHandle: Long, enabled: Boolean)
     external fun nativeSetGainControlEnabled(engineHandle: Long, enabled: Boolean)
+    external fun nativeSetAudioMode(engineHandle: Long, mode: Int): Int
 
     // === 编解码 ===
     external fun nativeCreateEncoder(bitrate: Int, complexity: Int): Long

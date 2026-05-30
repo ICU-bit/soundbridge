@@ -16,6 +16,11 @@
             <local:BoolToConnectTextConverter x:Key="BoolToConnectTextConverter"/>
             <local:BoolToMuteIconConverter x:Key="BoolToMuteIconConverter"/>
             <local:BoolToMuteTextConverter x:Key="BoolToMuteTextConverter"/>
+            <local:BoolToPauseIconConverter x:Key="BoolToPauseIconConverter"/>
+            <local:BoolToPauseTextConverter x:Key="BoolToPauseTextConverter"/>
+            <local:VolumeToPercentConverter x:Key="VolumeToPercentConverter"/>
+            <local:VolumeToIconConverter x:Key="VolumeToIconConverter"/>
+            <local:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

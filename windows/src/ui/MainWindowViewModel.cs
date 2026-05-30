@@ -10,14 +10,16 @@ namespace SoundBridge.UI;
 public partial class MainWindowViewModel : ObservableObject, IDisposable
 {
     private readonly ILogger<MainWindowViewModel> _logger;
+    private readonly ConnectionNotificationService? _notificationService;
     private IntPtr _engine;
     private IntPtr _deviceStore;
     private CancellationTokenSource? _statsCts;
     private bool _disposed;
 
-    public MainWindowViewModel(ILogger<MainWindowViewModel> logger)
+    public MainWindowViewModel(ILogger<MainWindowViewModel> logger, ConnectionNotificationService? notificationService = null)
     {
         _logger = logger;
+        _notificationService = notificationService;
 
         // 创建引擎
         _engine = NativeMethods.sb_engine_create();
@@ -29,6 +31,16 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         else
         {
             _logger.LogInformation("Engine created: 0x{Addr}", _engine.ToString("X"));
+
+            // 注册连接状态回调 → 触发 Toast 通知
+            _notificationService?.Register(_engine);
+
+            // 读取当前音频模式
+            if (NativeMethods.sb_get_audio_mode(_engine, out int mode) == NativeMethods.SB_OK)
+            {
+                _selectedAudioMode = mode;
+                _logger.LogInformation("Initial audio mode: {Mode}", mode);
+            }
         }
 
         // 打开设备存储（持久化到文件）
@@ -81,6 +93,15 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private ushort _localPort;
 
+    [ObservableProperty]
+    private double _volume = 80;
+
+    [ObservableProperty]
+    private bool _isPaused;
+
+    [ObservableProperty]
+    private int _selectedAudioMode; // 0=Balanced, 1=HighQuality, 2=LowLatency
+
     // ============================================================
     // Commands
     // ============================================================
@@ -111,6 +132,61 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         // 静音通过采集层控制（暂停/恢复采集流）
         // TODO: 当 Rust FFI 支持 sb_set_mute 时接入
         _logger.LogInformation("Mute toggled: {IsMuted}", IsMuted);
+    }
+
+    partial void OnVolumeChanged(double value)
+    {
+        if (_engine == IntPtr.Zero) return;
+        float vol = (float)(value / 100.0);
+        int rc = NativeMethods.sb_send_volume(_engine, vol);
+        if (rc != NativeMethods.SB_OK)
+            _logger.LogWarning("sb_send_volume failed: {Error}", NativeMethods.GetLastError());
+        else
+            _logger.LogDebug("Volume set to {Volume}%", value);
+    }
+
+    partial void OnSelectedAudioModeChanged(int value)
+    {
+        if (_engine == IntPtr.Zero) return;
+        int rc = NativeMethods.sb_set_audio_mode(_engine, value);
+        if (rc != NativeMethods.SB_OK)
+            _logger.LogWarning("sb_set_audio_mode failed: {Error}", NativeMethods.GetLastError());
+        else
+            _logger.LogInformation("Audio mode set to {Mode}", value switch
+            {
+                NativeMethods.SB_AUDIO_MODE_HIGH_QUALITY => "HighQuality",
+                NativeMethods.SB_AUDIO_MODE_LOW_LATENCY => "LowLatency",
+                _ => "Balanced"
+            });
+    }
+
+    [RelayCommand]
+    private void TogglePause()
+    {
+        if (_engine == IntPtr.Zero) return;
+
+        if (IsPaused)
+        {
+            int rc = NativeMethods.sb_send_resume(_engine);
+            if (rc == NativeMethods.SB_OK)
+            {
+                IsPaused = false;
+                _logger.LogInformation("Audio resumed");
+            }
+            else
+                _logger.LogWarning("sb_send_resume failed: {Error}", NativeMethods.GetLastError());
+        }
+        else
+        {
+            int rc = NativeMethods.sb_send_pause(_engine);
+            if (rc == NativeMethods.SB_OK)
+            {
+                IsPaused = true;
+                _logger.LogInformation("Audio paused");
+            }
+            else
+                _logger.LogWarning("sb_send_pause failed: {Error}", NativeMethods.GetLastError());
+        }
     }
 
     // ============================================================
@@ -196,6 +272,9 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             IsConnecting = false;
             StatusText = $"Connection failed: {ex.Message}";
             _logger.LogError(ex, "Connection failed");
+
+            // 连接失败时手动触发错误通知（回调可能不会触发）
+            _notificationService?.ShowNotification(SbConnectionState.Error, $"连接失败: {ex.Message}");
         }
     }
 
@@ -213,6 +292,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
         IsConnected = false;
         IsMuted = false;
+        IsPaused = false;
         AudioLevel = 0;
         FramesCaptured = 0;
         FramesPlayed = 0;
@@ -385,6 +465,9 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         _disposed = true;
 
         StopStatsPolling();
+
+        // 先取消状态回调注册
+        _notificationService?.Unregister();
 
         if (_engine != IntPtr.Zero)
         {

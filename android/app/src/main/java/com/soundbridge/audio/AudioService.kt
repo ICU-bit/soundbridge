@@ -21,6 +21,9 @@ class AudioService : Service() {
     private val binder = AudioServiceBinder()
     private var engineHandle: Long = 0L
 
+    /** Engine handle for JNI calls. Returns 0L if not initialized. */
+    val handle: Long get() = engineHandle
+
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     val connectionState: StateFlow<ConnectionState> = _connectionState
 

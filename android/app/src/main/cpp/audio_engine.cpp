@@ -18,6 +18,7 @@ AudioEngine::AudioEngine()
     , noise_suppression_enabled_(true)
     , gain_control_enabled_(true)
     , audio_level_(0.0f)
+    , audio_mode_(0)
     , audio_stream_(nullptr) {
 }
 
@@ -112,6 +113,16 @@ void AudioEngine::setNoiseSuppressionEnabled(bool enabled) {
 
 void AudioEngine::setGainControlEnabled(bool enabled) {
     gain_control_enabled_ = enabled;
+}
+
+void AudioEngine::setAudioMode(int mode) {
+    if (mode < 0 || mode > 2) {
+        LOGE("Invalid audio mode: %d, must be 0-2", mode);
+        return;
+    }
+    audio_mode_ = mode;
+    const char* modeNames[] = {"Balanced", "High Quality", "Low Latency"};
+    LOGI("Audio mode set to: %s (%d)", modeNames[mode], mode);
 }
 
 void AudioEngine::setAudioDataCallback(AudioDataCallback callback) {

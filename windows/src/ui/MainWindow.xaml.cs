@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using System;
+using System.Collections.Generic;
 
 namespace SoundBridge.UI;
 
@@ -9,6 +10,14 @@ public sealed partial class MainWindow : Window
     public MainWindowViewModel ViewModel { get; }
     private readonly ILogger<MainWindow> _logger;
     private HotkeyManager? _hotkeyManager;
+
+    /// <summary>音频模式选项（索引对应 SbAudioMode 枚举值）</summary>
+    public IReadOnlyList<string> AudioModeOptions { get; } = new[]
+    {
+        "Balanced",
+        "High Quality",
+        "Low Latency"
+    };
 
     public MainWindow(MainWindowViewModel viewModel, ILoggerFactory loggerFactory)
     {

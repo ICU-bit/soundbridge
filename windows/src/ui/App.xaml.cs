@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
+using Microsoft.Windows.AppNotifications;
 using Serilog;
 using System;
 
@@ -12,6 +13,7 @@ public partial class App : Application
     private readonly IHost _host;
     private Window? _window;
     private TrayIcon? _trayIcon;
+    private ConnectionNotificationService? _notificationService;
 
     public App()
     {
@@ -26,6 +28,18 @@ public partial class App : Application
             })
             .ConfigureServices((context, services) =>
             {
+                // 注册通知管理器（单例）
+                services.AddSingleton(AppNotificationManager.Default);
+
+                // 注册通知服务（需要 TrayIcon，稍后注入）
+                services.AddSingleton<ConnectionNotificationService>(sp =>
+                {
+                    var logger = sp.GetRequiredService<ILogger<ConnectionNotificationService>>();
+                    var notificationManager = sp.GetRequiredService<AppNotificationManager>();
+                    var dispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+                    return new ConnectionNotificationService(logger, notificationManager, dispatcherQueue, _trayIcon);
+                });
+
                 services.AddSingleton<MainWindow>();
                 services.AddSingleton<MainWindowViewModel>();
             })
@@ -41,6 +55,9 @@ public partial class App : Application
 
         // 初始化系统托盘图标
         InitializeTrayIcon();
+
+        // 初始化通知服务（依赖 TrayIcon）
+        _notificationService = _host.Services.GetService<ConnectionNotificationService>();
     }
 
     private void InitializeTrayIcon()
@@ -98,6 +115,9 @@ public partial class App : Application
         var exitItem = new Microsoft.UI.Xaml.Controls.MenuFlyoutItem { Text = "退出" };
         exitItem.Click += (s, e) =>
         {
+            _notificationService?.Dispose();
+            _notificationService = null;
+
             _trayIcon?.Dispose();
             _trayIcon = null;
 
@@ -163,6 +183,9 @@ public partial class App : Application
                     _ = viewModel.ToggleConnectionCommand.ExecuteAsync(null);
                 break;
             case 3: // 退出
+                _notificationService?.Dispose();
+                _notificationService = null;
+
                 _trayIcon?.Dispose();
                 _trayIcon = null;
 
@@ -180,5 +203,13 @@ public partial class App : Application
     {
         var app = (App)Current;
         return app._host.Services.GetRequiredService<T>();
+    }
+
+    /// <summary>
+    /// 激活主窗口（供通知点击回调调用）
+    /// </summary>
+    internal void ActivateMainWindow()
+    {
+        _window?.Activate();
     }
 }
