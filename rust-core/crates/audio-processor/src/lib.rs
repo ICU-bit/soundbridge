@@ -7,6 +7,7 @@ pub mod agc;
 pub mod gain;
 pub mod noise_gate;
 pub mod ns;
+pub mod plc;
 pub mod silence_detector;
 
 pub use aec::AecProcessor;
@@ -14,6 +15,7 @@ pub use agc::AgcProcessor;
 pub use gain::GainProcessor;
 pub use noise_gate::NoiseGate;
 pub use ns::NsProcessor;
+pub use plc::{PlcConfig, PlcProcessor, PlcState};
 pub use silence_detector::SilenceDetector;
 
 /// 处理配置
@@ -39,6 +41,15 @@ pub struct ProcessorConfig {
 
     /// AGC 最大增益（dB）
     pub agc_max_gain_db: f32,
+
+    /// PLC 衰减系数（每帧）
+    pub plc_decay_factor: f32,
+
+    /// PLC 历史缓冲帧数
+    pub plc_history_frames: usize,
+
+    /// PLC 静音阈值（连续丢帧数）
+    pub plc_silence_threshold: u32,
 }
 
 impl Default for ProcessorConfig {
@@ -51,6 +62,9 @@ impl Default for ProcessorConfig {
             ns_suppression_db: 12.0,
             agc_target_dbfs: -3.0, // 技术规格 §3.3: 目标电平 -3 dBFS
             agc_max_gain_db: 30.0,
+            plc_decay_factor: 0.95,
+            plc_history_frames: 4,
+            plc_silence_threshold: 6,
         }
     }
 }
@@ -80,6 +94,7 @@ pub struct AudioProcessor {
     aec: AecProcessor,
     ns: NsProcessor,
     agc: AgcProcessor,
+    plc: PlcProcessor,
 }
 
 impl AudioProcessor {
@@ -102,6 +117,12 @@ impl AudioProcessor {
             max_gain_db: config.agc_max_gain_db,
             ..Default::default()
         });
+        let plc = PlcProcessor::new(PlcConfig {
+            decay_factor: config.plc_decay_factor,
+            history_frames: config.plc_history_frames,
+            silence_threshold_frames: config.plc_silence_threshold,
+            ..Default::default()
+        })?;
 
         Ok(Self {
             config,
@@ -111,6 +132,7 @@ impl AudioProcessor {
             aec,
             ns,
             agc,
+            plc,
         })
     }
 
@@ -173,6 +195,30 @@ impl AudioProcessor {
     /// 获取配置
     pub fn config(&self) -> &ProcessorConfig {
         &self.config
+    }
+
+    /// 喂入有效音频帧到 PLC 历史缓冲区
+    ///
+    /// 收到正常音频包时调用，用于更新 PLC 的历史数据。
+    pub fn plc_feed_good_frame(&mut self, buffer: &[f32]) -> Result<()> {
+        self.plc.process_good_frame(buffer)
+    }
+
+    /// 生成丢包隐藏帧
+    ///
+    /// 丢包时调用，返回基于历史数据外推的替代音频帧。
+    pub fn plc_conceal(&mut self) -> Result<Vec<f32>> {
+        self.plc.conceal()
+    }
+
+    /// 获取 PLC 当前状态
+    pub fn plc_state(&self) -> PlcState {
+        self.plc.state()
+    }
+
+    /// 获取 PLC 处理器的可变引用
+    pub fn plc_processor(&mut self) -> &mut PlcProcessor {
+        &mut self.plc
     }
 }
 

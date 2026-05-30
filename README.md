@@ -53,6 +53,9 @@
 - ✅ 噪声抑制（NS）- SNR 估计
 - ✅ 自动增益控制（AGC）- 攻击/释放时间平滑
 - ✅ 电平指示器
+- ✅ 丢包隐藏（PLC）- 波形外推算法，汉宁窗平滑，渐进衰减
+- ✅ 自适应 Jitter Buffer - 基于网络抖动动态调整延迟，丢包补偿
+- ✅ 网络状况监控 - RTT 估计、带宽估计、丢包率跟踪、质量评分
 
 ---
 
@@ -255,7 +258,7 @@
   - Windows: 连接按钮三态（Connecting... / Connect / Disconnect）
   - Android: NativeAudioEngine 新增 11 个 JNI 函数（热点/ADB/蓝牙/独占模式）
   - Android: jni_bridge.cpp 连接管理存根实现（静态状态跟踪）
-  - 测试: 601 测试全部通过，零 clippy 警告
+  - 测试: 694 测试全部通过，零 clippy 警告
 - **v0.6.0** - 多连接方式 + Oracle Bug 修复 + 音频电平
   - FFI: 新增 sb_get_audio_level（真实 RMS 电平，从采集数据计算）
   - FFI: 新增 sb_set_exclusive_mode（WASAPI 独占模式延迟公式自适应）

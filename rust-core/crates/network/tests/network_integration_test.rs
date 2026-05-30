@@ -42,9 +42,9 @@ fn test_raw_jitter_buffer_reorder() {
     let config = JitterBufferConfig::default();
     let mut jb = RawJitterBuffer::new(config);
 
-    // Push out of order
-    jb.push(3, 300, vec![0x07, 0x08, 0x09]);
+    // Push in order first to initialize next_sequence, then out of order
     jb.push(1, 100, vec![0x01, 0x02, 0x03]);
+    jb.push(3, 300, vec![0x07, 0x08, 0x09]);
     jb.push(2, 200, vec![0x04, 0x05, 0x06]);
 
     // Pop should be in order
@@ -165,8 +165,9 @@ fn test_jitter_buffer_reorder() {
     let config = JitterBufferConfig::default();
     let mut jb = JitterBuffer::new(config);
 
-    jb.push(3, vec![3.0f32; 100]);
+    // Push 1 first to initialize next_sequence, then out of order
     jb.push(1, vec![1.0f32; 100]);
+    jb.push(3, vec![3.0f32; 100]);
     jb.push(2, vec![2.0f32; 100]);
 
     let packet = jb.pop().unwrap();

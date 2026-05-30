@@ -4,13 +4,20 @@
 
 pub mod connection;
 pub mod jitter_buffer;
+pub mod net_monitor;
 pub mod transport;
 
 pub use connection::{
     AdbConfig, AdbState, BluetoothConfig, BluetoothState, ConnectionConfig, ConnectionManager,
     ConnectionState, ConnectionType, HotspotConfig, HotspotState,
 };
-pub use jitter_buffer::{JitterBuffer, JitterBufferConfig, RawAudioPacket, RawJitterBuffer};
+pub use jitter_buffer::{
+    AdaptiveConfig, AudioPacket, JitterBuffer, JitterBufferConfig, JitterStats, NetworkQuality,
+    RawAudioPacket, RawJitterBuffer,
+};
+pub use net_monitor::{
+    BitrateRecommendation, BurstLossEvent, NetMonitor, NetMonitorConfig, NetworkStats,
+};
 pub use transport::{TransportConfig, UdpTransport};
 
 /// 网络错误类型
@@ -66,8 +73,9 @@ mod tests {
         let config = JitterBufferConfig::default();
         let mut jb = JitterBuffer::new(config);
 
-        jb.push(3, vec![3.0f32; 100]);
+        // push 1 first so next_sequence initializes to 1
         jb.push(1, vec![1.0f32; 100]);
+        jb.push(3, vec![3.0f32; 100]);
         jb.push(2, vec![2.0f32; 100]);
 
         let packet = jb.pop().unwrap();
@@ -140,8 +148,9 @@ mod tests {
         let config = JitterBufferConfig::default();
         let mut jb = RawJitterBuffer::new(config);
 
-        jb.push(3, 300, vec![0x05, 0x06]);
+        // push 1 first so next_sequence initializes to 1
         jb.push(1, 100, vec![0x01, 0x02]);
+        jb.push(3, 300, vec![0x05, 0x06]);
         jb.push(2, 200, vec![0x03, 0x04]);
 
         let packet = jb.pop().unwrap();

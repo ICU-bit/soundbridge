@@ -2,7 +2,7 @@
 
 ## OVERVIEW
 
-Rust workspace (resolver="2") with 10 crates. All crates are fully implemented with 601 tests passing.
+Rust workspace (resolver="2") with 10 crates. All crates are fully implemented with 694 tests passing.
 
 ## STRUCTURE
 
@@ -12,9 +12,9 @@ crates/
 ├── audio-codec/     # COMPLETE: Opus encode/decode, 22 tests, Criterion benchmarks
 ├── audio-capture/   # COMPLETE: cpal implementation, Fixed(960) frames
 ├── audio-playback/  # COMPLETE: cpal implementation, mixer output
-├── audio-processor/ # COMPLETE: AEC/NS/AGC (NLMS/SNR/Attack-Release)
+├── audio-processor/ # COMPLETE: AEC/NS/AGC/PLC (NLMS/SNR/Attack-Release/Waveform Extrapolation)
 ├── audio-mixer/     # COMPLETE: Mix engine, soft_clip tanh
-├── network/         # COMPLETE: UDP transport, zero-copy serialization
+├── network/         # COMPLETE: UDP transport, Adaptive Jitter Buffer, NetMonitor
 ├── discovery/       # COMPLETE: mDNS (mdns_sd implementation)
 ├── protocol/        # COMPLETE: 12-byte header, zero-copy protocol
 └── ffi-bindings/    # COMPLETE: Full pipeline (capture→encode→send + recv→decode→play)
@@ -30,9 +30,9 @@ crates/
 | FFI bindings | `ffi-bindings` | Full pipeline (capture→encode→send + recv→decode→play), 76 tests |
 | Audio capture | `audio-capture` | cpal implementation, Fixed(960) frames |
 | Audio playback | `audio-playback` | cpal implementation, mixer output |
-| Audio processing | `audio-processor` | AEC/NS/AGC (NLMS/SNR/Attack-Release) |
+| Audio processing | `audio-processor` | AEC/NS/AGC/PLC (NLMS/SNR/Attack-Release/Waveform Extrapolation) |
 | Audio mixing | `audio-mixer` | Mix engine, soft_clip tanh |
-| Network transport | `network` | UDP transport, zero-copy serialization |
+| Network transport | `network` | UDP transport, Adaptive Jitter Buffer, NetMonitor |
 | Device discovery | `discovery` | mDNS (mdns_sd implementation) |
 | Protocol | `protocol` | 12-byte header, zero-copy protocol |
 
