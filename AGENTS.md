@@ -125,7 +125,7 @@ cmake --build build             # 构建
 
 ## NOTES
 
-- 所有 10 个 Rust crate 均已完整实现（非骨架），795 测试通过，零 clippy 警告
+- 所有 10 个 Rust crate 均已完整实现（非骨架），826 测试通过，零 clippy 警告
 - Windows C++ 测试文件已创建（test_opus_codec.cpp、test_audio_pipeline.cpp、test_udp_transport.cpp）
 - CI/CD 已配置（.github/workflows/ci.yml：Rust 测试 + Windows C++ 构建 + Android 构建）
 - 已有 .editorconfig、rustfmt.toml 格式化配置

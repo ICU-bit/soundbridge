@@ -73,7 +73,7 @@
 
 ## 测试
 
-- Rust: `cargo test --workspace`（795 测试）
+- Rust: `cargo test --workspace`（826 测试）
 - Windows C++: CMake + GTest（27 测试）
 - Android: Gradle + JUnit
 

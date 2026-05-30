@@ -98,7 +98,7 @@ static LAST_ERROR: Mutex<Option<CString>> = Mutex::new(None);
 /// 设置错误信息
 fn set_error(msg: &str) {
     if let Ok(mut error) = LAST_ERROR.lock() {
-        *error = Some(CString::new(msg).unwrap_or_else(|_| CString::new("unknown error").unwrap()));
+        *error = Some(CString::new(msg.replace('\0', "")).unwrap_or_default());
     }
 }
 
@@ -282,11 +282,19 @@ pub struct SbEngine {
 pub extern "C" fn sb_engine_create() -> *mut c_void {
     clear_error();
 
+    let processor = match AudioProcessor::with_default_config() {
+        Ok(p) => p,
+        Err(e) => {
+            set_error(&format!("failed to create AudioProcessor: {}", e));
+            return ptr::null_mut();
+        }
+    };
+
     let engine = SbEngine {
         capture: None,
         playback: None,
         mixer: AudioMixer::default(),
-        processor: AudioProcessor::with_default_config().expect("Failed to create AudioProcessor"),
+        processor,
         pipeline_state: PipelineState::Stopped,
         audio_mode: SbAudioMode::Balanced,
         mode_manager: AudioModeManager::new(),
@@ -1104,8 +1112,21 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
     let sequence = engine.sequence.clone();
 
     // 获取采集和播放设备的 ring buffer（线程安全的 Arc 引用）
-    let capture_ring = engine.capture.as_ref().unwrap().ring_buffer();
-    let playback_ring = engine.playback.as_ref().unwrap().ring_buffer();
+    // 安全：已通过前置检查确保 capture/playback 非 None
+    let capture_ring = match engine.capture.as_ref() {
+        Some(c) => c.ring_buffer(),
+        None => {
+            set_error("capture not started");
+            return SbError::PipelineNotReady as c_int;
+        }
+    };
+    let playback_ring = match engine.playback.as_ref() {
+        Some(p) => p.ring_buffer(),
+        None => {
+            set_error("playback not started");
+            return SbError::PipelineNotReady as c_int;
+        }
+    };
 
     // 创建本地混音 ring buffer：发送线程写入采集数据副本，接收线程读取用于混音
     // 避免接收线程和发送线程同时读取同一个 SPSC capture_ring
@@ -1296,9 +1317,10 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
 
             tracing::info!("Receiver thread started (with jitter buffer)");
 
-            recv_socket
-                .set_nonblocking(true)
-                .expect("Failed to set non-blocking");
+            if let Err(e) = recv_socket.set_nonblocking(true) {
+                tracing::error!("Failed to set non-blocking: {}", e);
+                return;
+            }
 
             // 闭包：处理一个解码后的音频帧（混音 + 写入播放 ring buffer）
             let process_decoded = |decoder: &mut OpusDecoderCodec,
@@ -4466,6 +4488,374 @@ mod tests {
             let engine_ref = &*(engine as *const SbEngine);
             assert!(engine_ref.crypto_keys.is_none());
 
+            sb_engine_destroy(engine);
+        }
+    }
+
+    // ============================================================
+    // 边界条件测试（错误处理完整性）
+    // ============================================================
+
+    #[test]
+    fn test_send_volume_nan_rejected() {
+        unsafe {
+            let engine = sb_engine_create();
+            let result = sb_send_volume(engine, f32::NAN);
+            assert_eq!(result, SbError::InvalidArgument as c_int);
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_send_volume_infinity_rejected() {
+        unsafe {
+            let engine = sb_engine_create();
+            let result = sb_send_volume(engine, f32::INFINITY);
+            assert_eq!(result, SbError::InvalidArgument as c_int);
+
+            let result = sb_send_volume(engine, f32::NEG_INFINITY);
+            assert_eq!(result, SbError::InvalidArgument as c_int);
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_mix_ratio_nan_rejected() {
+        unsafe {
+            let engine = sb_engine_create();
+
+            let result = sb_set_mix_ratio(engine, f32::NAN, 0.5);
+            assert_eq!(result, SbError::InvalidArgument as c_int);
+
+            let result = sb_set_mix_ratio(engine, 0.5, f32::NAN);
+            assert_eq!(result, SbError::InvalidArgument as c_int);
+
+            let result = sb_set_mix_ratio(engine, f32::INFINITY, 0.5);
+            assert_eq!(result, SbError::InvalidArgument as c_int);
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_last_error_after_null_engine() {
+        clear_error();
+        // 使用 null engine 触发错误
+        let result = unsafe { sb_capture_start(ptr::null_mut(), ptr::null()) };
+        assert_eq!(result, SbError::InvalidArgument as c_int);
+
+        // 验证错误信息已设置
+        let error = sb_last_error();
+        assert!(!error.is_null(), "Error message should be set after null engine");
+        let error_str = unsafe { CStr::from_ptr(error) }.to_str().unwrap();
+        assert!(
+            error_str.contains("engine is null"),
+            "Error message should mention null engine, got: {}",
+            error_str
+        );
+        clear_error();
+    }
+
+    #[test]
+    fn test_last_error_after_bind_failure() {
+        clear_error();
+        unsafe {
+            let engine = sb_engine_create();
+            // 绑定一个已被占用的端口会失败（使用一个不太可能成功的地址）
+            // 这里测试错误信息的设置
+            sb_bind(engine, 0); // 先绑定成功
+            // 测试 sb_connect 失败时的错误信息
+            let bad_addr = CString::new("not-a-valid-address").unwrap();
+            let result = sb_connect(engine, bad_addr.as_ptr());
+            assert_eq!(result, SbError::InvalidArgument as c_int);
+
+            let error = sb_last_error();
+            assert!(!error.is_null());
+            let error_str = CStr::from_ptr(error).to_str().unwrap();
+            assert!(
+                error_str.contains("invalid address"),
+                "Error should mention invalid address, got: {}",
+                error_str
+            );
+
+            sb_engine_destroy(engine);
+        }
+        clear_error();
+    }
+
+    #[test]
+    fn test_capture_read_zero_length() {
+        unsafe {
+            let engine = sb_engine_create();
+            let mut buf = [0.0f32; 10];
+            // 没有启动采集，应该返回错误
+            let result = sb_capture_read(engine, buf.as_mut_ptr(), 0);
+            assert_eq!(result, SbError::Error as c_int);
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_playback_write_zero_length() {
+        unsafe {
+            let engine = sb_engine_create();
+            let buf = [0.0f32; 10];
+            // 没有启动播放，应该返回错误
+            let result = sb_playback_write(engine, buf.as_ptr(), 0);
+            assert_eq!(result, SbError::Error as c_int);
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_device_store_get_address_zero_buf() {
+        unsafe {
+            let store = sb_device_store_open(
+                CString::new(":memory:").unwrap().as_ptr(),
+            );
+            let name = CString::new("test").unwrap();
+            let mut buf = [0u8; 64];
+            let result = sb_device_store_get_address(
+                store,
+                name.as_ptr(),
+                buf.as_mut_ptr() as *mut c_char,
+                0, // zero buffer length
+            );
+            assert_eq!(result, -1);
+            sb_device_store_close(store);
+        }
+    }
+
+    #[test]
+    fn test_device_store_get_name_at_out_of_range() {
+        unsafe {
+            let store = sb_device_store_open(
+                CString::new(":memory:").unwrap().as_ptr(),
+            );
+            let mut buf = [0u8; 64];
+            let result = sb_device_store_get_name_at(
+                store,
+                999, // out of range
+                buf.as_mut_ptr() as *mut c_char,
+                64,
+            );
+            assert_eq!(result, -1);
+            sb_device_store_close(store);
+        }
+    }
+
+    #[test]
+    fn test_hotspot_create_empty_password() {
+        unsafe {
+            let engine = sb_engine_create();
+            let ssid = CString::new("TestSSID").unwrap();
+            let password = CString::new("").unwrap();
+            let result = sb_hotspot_create(engine, ssid.as_ptr(), password.as_ptr(), 6);
+            // 空密码应该被允许（平台层决定是否接受）
+            assert_eq!(result, SbError::Ok as c_int);
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_adb_setup_null_serial() {
+        unsafe {
+            let engine = sb_engine_create();
+            // null serial 应该使用空字符串
+            let result = sb_adb_setup_port_forward(engine, 12345, 12345, ptr::null());
+            assert_eq!(result, SbError::Ok as c_int);
+
+            // 验证 serial 为空字符串
+            let engine_ref = &*(engine as *const SbEngine);
+            assert!(engine_ref.adb_config.device_serial.is_empty());
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_bt_init_empty_name() {
+        unsafe {
+            let engine = sb_engine_create();
+            let name = CString::new("").unwrap();
+            let result = sb_bt_init(engine, name.as_ptr(), false);
+            // 空名称应该被允许
+            assert_eq!(result, SbError::Ok as c_int);
+
+            let engine_ref = &*(engine as *const SbEngine);
+            assert!(engine_ref.bt_config.device_name.is_empty());
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_set_error_with_null_byte() {
+        // 验证 set_error 处理包含 null 字节的字符串
+        clear_error();
+        // 包含 null 字节的字符串应该被安全处理
+        set_error("error with \0 null byte");
+        let error = sb_last_error();
+        assert!(!error.is_null());
+        let error_str = unsafe { CStr::from_ptr(error) }.to_str().unwrap();
+        assert!(
+            error_str.contains("error with"),
+            "Error message should be sanitized, got: {}",
+            error_str
+        );
+        clear_error();
+    }
+
+    #[test]
+    fn test_device_store_null_path() {
+        let result = unsafe { sb_device_store_open(ptr::null()) };
+        assert!(result.is_null());
+    }
+
+    #[test]
+    fn test_discovery_find_devices_null_discovery() {
+        let result = unsafe { sb_discovery_find_devices(ptr::null_mut(), ptr::null_mut(), 0) };
+        assert_eq!(result, -1);
+    }
+
+    #[test]
+    fn test_sb_is_encrypted_returns_correct_values() {
+        unsafe {
+            let engine = sb_engine_create();
+            // 未加密时返回 0
+            let result = sb_is_encrypted(engine);
+            assert_eq!(result, 0);
+
+            // 启用加密后返回 1
+            let key = [0x42u8; 16];
+            let salt = [0x69u8; 14];
+            sb_enable_encryption(engine, key.as_ptr(), salt.as_ptr());
+            let result = sb_is_encrypted(engine);
+            assert_eq!(result, 1);
+
+            // 禁用后返回 0
+            sb_disable_encryption(engine);
+            let result = sb_is_encrypted(engine);
+            assert_eq!(result, 0);
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_sb_get_mute_returns_correct_values() {
+        unsafe {
+            let engine = sb_engine_create();
+            // 默认返回 0
+            assert_eq!(sb_get_mute(engine), 0);
+
+            // 设置后返回 1
+            sb_set_mute(engine, 1);
+            assert_eq!(sb_get_mute(engine), 1);
+
+            // 再次设置返回 0
+            sb_set_mute(engine, 0);
+            assert_eq!(sb_get_mute(engine), 0);
+
+            // 非零值都应视为 true
+            sb_set_mute(engine, 42);
+            assert_eq!(sb_get_mute(engine), 1);
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_hotspot_boundary_channels() {
+        unsafe {
+            let engine = sb_engine_create();
+            let ssid = CString::new("Test").unwrap();
+            let password = CString::new("pass").unwrap();
+
+            // channel=1 应该成功
+            let result = sb_hotspot_create(engine, ssid.as_ptr(), password.as_ptr(), 1);
+            assert_eq!(result, SbError::Ok as c_int);
+
+            // channel=13 应该成功
+            let result = sb_hotspot_create(engine, ssid.as_ptr(), password.as_ptr(), 13);
+            assert_eq!(result, SbError::Ok as c_int);
+
+            // channel=0 应该失败
+            let result = sb_hotspot_create(engine, ssid.as_ptr(), password.as_ptr(), 0);
+            assert_eq!(result, SbError::InvalidArgument as c_int);
+
+            // channel=14 应该失败
+            let result = sb_hotspot_create(engine, ssid.as_ptr(), password.as_ptr(), 14);
+            assert_eq!(result, SbError::InvalidArgument as c_int);
+
+            // channel=u32::MAX 应该失败
+            let result = sb_hotspot_create(engine, ssid.as_ptr(), password.as_ptr(), u32::MAX);
+            assert_eq!(result, SbError::InvalidArgument as c_int);
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_connection_type_all_values() {
+        unsafe {
+            let engine = sb_engine_create();
+
+            for conn_type in 0..=3 {
+                let result = sb_set_connection_type(engine, conn_type);
+                assert_eq!(result, SbError::Ok as c_int);
+
+                let mut val = -1i32;
+                sb_get_connection_type(engine, &mut val);
+                assert_eq!(val, conn_type);
+            }
+
+            // 无效值
+            let result = sb_set_connection_type(engine, -1);
+            assert_eq!(result, SbError::InvalidArgument as c_int);
+
+            let result = sb_set_connection_type(engine, 4);
+            assert_eq!(result, SbError::InvalidArgument as c_int);
+
+            let result = sb_set_connection_type(engine, i32::MAX);
+            assert_eq!(result, SbError::InvalidArgument as c_int);
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_pipeline_stats_all_zero_pointers() {
+        unsafe {
+            let engine = sb_engine_create();
+            let result = sb_pipeline_stats(
+                engine,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+            );
+            assert_eq!(result, SbError::InvalidArgument as c_int);
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_sb_mixer_mix_null_inputs() {
+        unsafe {
+            let engine = sb_engine_create();
+            let mut output = [0.0f32; 960];
+            let result = sb_mixer_mix(
+                engine,
+                ptr::null_mut(),
+                ptr::null(),
+                ptr::null(),
+                0,
+                output.as_mut_ptr(),
+                960,
+            );
+            assert_eq!(result, SbError::InvalidArgument as c_int);
             sb_engine_destroy(engine);
         }
     }

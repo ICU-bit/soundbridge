@@ -1,4 +1,4 @@
-//! 会话握手协议模块
+//! # 会话握手协议模块
 //!
 //! 实现标准化的会话建立流程，支持能力协商、身份认证和会话生命周期管理。
 //!
@@ -7,66 +7,110 @@
 //! ```text
 //! Client                     Server
 //!   |                           |
-//!   |------- ClientHello ------>|
+//!   |------- ClientHello ------>|  携带客户端能力声明 + ECDH 公钥
 //!   |                           |
-//!   |<------ ServerHello -------|
+//!   |<------ ServerHello -------|  携带服务器能力 + 协商参数 + ECDH 公钥
 //!   |                           |
-//!   |------- KeyExchange ------>|
+//!   |------- KeyExchange ------>|  确认协商参数 + 最终公钥
 //!   |                           |
-//!   |<------ Finished ----------|
+//!   |<------ Finished ----------|  握手摘要确认
 //!   |                           |
-//!   |======= Established =======|
+//!   |======= Established =======|  会话建立，开始心跳
 //! ```
 //!
 //! ## 状态机
 //!
+//! ```text
 //! Idle → ClientHelloSent → ServerHelloSent → KeyExchangeSent → Established → Closed
+//! ```
+//!
+//! ## 能力协商
+//!
+//! 客户端和服务器在握手过程中交换 [`Capability`] 声明，服务器负责选择双方都支持的
+//! 最优参数组合（传输协议、加密模式、Opus 配置）。
+//!
+//! ## 心跳机制
+//!
+//! 会话建立后，双方通过 [`HandshakeMessage::Heartbeat`] / [`HandshakeMessage::HeartbeatAck`]
+//! 维持连接活跃度，并测量 RTT。
+//!
+//! ## 优雅断开
+//!
+//! 通过 [`HandshakeMessage::Disconnect`] 消息实现优雅断开，
+//! 携带 [`DisconnectReason`] 说明断开原因。
 
 use crate::{NetworkError, Result};
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 
-/// 握手超时时间（毫秒）
+/// 握手默认超时时间（毫秒）
 pub const HANDSHAKE_TIMEOUT_MS: u64 = 10_000;
 
-/// 心跳间隔（毫秒）
+/// 心跳默认间隔（毫秒）
 pub const HEARTBEAT_INTERVAL_MS: u64 = 5_000;
 
-/// 心跳超时（毫秒）
+/// 心跳默认超时时间（毫秒）
 pub const HEARTBEAT_TIMEOUT_MS: u64 = 15_000;
 
-/// 最大握手重试次数
+/// 握手默认最大重试次数
 pub const MAX_HANDSHAKE_RETRIES: u32 = 3;
 
-/// 协议版本
+/// 会话协议版本号
 pub const SESSION_PROTOCOL_VERSION: u16 = 1;
 
 // ──────────────────────────────── 状态机 ────────────────────────────────
 
 /// 会话状态
+///
+/// 表示会话握手流程的当前阶段，驱动整个会话生命周期。
+///
+/// # 状态转换
+///
+/// ```text
+/// Idle → ClientHelloSent → ServerHelloSent → KeyExchangeSent → Established → Closed
+/// ```
+///
+/// # 示例
+///
+/// ```rust
+/// use network::session::SessionState;
+///
+/// assert!(!SessionState::Idle.is_terminal());
+/// assert!(SessionState::Established.is_terminal());
+/// assert!(SessionState::Established.can_send_data());
+/// assert!(!SessionState::Idle.can_send_data());
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SessionState {
     /// 空闲，等待发起握手
     Idle,
-    /// 客户端已发送 ClientHello
+    /// 客户端已发送 ClientHello，等待 ServerHello
     ClientHelloSent,
-    /// 服务器已发送 ServerHello
+    /// 服务器已发送 ServerHello，等待 KeyExchange
     ServerHelloSent,
-    /// 密钥交换已发送
+    /// 密钥交换已发送，等待 Finished
     KeyExchangeSent,
-    /// 握手完成，连接已建立
+    /// 握手完成，连接已建立，可以收发数据
     Established,
-    /// 会话已关闭
+    /// 会话已关闭（主动断开或超时）
     Closed,
 }
 
 impl SessionState {
-    /// 是否为终态
+    /// 判断是否为终态（Established 或 Closed）
+    ///
+    /// # Returns
+    ///
+    /// `true` 表示会话已到达最终状态，不再接受新的握手消息。
     pub fn is_terminal(&self) -> bool {
         matches!(self, Self::Established | Self::Closed)
     }
 
-    /// 是否可以发送数据
+    /// 判断是否可以发送音频数据
+    ///
+    /// # Returns
+    ///
+    /// `true` 仅当状态为 `Established`。
     pub fn can_send_data(&self) -> bool {
         *self == Self::Established
     }
@@ -87,13 +131,24 @@ impl std::fmt::Display for SessionState {
 
 // ──────────────────────────────── 能力协商 ────────────────────────────────
 
-/// 传输协议
+/// 传输协议类型
+///
+/// 用于能力协商阶段，双方声明支持的传输协议。
+///
+/// # 示例
+///
+/// ```rust
+/// use network::session::TransportProtocol;
+///
+/// assert_eq!(format!("{}", TransportProtocol::Udp), "UDP");
+/// assert_eq!(format!("{}", TransportProtocol::Quic), "QUIC");
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub enum TransportProtocol {
-    /// UDP 传输（低延迟）
+    /// UDP 传输（低延迟，适合实时音频流）
     #[default]
     Udp,
-    /// QUIC 传输（可靠加密）
+    /// QUIC 传输（可靠加密，适合控制信令）
     Quic,
 }
 
@@ -107,11 +162,22 @@ impl std::fmt::Display for TransportProtocol {
 }
 
 /// 加密模式
+///
+/// 用于能力协商阶段，双方声明支持的加密方式。
+///
+/// # 示例
+///
+/// ```rust
+/// use network::session::EncryptionMode;
+///
+/// assert_eq!(format!("{}", EncryptionMode::Srtp), "SRTP");
+/// assert_eq!(format!("{}", EncryptionMode::None), "None");
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub enum EncryptionMode {
-    /// 无加密（明文传输）
+    /// 无加密（明文传输，仅用于测试或可信网络）
     None,
-    /// SRTP 加密
+    /// SRTP 加密（AES-128-CM + HMAC-SHA1-80，默认推荐）
     #[default]
     Srtp,
 }
@@ -126,15 +192,26 @@ impl std::fmt::Display for EncryptionMode {
 }
 
 /// Opus 编解码器配置
+///
+/// 描述音频编解码参数，在握手阶段由双方协商确定。
+///
+/// # 默认值
+///
+/// | 参数 | 默认值 | 说明 |
+/// |------|--------|------|
+/// | sample_rate | 48000 Hz | 采样率 |
+/// | channels | 1 | 单声道 |
+/// | bitrate | 128000 bps | 比特率 |
+/// | frame_size | 960 samples | 帧大小（20ms@48kHz） |
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OpusConfig {
     /// 采样率（Hz）：8000, 12000, 16000, 24000, 48000
     pub sample_rate: u32,
-    /// 通道数
+    /// 通道数（1=单声道, 2=立体声）
     pub channels: u8,
     /// 比特率（bps）
     pub bitrate: u32,
-    /// 帧大小（samples）
+    /// 帧大小（samples），通常为 960（20ms@48kHz）
     pub frame_size: u32,
 }
 

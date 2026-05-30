@@ -227,7 +227,12 @@ impl Protocol {
         let (header, _) = PacketHeader::decode(data)?;
 
         let payload_start = PacketHeader::SIZE;
-        let payload_end = payload_start + header.opus_length as usize;
+        let payload_end = payload_start
+            .checked_add(header.opus_length as usize)
+            .ok_or(ProtocolError::DeserializationError(format!(
+                "payload 偏移溢出: header({}) + opus_length({})",
+                payload_start, header.opus_length,
+            )))?;
 
         if data.len() < payload_end {
             return Err(ProtocolError::DataTooShort {
@@ -257,7 +262,12 @@ impl Protocol {
         let (header, _) = PacketHeader::decode(data)?;
 
         let payload_start = PacketHeader::SIZE;
-        let payload_end = payload_start + header.opus_length as usize;
+        let payload_end = payload_start
+            .checked_add(header.opus_length as usize)
+            .ok_or(ProtocolError::DeserializationError(format!(
+                "payload 偏移溢出: header({}) + opus_length({})",
+                payload_start, header.opus_length,
+            )))?;
 
         if data.len() < payload_end {
             return Err(ProtocolError::DataTooShort {
@@ -355,7 +365,22 @@ impl ControlMessage {
 
     /// 编码消息
     pub fn encode(&self, buf: &mut Vec<u8>) -> Result<()> {
-        let length = Self::HEADER_SIZE as u32 + self.payload.len() as u32;
+        let payload_len = u32::try_from(self.payload.len()).map_err(|_| {
+            ProtocolError::SerializationError(format!(
+                "控制消息 payload 太大: {} 字节，最大 {} 字节",
+                self.payload.len(),
+                u32::MAX - Self::HEADER_SIZE as u32,
+            ))
+        })?;
+        let length = (Self::HEADER_SIZE as u32)
+            .checked_add(payload_len)
+            .ok_or_else(|| {
+                ProtocolError::SerializationError(format!(
+                    "控制消息长度溢出: header({}) + payload({})",
+                    Self::HEADER_SIZE,
+                    self.payload.len(),
+                ))
+            })?;
         buf.extend_from_slice(&length.to_be_bytes());
         buf.push(self.message_type as u8);
         buf.extend_from_slice(&self.payload);
@@ -372,6 +397,13 @@ impl ControlMessage {
         }
 
         let length = u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]) as usize;
+        if length < Self::HEADER_SIZE {
+            return Err(ProtocolError::DeserializationError(format!(
+                "控制消息长度字段 {} 小于消息头大小 {}",
+                length,
+                Self::HEADER_SIZE,
+            )));
+        }
         if buf.len() < length {
             return Err(ProtocolError::DataTooShort {
                 needed: length,
@@ -556,5 +588,219 @@ mod tests {
         let (decoded, _) = ControlMessage::decode(&buf).unwrap();
         assert_eq!(decoded.message_type, ControlMessageType::Heartbeat);
         assert!(decoded.payload.is_empty());
+    }
+
+    // ========================================================================
+    // 边界条件测试
+    // ========================================================================
+
+    #[test]
+    fn test_control_message_decode_length_less_than_header() {
+        // length 字段为 3（小于 HEADER_SIZE=5），不应 panic
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&3u32.to_be_bytes()); // length = 3
+        buf.push(0x01); // type byte (won't be reached)
+        let result = ControlMessage::decode(&buf);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("小于消息头大小"),
+            "错误信息应包含 '小于消息头大小'，实际: {}",
+            err_msg,
+        );
+    }
+
+    #[test]
+    fn test_control_message_decode_length_zero() {
+        // length 字段为 0
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&0u32.to_be_bytes());
+        buf.push(0x01);
+        let result = ControlMessage::decode(&buf);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_control_message_decode_length_exactly_header() {
+        // length 字段正好等于 HEADER_SIZE（5），payload 为空
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&5u32.to_be_bytes()); // length = 5
+        buf.push(0x01); // Hello type
+        let (decoded, size) = ControlMessage::decode(&buf).unwrap();
+        assert_eq!(size, 5);
+        assert_eq!(decoded.message_type, ControlMessageType::Hello);
+        assert!(decoded.payload.is_empty());
+    }
+
+    #[test]
+    fn test_control_message_decode_empty_buffer() {
+        let buf: Vec<u8> = vec![];
+        let result = ControlMessage::decode(&buf);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        match err {
+            ProtocolError::DataTooShort { needed, actual } => {
+                assert_eq!(needed, 5);
+                assert_eq!(actual, 0);
+            }
+            _ => panic!("Expected DataTooShort, got: {:?}", err),
+        }
+    }
+
+    #[test]
+    fn test_control_message_decode_truncated_payload() {
+        // length 说有 10 字节，但只给了 7 字节
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&10u32.to_be_bytes());
+        buf.push(0x01); // type
+        buf.push(0x02); // payload byte 1
+        buf.push(0x03); // payload byte 2
+        let result = ControlMessage::decode(&buf);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ProtocolError::DataTooShort { needed, actual } => {
+                assert_eq!(needed, 10);
+                assert_eq!(actual, 7);
+            }
+            other => panic!("Expected DataTooShort, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_deserialize_header_too_short() {
+        let protocol = Protocol::new();
+        let buf = vec![0u8; 5]; // Less than PacketHeader::SIZE (12)
+        let result = protocol.deserialize_header(&buf);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_deserialize_header_payload_truncated() {
+        let protocol = Protocol::new();
+        // 构造一个 opus_length=100 但只有 12 字节（无 payload）的数据
+        let header = PacketHeader {
+            sequence: 1,
+            timestamp_ms: 100,
+            flags: 0x01,
+            channels: 1,
+            opus_length: 100, // 声称有 100 字节 payload
+        };
+        let mut buf = Vec::new();
+        header.encode(&mut buf).unwrap();
+        // 不追加 payload 数据
+        assert_eq!(buf.len(), PacketHeader::SIZE);
+
+        let result = protocol.deserialize(&buf);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ProtocolError::DataTooShort { needed, actual } => {
+                assert_eq!(needed, PacketHeader::SIZE + 100);
+                assert_eq!(actual, PacketHeader::SIZE);
+            }
+            other => panic!("Expected DataTooShort, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_deserialize_header_zero_opus_length() {
+        let protocol = Protocol::new();
+        let header = PacketHeader {
+            sequence: 1,
+            timestamp_ms: 100,
+            flags: 0x00,
+            channels: 1,
+            opus_length: 0,
+        };
+        let mut buf = Vec::new();
+        header.encode(&mut buf).unwrap();
+
+        let (h, payload, is_audio) = protocol.deserialize_header(&buf).unwrap();
+        assert_eq!(h.sequence, 1);
+        assert!(payload.is_empty());
+        assert!(!is_audio);
+    }
+
+    #[test]
+    fn test_packet_header_decode_exact_size() {
+        let header = PacketHeader {
+            sequence: 0,
+            timestamp_ms: 0,
+            flags: 0,
+            channels: 0,
+            opus_length: 0,
+        };
+        let mut buf = Vec::new();
+        header.encode(&mut buf).unwrap();
+        assert_eq!(buf.len(), PacketHeader::SIZE);
+
+        let (decoded, consumed) = PacketHeader::decode(&buf).unwrap();
+        assert_eq!(consumed, PacketHeader::SIZE);
+        assert_eq!(decoded.sequence, 0);
+    }
+
+    #[test]
+    fn test_packet_header_decode_one_byte_short() {
+        let buf = vec![0u8; PacketHeader::SIZE - 1];
+        let result = PacketHeader::decode(&buf);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ProtocolError::DataTooShort { needed, actual } => {
+                assert_eq!(needed, PacketHeader::SIZE);
+                assert_eq!(actual, PacketHeader::SIZE - 1);
+            }
+            other => panic!("Expected DataTooShort, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_error_messages_are_descriptive() {
+        // InvalidMagic
+        let err = ProtocolError::InvalidMagic;
+        assert!(!err.to_string().is_empty());
+
+        // InvalidVersion
+        let err = ProtocolError::InvalidVersion(99);
+        assert!(err.to_string().contains("99"));
+
+        // InvalidPacketType
+        let err = ProtocolError::InvalidPacketType(0xAB);
+        assert!(err.to_string().contains("171")); // 0xAB = 171
+
+        // DataTooShort
+        let err = ProtocolError::DataTooShort {
+            needed: 100,
+            actual: 10,
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("100"));
+        assert!(msg.contains("10"));
+
+        // SerializationError
+        let err = ProtocolError::SerializationError("test error".to_string());
+        assert!(err.to_string().contains("test error"));
+
+        // DeserializationError
+        let err = ProtocolError::DeserializationError("test error".to_string());
+        assert!(err.to_string().contains("test error"));
+    }
+
+    #[test]
+    fn test_control_message_type_all_invalid_values() {
+        // 测试多个无效值确保都返回错误
+        let invalid_values = [0x00, 0x09, 0x0A, 0x10, 0x20, 0x30, 0xFE];
+        for &val in &invalid_values {
+            let result = ControlMessageType::from_u8(val);
+            assert!(result.is_err(), "值 0x{:02X} 应返回错误", val);
+        }
+    }
+
+    #[test]
+    fn test_control_message_type_error_is_invalid_packet_type() {
+        // 确认错误类型是 InvalidPacketType
+        let result = ControlMessageType::from_u8(0x09);
+        match result.unwrap_err() {
+            ProtocolError::InvalidPacketType(v) => assert_eq!(v, 0x09),
+            other => panic!("Expected InvalidPacketType, got: {:?}", other),
+        }
     }
 }

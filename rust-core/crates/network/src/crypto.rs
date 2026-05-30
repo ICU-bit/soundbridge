@@ -1,16 +1,38 @@
-//! DTLS/SRTP 加密层
+//! # DTLS/SRTP 加密层
 //!
-//! 实现音频流的端到端加密，防止窃听。
+//! 实现音频流的端到端加密，防止窃听和篡改。
 //!
-//! ## SRTP 加密
-//! - AES-128-CM（Counter Mode）加密音频帧
-//! - HMAC-SHA1-80 认证标签（10 字节）
-//! - 支持密钥轮换（每 2^31 包）
+//! ## 安全机制
 //!
-//! ## DTLS 握手
-//! - 自签名证书生成
-//! - 握手超时和重试
+//! ### SRTP 加密
+//! - **加密算法**：AES-128-CM（Counter Mode）加密音频帧载荷
+//! - **认证标签**：HMAC-SHA1-80（截断为 10 字节），验证数据完整性
+//! - **密钥轮换**：每 2^31 个包自动轮换会话密钥，防止密钥过度使用
+//! - **密钥派生**：基于 AES-CM PRF 的 SRTP KDF（符合 RFC 3711）
+//!
+//! ### DTLS 握手
+//! - 自签名证书生成与指纹交换
+//! - 可配置的握手超时和重试机制
 //! - 会话密钥派生（HKDF-SHA1）
+//!
+//! ## 架构
+//!
+//! ```text
+//! ┌──────────────────────────────────────────────────────┐
+//! │                   应用层（RTP 数据包）                │
+//! └──────────────┬───────────────────────┬───────────────┘
+//!                │                       │
+//!         ┌──────▼──────┐         ┌──────▼──────┐
+//!         │ SrtpContext  │         │ DtlsSession │
+//!         │  protect()   │         │  握手流程    │
+//!         │  unprotect() │         │  密钥派生    │
+//!         └──────┬──────┘         └──────┬──────┘
+//!                │                       │
+//!         ┌──────▼──────┐         ┌──────▼──────┐
+//!         │ AES-128-CM  │         │  HKDF-SHA1  │
+//!         │ HMAC-SHA1   │         │  证书指纹    │
+//!         └─────────────┘         └─────────────┘
+//! ```
 
 use aes::Aes128;
 use cipher::{KeyIvInit, StreamCipher};
@@ -26,28 +48,32 @@ type Aes128Ctr = Ctr32BE<Aes128>;
 /// HMAC-SHA1 类型别名
 type HmacSha1 = Hmac<Sha1>;
 
-/// SRTP 认证标签长度（HMAC-SHA1-80 = 10 字节）
+/// SRTP 认证标签长度（HMAC-SHA1-80 = 80 位 = 10 字节）
+///
+/// 每个 SRTP 数据包末尾附加此长度的认证标签用于完整性验证。
 pub const SRTP_AUTH_TAG_LEN: usize = 10;
 
-/// AES-128 密钥长度
+/// AES-128 密钥长度（128 位 = 16 字节）
 pub const AES_128_KEY_LEN: usize = 16;
 
-/// SRTP 盐值长度（112 位 = 14 字节）
+/// SRTP 会话盐值长度（112 位 = 14 字节）
 pub const SRTP_SALT_LEN: usize = 14;
 
-/// SRTP 主密钥长度
+/// SRTP 主密钥长度（128 位 = 16 字节）
 pub const SRTP_MASTER_KEY_LEN: usize = 16;
 
-/// SRTP 主盐值长度
+/// SRTP 主盐值长度（112 位 = 14 字节）
 pub const SRTP_MASTER_SALT_LEN: usize = 14;
 
 /// 密钥轮换阈值（2^31 包）
+///
+/// 每发送/接收此数量的包后自动重新派生会话密钥。
 pub const KEY_ROTATION_THRESHOLD: u64 = 1u64 << 31;
 
-/// DTLS 握手超时时间（毫秒）
+/// DTLS 握手默认超时时间（毫秒）
 pub const DTLS_HANDSHAKE_TIMEOUT_MS: u64 = 5000;
 
-/// DTLS 最大重试次数
+/// DTLS 握手默认最大重试次数
 pub const DTLS_MAX_RETRIES: u32 = 3;
 
 /// SRTP 密钥派生标签
@@ -57,7 +83,27 @@ const KDF_LABEL_SALT: u8 = 0x02;
 
 /// SRTP 密钥材料
 ///
-/// 包含从 DTLS 握手派生的会话密钥。
+/// 包含从 DTLS 握手派生的主密钥和主盐值，用于派生实际的会话加密密钥、
+/// 认证密钥和会话盐值。
+///
+/// # 安全说明
+///
+/// `Debug` 实现会隐藏密钥内容（显示为 `[REDACTED]`），防止日志泄露。
+///
+/// # 示例
+///
+/// ```rust
+/// use network::crypto::CryptoKeys;
+///
+/// // 随机生成新密钥
+/// let keys = CryptoKeys::generate();
+/// assert_ne!(keys.master_key, [0u8; 16]);
+///
+/// // 从已知字节构造（测试用）
+/// let key = [0x42u8; 16];
+/// let salt = [0x69u8; 14];
+/// let keys = CryptoKeys::from_bytes(&key, &salt);
+/// ```
 #[derive(Clone)]
 pub struct CryptoKeys {
     /// 主加密密钥（16 字节）
@@ -76,7 +122,25 @@ impl std::fmt::Debug for CryptoKeys {
 }
 
 impl CryptoKeys {
-    /// 从随机源生成新的密钥材料
+    /// 从密码学安全随机源生成新的密钥材料
+    ///
+    /// 使用操作系统提供的密码学安全随机数生成器（CSPRNG）填充
+    /// 主密钥和主盐值。
+    ///
+    /// # Returns
+    ///
+    /// 包含随机主密钥和主盐值的 `CryptoKeys` 实例。
+    ///
+    /// # 示例
+    ///
+    /// ```rust
+    /// use network::crypto::CryptoKeys;
+    ///
+    /// let keys = CryptoKeys::generate();
+    /// // 每次生成的密钥都不同
+    /// let keys2 = CryptoKeys::generate();
+    /// assert_ne!(keys.master_key, keys2.master_key);
+    /// ```
     pub fn generate() -> Self {
         use rand::RngCore;
         let mut rng = rand::thread_rng();
@@ -90,7 +154,30 @@ impl CryptoKeys {
         }
     }
 
-    /// 从原始字节构造（用于测试和已知密钥）
+    /// 从原始字节构造密钥材料
+    ///
+    /// 用于测试场景或已知密钥的导入。
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - 主加密密钥（16 字节）
+    /// * `salt` - 主盐值（14 字节）
+    ///
+    /// # Returns
+    ///
+    /// 包含指定密钥材料的 `CryptoKeys` 实例。
+    ///
+    /// # 示例
+    ///
+    /// ```rust
+    /// use network::crypto::CryptoKeys;
+    ///
+    /// let key = [0x01u8; 16];
+    /// let salt = [0x02u8; 14];
+    /// let keys = CryptoKeys::from_bytes(&key, &salt);
+    /// assert_eq!(keys.master_key, key);
+    /// assert_eq!(keys.master_salt, salt);
+    /// ```
     pub fn from_bytes(key: &[u8; SRTP_MASTER_KEY_LEN], salt: &[u8; SRTP_MASTER_SALT_LEN]) -> Self {
         Self {
             master_key: *key,
@@ -153,13 +240,39 @@ fn srtp_kdf<const N: usize>(
     Ok(result)
 }
 
-/// SRTP 上下文
+/// SRTP 加密上下文
 ///
-/// 管理 SRTP 加密和解密状态，包括：
-/// - 会话密钥
-/// - 包索引跟踪
-/// - 认证标签生成和验证
-/// - 密钥轮换
+/// 管理 SRTP 加密和解密状态，包括会话密钥、包索引跟踪、认证标签生成与验证、
+/// 以及自动密钥轮换。
+///
+/// 加密算法：AES-128-CTR（Counter Mode）
+/// 认证算法：HMAC-SHA1-80（截断为 10 字节）
+///
+/// # 线程安全
+///
+/// `SrtpContext` 不是线程安全的。在多线程场景下，应使用 `Mutex<SrtpContext>` 包装。
+///
+/// # 示例
+///
+/// ```rust
+/// use network::crypto::{CryptoKeys, SrtpContext};
+///
+/// let keys = CryptoKeys::generate();
+/// let ssrc = 0x12345678;
+/// let mut ctx = SrtpContext::new(keys, ssrc).unwrap();
+///
+/// // 构造 RTP 数据包（12 字节头 + 载荷）
+/// let mut rtp = vec![0x80u8, 0x60, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+///                    0x12, 0x34, 0x56, 0x78];
+/// rtp.extend_from_slice(b"audio payload");
+///
+/// // 加密
+/// let encrypted = ctx.protect(&rtp).unwrap();
+/// assert_eq!(encrypted.len(), rtp.len() + 10); // + 认证标签
+///
+/// // 解密（需要相同密钥的另一个上下文）
+/// let keys2 = CryptoKeys::generate(); // 实际应使用相同密钥
+/// ```
 pub struct SrtpContext {
     /// 会话加密密钥
     cipher_key: [u8; AES_128_KEY_LEN],
@@ -185,10 +298,33 @@ impl std::fmt::Debug for SrtpContext {
 }
 
 impl SrtpContext {
-    /// 创建新的 SRTP 上下文
+    /// 创建新的 SRTP 加密上下文
     ///
-    /// - `keys`: 从 DTLS 握手派生的密钥材料
-    /// - `ssrc`: RTP 同步源标识符
+    /// 从主密钥材料派生出会话加密密钥、认证密钥和会话盐值。
+    ///
+    /// # Arguments
+    ///
+    /// * `keys` - 从 DTLS 握手派生的主密钥材料
+    /// * `ssrc` - RTP 同步源标识符（Synchronization Source identifier）
+    ///
+    /// # Returns
+    ///
+    /// 初始化完成的 `SrtpContext` 实例，包索引从 0 开始。
+    ///
+    /// # Errors
+    ///
+    /// 如果密钥派生失败，返回 [`NetworkError::CryptoError`]。
+    ///
+    /// # 示例
+    ///
+    /// ```rust
+    /// use network::crypto::{CryptoKeys, SrtpContext};
+    ///
+    /// let keys = CryptoKeys::generate();
+    /// let ctx = SrtpContext::new(keys, 0x12345678).unwrap();
+    /// assert_eq!(ctx.ssrc(), 0x12345678);
+    /// assert_eq!(ctx.packet_index(), 0);
+    /// ```
     pub fn new(keys: CryptoKeys, ssrc: u32) -> Result<Self> {
         let cipher_key = keys.derive_cipher_key()?;
         let auth_key = keys.derive_auth_key()?;
@@ -204,16 +340,40 @@ impl SrtpContext {
         })
     }
 
-    /// 加密 RTP 数据包
+    /// 加密 RTP 数据包（SRTP protect）
     ///
-    /// 输入：RTP 头（至少 12 字节）+ 明文载荷
-    /// 输出：RTP 头 + 密文载荷 + 认证标签（10 字节）
+    /// 对 RTP 数据包执行加密和认证：
+    /// 1. 使用 AES-128-CTR 加密载荷部分（保留 RTP 头明文）
+    /// 2. 计算 HMAC-SHA1-80 认证标签
+    /// 3. 在数据包末尾附加 10 字节认证标签
     ///
-    /// # 参数
-    /// - `rtp_packet`: 包含 RTP 头和载荷的完整 RTP 数据包
+    /// # Arguments
     ///
-    /// # 返回
-    /// 加密后的数据包，末尾附加 10 字节认证标签
+    /// * `rtp_packet` - 包含 RTP 头（至少 12 字节）和明文载荷的完整 RTP 数据包
+    ///
+    /// # Returns
+    ///
+    /// 加密后的 SRTP 数据包：`RTP 头 + 密文载荷 + 认证标签（10 字节）`
+    ///
+    /// # Errors
+    ///
+    /// - [`NetworkError::CryptoError`] — RTP 数据包长度不足 12 字节
+    /// - [`NetworkError::CryptoError`] — RTP 头长度解析错误
+    ///
+    /// # 示例
+    ///
+    /// ```rust
+    /// use network::crypto::{CryptoKeys, SrtpContext};
+    ///
+    /// let keys = CryptoKeys::generate();
+    /// let mut ctx = SrtpContext::new(keys, 0x12345678).unwrap();
+    ///
+    /// // 构造最小 RTP 数据包（12 字节头 + 载荷）
+    /// let rtp = vec![0x80u8, 0x60, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+    ///                0x12, 0x34, 0x56, 0x78, 0xAA, 0xBB, 0xCC];
+    /// let encrypted = ctx.protect(&rtp).unwrap();
+    /// assert_eq!(encrypted.len(), rtp.len() + 10);
+    /// ```
     pub fn protect(&mut self, rtp_packet: &[u8]) -> Result<Vec<u8>> {
         if rtp_packet.len() < 12 {
             return Err(NetworkError::CryptoError(
@@ -252,16 +412,42 @@ impl SrtpContext {
         Ok(output)
     }
 
-    /// 解密 SRTP 数据包
+    /// 解密 SRTP 数据包（SRTP unprotect）
     ///
-    /// 输入：RTP 头 + 密文载荷 + 认证标签（10 字节）
-    /// 输出：RTP 头 + 明文载荷
+    /// 对 SRTP 数据包执行认证验证和解密：
+    /// 1. 分离末尾 10 字节认证标签
+    /// 2. 验证 HMAC-SHA1-80 认证标签（常量时间比较，防时序攻击）
+    /// 3. 使用 AES-128-CTR 解密载荷部分
     ///
-    /// # 参数
-    /// - `srtp_packet`: 包含 RTP 头、密文载荷和认证标签的 SRTP 数据包
+    /// # Arguments
     ///
-    /// # 返回
+    /// * `srtp_packet` - 包含 RTP 头、密文载荷和认证标签的 SRTP 数据包
+    ///
+    /// # Returns
+    ///
     /// 解密后的 RTP 数据包（不含认证标签）
+    ///
+    /// # Errors
+    ///
+    /// - [`NetworkError::CryptoError`] — 数据包长度不足（< 12 + 10 字节）
+    /// - [`NetworkError::CryptoError`] — 认证标签验证失败（数据被篡改或密钥不匹配）
+    ///
+    /// # 示例
+    ///
+    /// ```rust
+    /// use network::crypto::{CryptoKeys, SrtpContext};
+    ///
+    /// let keys = CryptoKeys::generate();
+    /// let ssrc = 0x12345678;
+    /// let mut encrypt_ctx = SrtpContext::new(keys.clone(), ssrc).unwrap();
+    /// let mut decrypt_ctx = SrtpContext::new(keys, ssrc).unwrap();
+    ///
+    /// let rtp = vec![0x80u8, 0x60, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+    ///                0x12, 0x34, 0x56, 0x78, 0xAA, 0xBB];
+    /// let encrypted = encrypt_ctx.protect(&rtp).unwrap();
+    /// let decrypted = decrypt_ctx.unprotect(&encrypted).unwrap();
+    /// assert_eq!(decrypted, rtp);
+    /// ```
     pub fn unprotect(&mut self, srtp_packet: &[u8]) -> Result<Vec<u8>> {
         if srtp_packet.len() < 12 + SRTP_AUTH_TAG_LEN {
             return Err(NetworkError::CryptoError("SRTP 数据包长度不足".to_string()));
@@ -300,11 +486,22 @@ impl SrtpContext {
     }
 
     /// 获取当前包索引
+    ///
+    /// 包索引在每次 `protect` 或 `unprotect` 调用后自动递增。
+    /// 用于 SRTP IV 构造和密钥轮换判断。
+    ///
+    /// # Returns
+    ///
+    /// 当前已处理的数据包总数。
     pub fn packet_index(&self) -> u64 {
         self.packet_index
     }
 
-    /// 获取 SSRC
+    /// 获取关联的 SSRC（同步源标识符）
+    ///
+    /// # Returns
+    ///
+    /// 创建时指定的 RTP SSRC 值。
     pub fn ssrc(&self) -> u32 {
         self.ssrc
     }
@@ -412,28 +609,66 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 }
 
 /// DTLS 握手状态
+///
+/// 表示 DTLS 握手流程的当前阶段。
+///
+/// # 状态转换
+///
+/// ```text
+/// Idle → WaitingClientHello → ServerHelloSent → Established
+///                                          ↘ Failed
+/// ```
+///
+/// # 示例
+///
+/// ```rust
+/// use network::crypto::DtlsState;
+///
+/// assert_eq!(DtlsState::Idle, DtlsState::Idle);
+/// assert_ne!(DtlsState::Idle, DtlsState::Established);
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DtlsState {
-    /// 未开始
+    /// 未开始，等待发起握手
     Idle,
-    /// 等待 ClientHello
+    /// 等待 ClientHello 消息
     WaitingClientHello,
-    /// 已发送 ServerHello
+    /// 已发送 ServerHello 响应
     ServerHelloSent,
-    /// 握手完成
+    /// 握手完成，会话密钥已就绪
     Established,
-    /// 握手失败
+    /// 握手失败（超时或重试耗尽）
     Failed,
 }
 
-/// DTLS 配置
+/// DTLS 握手配置
+///
+/// 控制 DTLS 握手的超时、重试和证书行为。
+///
+/// # 示例
+///
+/// ```rust
+/// use network::crypto::DtlsConfig;
+///
+/// // 使用默认配置
+/// let config = DtlsConfig::default();
+/// assert_eq!(config.handshake_timeout_ms, 5000);
+/// assert_eq!(config.max_retries, 3);
+///
+/// // 自定义配置
+/// let config = DtlsConfig {
+///     handshake_timeout_ms: 10000,
+///     max_retries: 5,
+///     ..Default::default()
+/// };
+/// ```
 #[derive(Debug, Clone)]
 pub struct DtlsConfig {
-    /// 握手超时（毫秒）
+    /// 握手超时时间（毫秒）
     pub handshake_timeout_ms: u64,
     /// 最大重试次数
     pub max_retries: u32,
-    /// 自签名证书标识
+    /// 自签名证书指纹（32 字节 SHA-256 哈希）
     pub cert_fingerprint: [u8; 32],
 }
 
@@ -449,10 +684,37 @@ impl Default for DtlsConfig {
 
 /// DTLS 会话
 ///
-/// 管理 DTLS 握手状态和会话密钥派生。
+/// 管理 DTLS 握手状态机和会话密钥派生。
 ///
-/// 注意：这是一个简化的 DTLS 实现，用于局域网音频传输场景。
-/// 生产环境应使用完整的 DTLS 1.2/1.3 实现（如 rustls）。
+/// 提供简化的 DTLS 握手流程，适用于局域网音频传输场景。
+/// 握手完成后可获取派生的 [`CryptoKeys`]，用于创建 [`SrtpContext`]。
+///
+/// > **注意**：这是一个简化的 DTLS 实现，用于局域网音频传输场景。
+/// > 生产环境应使用完整的 DTLS 1.2/1.3 实现（如 rustls）。
+///
+/// # 示例
+///
+/// ```rust
+/// use network::crypto::{DtlsSession, DtlsConfig, DtlsState};
+///
+/// // 使用默认配置创建会话
+/// let mut session = DtlsSession::with_default_config();
+/// assert_eq!(session.state(), DtlsState::Idle);
+///
+/// // 开始握手
+/// session.start_handshake().unwrap();
+/// assert_eq!(session.state(), DtlsState::WaitingClientHello);
+///
+/// // 处理握手消息（简化的模拟流程）
+/// let response = session.process_handshake(&[]).unwrap();
+/// assert!(response.is_some());
+/// assert_eq!(session.state(), DtlsState::ServerHelloSent);
+/// assert!(session.keys().is_some());
+///
+/// // 完成握手
+/// session.complete_handshake().unwrap();
+/// assert_eq!(session.state(), DtlsState::Established);
+/// ```
 pub struct DtlsSession {
     /// 配置
     config: DtlsConfig,
@@ -475,7 +737,15 @@ impl std::fmt::Debug for DtlsSession {
 }
 
 impl DtlsSession {
-    /// 创建新的 DTLS 会话
+    /// 使用指定配置创建新的 DTLS 会话
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - DTLS 握手配置
+    ///
+    /// # Returns
+    ///
+    /// 初始状态为 [`DtlsState::Idle`] 的新会话。
     pub fn new(config: DtlsConfig) -> Self {
         Self {
             config,
@@ -485,24 +755,53 @@ impl DtlsSession {
         }
     }
 
-    /// 使用默认配置创建
+    /// 使用默认配置创建 DTLS 会话
+    ///
+    /// 等效于 `DtlsSession::new(DtlsConfig::default())`。
+    ///
+    /// # Returns
+    ///
+    /// 使用默认超时（5 秒）和重试次数（3 次）的新会话。
     pub fn with_default_config() -> Self {
         Self::new(DtlsConfig::default())
     }
 
-    /// 获取当前状态
+    /// 获取当前握手状态
+    ///
+    /// # Returns
+    ///
+    /// 当前 [`DtlsState`] 枚举值。
     pub fn state(&self) -> DtlsState {
         self.state
     }
 
-    /// 获取配置
+    /// 获取 DTLS 配置的引用
+    ///
+    /// # Returns
+    ///
+    /// 当前会话使用的 [`DtlsConfig`] 配置。
     pub fn config(&self) -> &DtlsConfig {
         &self.config
     }
 
     /// 开始握手（客户端模式）
     ///
-    /// 生成密钥材料并进入握手流程。
+    /// 将状态从 [`DtlsState::Idle`] 转换为 [`DtlsState::WaitingClientHello`]，
+    /// 并重置重试计数器。
+    ///
+    /// # Errors
+    ///
+    /// 如果当前状态不是 `Idle`，返回 [`NetworkError::CryptoError`]。
+    ///
+    /// # 示例
+    ///
+    /// ```rust
+    /// use network::crypto::{DtlsSession, DtlsState};
+    ///
+    /// let mut session = DtlsSession::with_default_config();
+    /// session.start_handshake().unwrap();
+    /// assert_eq!(session.state(), DtlsState::WaitingClientHello);
+    /// ```
     pub fn start_handshake(&mut self) -> Result<()> {
         if self.state != DtlsState::Idle {
             return Err(NetworkError::CryptoError(format!(
@@ -515,15 +814,28 @@ impl DtlsSession {
         Ok(())
     }
 
-    /// 处理握手消息（模拟）
+    /// 处理握手消息（简化模拟流程）
     ///
-    /// 简化的握手流程：
-    /// 1. ClientHello → ServerHello
-    /// 2. 密钥交换（HKDF 派生）
-    /// 3. Finished → Established
+    /// 模拟 DTLS 握手消息处理：
+    /// - `WaitingClientHello` → 收到 ClientHello，生成密钥，发送 ServerHello
+    /// - `ServerHelloSent` → 收到 Finished，握手完成
+    /// - `Established` → 忽略（已建立）
     ///
-    /// 在真实实现中，这里会处理 DTLS 握手消息。
-    /// 当前实现直接完成握手并生成密钥。
+    /// > **注意**：当前实现为简化版本，直接完成握手并生成密钥。
+    /// > 真实实现应处理完整的 DTLS 握手消息。
+    ///
+    /// # Arguments
+    ///
+    /// * `_data` - 握手消息数据（当前实现忽略内容）
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(Some(Vec<u8>))` — 需要发送的响应消息（ServerHello）
+    /// - `Ok(None)` — 无需响应（握手完成或已建立）
+    ///
+    /// # Errors
+    ///
+    /// 如果当前状态不支持处理握手消息，返回 [`NetworkError::CryptoError`]。
     pub fn process_handshake(&mut self, _data: &[u8]) -> Result<Option<Vec<u8>>> {
         match self.state {
             DtlsState::WaitingClientHello => {
@@ -552,6 +864,12 @@ impl DtlsSession {
     }
 
     /// 完成握手（服务端响应后调用）
+    ///
+    /// 将状态从 [`DtlsState::ServerHelloSent`] 转换为 [`DtlsState::Established`]。
+    ///
+    /// # Errors
+    ///
+    /// 如果当前状态不是 `ServerHelloSent`，返回 [`NetworkError::CryptoError`]。
     pub fn complete_handshake(&mut self) -> Result<()> {
         if self.state != DtlsState::ServerHelloSent {
             return Err(NetworkError::CryptoError(format!(
@@ -565,7 +883,13 @@ impl DtlsSession {
 
     /// 重试握手
     ///
-    /// 返回 `true` 如果还可以重试，`false` 如果已达到最大重试次数。
+    /// 增加重试计数器并将状态重置为 [`DtlsState::WaitingClientHello`]。
+    /// 如果已达到最大重试次数，将状态设为 [`DtlsState::Failed`]。
+    ///
+    /// # Returns
+    ///
+    /// - `true` — 还可以继续重试
+    /// - `false` — 已达到最大重试次数，握手失败
     pub fn retry_handshake(&mut self) -> bool {
         if self.retry_count < self.config.max_retries {
             self.retry_count += 1;
@@ -579,12 +903,21 @@ impl DtlsSession {
 
     /// 获取派生的密钥材料
     ///
-    /// 仅在握手完成后可用。
+    /// 仅在握手到达 `ServerHelloSent` 或 `Established` 状态后可用。
+    ///
+    /// # Returns
+    ///
+    /// - `Some(&CryptoKeys)` — 握手已生成密钥
+    /// - `None` — 握手尚未到达密钥生成阶段
     pub fn keys(&self) -> Option<&CryptoKeys> {
         self.keys.as_ref()
     }
 
-    /// 获取重试次数
+    /// 获取当前重试次数
+    ///
+    /// # Returns
+    ///
+    /// 从 0 开始的握手重试计数。
     pub fn retry_count(&self) -> u32 {
         self.retry_count
     }
@@ -601,8 +934,26 @@ impl DtlsSession {
 
     /// 生成自签名证书指纹
     ///
-    /// 使用随机字节作为简化证书的指纹。
-    /// 生产环境应使用 X.509 证书。
+    /// 使用密码学安全随机数生成 32 字节的证书指纹。
+    /// 用于 DTLS 握手中的证书交换。
+    ///
+    /// > **注意**：当前实现使用随机字节作为简化证书指纹。
+    /// > 生产环境应使用 X.509 证书的 SHA-256 指纹。
+    ///
+    /// # Returns
+    ///
+    /// 32 字节的随机证书指纹。
+    ///
+    /// # 示例
+    ///
+    /// ```rust
+    /// use network::crypto::DtlsSession;
+    ///
+    /// let cert1 = DtlsSession::generate_certificate();
+    /// let cert2 = DtlsSession::generate_certificate();
+    /// // 每次生成的指纹都不同
+    /// assert_ne!(cert1, cert2);
+    /// ```
     pub fn generate_certificate() -> [u8; 32] {
         use rand::RngCore;
         let mut fingerprint = [0u8; 32];
@@ -613,7 +964,35 @@ impl DtlsSession {
 
 /// HKDF-SHA1 密钥派生
 ///
-/// 用于从 DTLS 主密钥派生 SRTP 会话密钥。
+/// 从 DTLS 握手协商的主密钥和盐值派生 SRTP 会话密钥材料。
+/// 使用 HKDF（HMAC-based Key Derivation Function, RFC 5869）。
+///
+/// # Arguments
+///
+/// * `master_secret` - DTLS 握手产生的主密钥
+/// * `salt` - DTLS 握手协商的盐值
+///
+/// # Returns
+///
+/// 派生的 [`CryptoKeys`]，包含主密钥（16 字节）和主盐值（14 字节）。
+///
+/// # Errors
+///
+/// 如果 HKDF 扩展失败，返回 [`NetworkError::CryptoError`]。
+///
+/// # 示例
+///
+/// ```rust
+/// use network::crypto::derive_session_keys;
+///
+/// let master_secret = [0x42u8; 32];
+/// let salt = [0x69u8; 16];
+/// let keys = derive_session_keys(&master_secret, &salt).unwrap();
+///
+/// // 相同输入产生相同输出
+/// let keys2 = derive_session_keys(&master_secret, &salt).unwrap();
+/// assert_eq!(keys.master_key, keys2.master_key);
+/// ```
 pub fn derive_session_keys(master_secret: &[u8], salt: &[u8]) -> Result<CryptoKeys> {
     use hkdf::Hkdf;
 
