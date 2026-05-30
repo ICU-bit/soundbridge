@@ -130,10 +130,6 @@ struct SharedPipelineStats {
     frames_decoded: AtomicU64,
     frames_dropped: AtomicU64,
     packets_sent: AtomicU64,
-    /// 发送端最近一帧的时间戳（微秒，Unix epoch）
-    last_send_time_us: AtomicU64,
-    /// 接收端最近一帧的时间戳（微秒，Unix epoch）
-    last_recv_time_us: AtomicU64,
 }
 
 impl SharedPipelineStats {
@@ -143,8 +139,6 @@ impl SharedPipelineStats {
             frames_decoded: AtomicU64::new(0),
             frames_dropped: AtomicU64::new(0),
             packets_sent: AtomicU64::new(0),
-            last_send_time_us: AtomicU64::new(0),
-            last_recv_time_us: AtomicU64::new(0),
         }
     }
 }
@@ -1003,12 +997,6 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                                     Ok(_) => {
                                         sender_stats.packets_sent.fetch_add(1, Ordering::Relaxed);
                                         sender_stats.frames_encoded.fetch_add(1, Ordering::Relaxed);
-                                        // 记录发送时间戳用于延迟测量
-                                        let now_us = std::time::SystemTime::now()
-                                            .duration_since(std::time::UNIX_EPOCH)
-                                            .unwrap_or_default()
-                                            .as_micros() as u64;
-                                        sender_stats.last_send_time_us.store(now_us, Ordering::Relaxed);
                                     }
                                     Err(e) => {
                                         tracing::warn!("Failed to send packet: {}", e);
@@ -1104,12 +1092,6 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                                             receiver_stats
                                                 .frames_decoded
                                                 .fetch_add(1, Ordering::Relaxed);
-                                            // 记录接收时间戳用于延迟测量
-                                            let now_us = std::time::SystemTime::now()
-                                                .duration_since(std::time::UNIX_EPOCH)
-                                                .unwrap_or_default()
-                                                .as_micros() as u64;
-                                            receiver_stats.last_recv_time_us.store(now_us, Ordering::Relaxed);
                                         }
                                         Err(e) => {
                                             tracing::warn!("Decode error: {}", e);
@@ -1263,14 +1245,10 @@ pub unsafe extern "C" fn sb_pipeline_stats(
         unsafe {
             *frames_captured = stats.frames_encoded.load(Ordering::Relaxed);
             *frames_played = stats.frames_decoded.load(Ordering::Relaxed);
-            // 计算实际延迟：接收时间 - 发送时间
-            let send_us = stats.last_send_time_us.load(Ordering::Relaxed);
-            let recv_us = stats.last_recv_time_us.load(Ordering::Relaxed);
-            if send_us > 0 && recv_us > 0 && recv_us > send_us {
-                *latency_ms = ((recv_us - send_us) as f32) / 1000.0;
-            } else {
-                *latency_ms = 0.0; // 尚无数据
-            }
+            // 基于缓冲区大小估算管线延迟
+            // WASAPI buffer (50ms) + ring buffer (~42ms) + cpal buffer (20ms) + codec (~5ms) + network (~5ms)
+            // 注：精确测量需要端到端时间戳同步，此处为保守估算
+            *latency_ms = 122.0;
         }
     } else {
         unsafe {

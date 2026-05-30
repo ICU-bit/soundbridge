@@ -189,9 +189,9 @@ bool WasapiRenderer::init_audio_client() {
         return false;
     }
 
-    // 低延迟模式：50ms 缓冲区（5000000 * 100ns = 50ms）
+    // 低延迟模式：50ms 缓冲区（500000 * 100ns = 50ms）
     // 共享模式下最小安全值，平衡稳定性和延迟
-    const REFERENCE_TIME buffer_duration = 5000000;
+    const REFERENCE_TIME buffer_duration = 500000;
 
     hr = audio_client_->Initialize(
         AUDCLNT_SHAREMODE_SHARED,
