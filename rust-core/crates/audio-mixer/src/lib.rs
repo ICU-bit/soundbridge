@@ -45,6 +45,7 @@ pub enum MixerError {
 pub type Result<T> = std::result::Result<T, MixerError>;
 
 /// 音频混音器
+#[derive(Clone)]
 pub struct AudioMixer {
     config: MixerConfig,
 }

@@ -183,6 +183,18 @@ internal static partial class NativeMethods
     internal static extern int sb_get_audio_mode(IntPtr engine, out int mode);
 
     // ============================================================
+    // 混音比例
+    // ============================================================
+
+    /// <summary>设置混音比例（pcVolume 和 phoneVolume 范围 0.0~1.0）</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int sb_set_mix_ratio(IntPtr engine, float pcVolume, float phoneVolume);
+
+    /// <summary>获取混音比例</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int sb_get_mix_ratio(IntPtr engine, out float pcVolume, out float phoneVolume);
+
+    // ============================================================
     // 错误码
     // ============================================================
 

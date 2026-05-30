@@ -18,6 +18,9 @@ object NativeAudioEngine {
     external fun nativeSetNoiseSuppressionEnabled(engineHandle: Long, enabled: Boolean)
     external fun nativeSetGainControlEnabled(engineHandle: Long, enabled: Boolean)
     external fun nativeSetAudioMode(engineHandle: Long, mode: Int): Int
+    external fun nativeGetAudioMode(engineHandle: Long): Int
+    external fun nativeSetMixRatio(engineHandle: Long, pcVolume: Float, phoneVolume: Float): Int
+    external fun nativeGetMixRatio(engineHandle: Long): FloatArray?
 
     // === 编解码 ===
     external fun nativeCreateEncoder(bitrate: Int, complexity: Int): Long

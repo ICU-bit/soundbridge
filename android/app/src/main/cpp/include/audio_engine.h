@@ -43,6 +43,11 @@ public:
 
     // Audio mode: 0=BALANCED, 1=HIGH_QUALITY, 2=LOW_LATENCY
     void setAudioMode(int mode);
+    int getAudioMode() const;
+
+    // Mix ratio: PC volume and phone volume (0.0~1.0)
+    void setMixRatio(float pcVolume, float phoneVolume);
+    void getMixRatio(float& pcVolume, float& phoneVolume) const;
 
     using AudioDataCallback = std::function<void(const int16_t* data, int32_t num_frames)>;
     void setAudioDataCallback(AudioDataCallback callback);
@@ -71,6 +76,8 @@ private:
     std::atomic<float> audio_level_;
 
     int audio_mode_;  // 0=BALANCED, 1=HIGH_QUALITY, 2=LOW_LATENCY
+    float mix_pc_volume_;   // PC 音量 (0.0~1.0)
+    float mix_phone_volume_; // 手机音量 (0.0~1.0)
 
     void* audio_stream_;
 };

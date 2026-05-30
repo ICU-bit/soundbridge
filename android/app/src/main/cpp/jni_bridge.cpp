@@ -120,6 +120,41 @@ Java_com_soundbridge_native_NativeAudioEngine_nativeSetAudioMode(
     return 0;
 }
 
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeGetAudioMode(
+        JNIEnv* env, jobject thiz, jlong engineHandle) {
+    auto* engine = getEngine(engineHandle);
+    if (!engine) return 0; // 默认 Balanced
+    return engine->getAudioMode();
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeSetMixRatio(
+        JNIEnv* env, jobject thiz, jlong engineHandle, jfloat pcVolume, jfloat phoneVolume) {
+    auto* engine = getEngine(engineHandle);
+    if (!engine) return -1;
+    engine->setMixRatio(pcVolume, phoneVolume);
+    return 0;
+}
+
+JNIEXPORT jfloatArray JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeGetMixRatio(
+        JNIEnv* env, jobject thiz, jlong engineHandle) {
+    auto* engine = getEngine(engineHandle);
+    if (!engine) return nullptr;
+
+    float pcVolume = 0.5f;
+    float phoneVolume = 0.5f;
+    engine->getMixRatio(pcVolume, phoneVolume);
+
+    jfloatArray result = env->NewFloatArray(2);
+    if (result) {
+        jfloat buf[2] = {pcVolume, phoneVolume};
+        env->SetFloatArrayRegion(result, 0, 2, buf);
+    }
+    return result;
+}
+
 JNIEXPORT jlong JNICALL
 Java_com_soundbridge_native_NativeAudioEngine_nativeCreateEncoder(
         JNIEnv* env, jobject thiz, jint bitrate, jint complexity) {

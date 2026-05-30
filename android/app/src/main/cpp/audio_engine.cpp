@@ -19,6 +19,8 @@ AudioEngine::AudioEngine()
     , gain_control_enabled_(true)
     , audio_level_(0.0f)
     , audio_mode_(0)
+    , mix_pc_volume_(0.5f)
+    , mix_phone_volume_(0.5f)
     , audio_stream_(nullptr) {
 }
 
@@ -123,6 +125,25 @@ void AudioEngine::setAudioMode(int mode) {
     audio_mode_ = mode;
     const char* modeNames[] = {"Balanced", "High Quality", "Low Latency"};
     LOGI("Audio mode set to: %s (%d)", modeNames[mode], mode);
+}
+
+int AudioEngine::getAudioMode() const {
+    return audio_mode_;
+}
+
+void AudioEngine::setMixRatio(float pcVolume, float phoneVolume) {
+    if (pcVolume < 0.0f || pcVolume > 1.0f || phoneVolume < 0.0f || phoneVolume > 1.0f) {
+        LOGE("Invalid mix ratio: pc=%.2f, phone=%.2f (must be 0.0~1.0)", pcVolume, phoneVolume);
+        return;
+    }
+    mix_pc_volume_ = pcVolume;
+    mix_phone_volume_ = phoneVolume;
+    LOGI("Mix ratio set: pc=%.2f, phone=%.2f", pcVolume, phoneVolume);
+}
+
+void AudioEngine::getMixRatio(float& pcVolume, float& phoneVolume) const {
+    pcVolume = mix_pc_volume_;
+    phoneVolume = mix_phone_volume_;
 }
 
 void AudioEngine::setAudioDataCallback(AudioDataCallback callback) {

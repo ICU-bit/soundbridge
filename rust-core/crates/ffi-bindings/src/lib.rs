@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use audio_capture::{CaptureConfig, CaptureDevice};
 use audio_codec::{OpusConfig, OpusDecoderCodec, OpusEncoderCodec};
+use audio_core::{AudioMode, AudioModeManager};
 use audio_mixer::AudioMixer;
 use audio_playback::{PlaybackConfig, PlaybackDevice};
 use audio_processor::AudioProcessor;
@@ -177,6 +178,13 @@ pub struct SbEngine {
     /// 音频模式
     audio_mode: SbAudioMode,
 
+    /// 音频模式管理器
+    mode_manager: AudioModeManager,
+
+    /// 混音比例（PC 音量, 手机音量）
+    mix_pc_volume: f32,
+    mix_phone_volume: f32,
+
     /// 连接状态
     connection_state: SbConnectionState,
 
@@ -220,6 +228,9 @@ pub extern "C" fn sb_engine_create() -> *mut c_void {
         processor: AudioProcessor::with_default_config().expect("Failed to create AudioProcessor"),
         pipeline_state: PipelineState::Stopped,
         audio_mode: SbAudioMode::Balanced,
+        mode_manager: AudioModeManager::new(),
+        mix_pc_volume: 0.5,
+        mix_phone_volume: 0.5,
         connection_state: SbConnectionState::Disconnected,
         state_callback: None,
         state_user_data: ptr::null_mut(),
@@ -867,8 +878,35 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
         }
     };
 
-    // 创建编解码器
-    let opus_config = OpusConfig::default(); // 48kHz, mono, 128kbps, 20ms
+    // 创建编解码器（使用当前音频模式的配置）
+    let mode_config = engine.mode_manager.current_config();
+    let sample_rate = audio_codec::SampleRate::from_u32(mode_config.sample_rate)
+        .unwrap_or(audio_codec::SampleRate::Hz48000);
+    let bitrate = match mode_config.bitrate {
+        64000 => audio_codec::Bitrate::Kbps64,
+        128000 => audio_codec::Bitrate::Kbps128,
+        256000 => audio_codec::Bitrate::Kbps256,
+        _ => audio_codec::Bitrate::Kbps128,
+    };
+    let frame_size = match mode_config.frame_size_ms {
+        10 => audio_codec::FrameSize::Ms10,
+        20 => audio_codec::FrameSize::Ms20,
+        40 => audio_codec::FrameSize::Ms40,
+        _ => audio_codec::FrameSize::Ms20,
+    };
+    let opus_config = OpusConfig::new(
+        sample_rate,
+        audio_codec::ChannelConfig::Mono,
+        bitrate,
+        frame_size,
+    );
+    tracing::info!(
+        "Creating codec with mode {:?}: sr={}, bitrate={}, frame_ms={}",
+        engine.mode_manager.current_mode(),
+        opus_config.sample_rate.value(),
+        opus_config.bitrate.bits_per_second(),
+        opus_config.frame_size.milliseconds()
+    );
     let encoder = match OpusEncoderCodec::new(opus_config.clone()) {
         Ok(e) => e,
         Err(e) => {
@@ -977,16 +1015,21 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
         }
     };
 
-    // 启动接收线程：UDP 接收 → 解码 → 播放 ring buffer
+    // 启动接收线程：UDP 接收 → 解码 → 混音 → 播放 ring buffer
     let receiver_running = running.clone();
     let receiver_stats = stats.clone();
     let receiver_playback_ring = playback_ring.clone();
+    let receiver_capture_ring = capture_ring.clone();
+    let receiver_mixer = engine.mixer.clone();
+    let pc_volume = engine.mix_pc_volume;
+    let phone_volume = engine.mix_phone_volume;
     let receiver_handle = match std::thread::Builder::new()
         .name("sb-receiver".to_string())
         .spawn(move || {
             let mut decoder = decoder;
             let protocol = Protocol::new();
             let mut recv_buf = vec![0u8; 4096];
+            let mut mix_buf = vec![0.0f32; frame_size];
 
             tracing::info!("Receiver thread started");
 
@@ -1002,9 +1045,32 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                                 if let protocol::Packet::Audio { header: _, data } = packet {
                                     match decoder.decode(&data) {
                                         Ok(audio_buffer) => {
-                                            // 将解码数据写入播放 ring buffer
-                                            let samples = audio_buffer.samples();
-                                            receiver_playback_ring.write(samples);
+                                            let remote_samples = audio_buffer.samples();
+
+                                            // 从采集 ring buffer 读取本地音频用于混音
+                                            let local_read = receiver_capture_ring.read(&mut mix_buf);
+                                            if local_read >= frame_size {
+                                                // 混音：本地采集 + 远端解码
+                                                match receiver_mixer.mix_two(
+                                                    &mix_buf[..frame_size],
+                                                    pc_volume,
+                                                    &remote_samples[..frame_size.min(remote_samples.len())],
+                                                    phone_volume,
+                                                ) {
+                                                    Ok(mixed) => {
+                                                        receiver_playback_ring.write(&mixed);
+                                                    }
+                                                    Err(e) => {
+                                                        // 混音失败，直接写入远端音频
+                                                        tracing::warn!("Mix error: {}", e);
+                                                        receiver_playback_ring.write(remote_samples);
+                                                    }
+                                                }
+                                            } else {
+                                                // 本地数据不足，直接写入远端音频
+                                                receiver_playback_ring.write(remote_samples);
+                                            }
+
                                             receiver_stats
                                                 .frames_decoded
                                                 .fetch_add(1, Ordering::Relaxed);
@@ -1627,6 +1693,9 @@ pub unsafe extern "C" fn sb_device_store_get_name_at(
 
 /// 设置音频模式
 ///
+/// 切换音频模式（均衡/高音质/超低延迟），会更新编解码器参数。
+/// 如果管线正在运行，需要重启管线才能生效。
+///
 /// # Safety
 /// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
 #[no_mangle]
@@ -1640,6 +1709,26 @@ pub unsafe extern "C" fn sb_set_audio_mode(engine: *mut c_void, mode: SbAudioMod
 
     let engine = unsafe { &mut *(engine as *mut SbEngine) };
     engine.audio_mode = mode;
+
+    // 转换 FFI 枚举到 audio-core 枚举
+    let audio_mode = match mode {
+        SbAudioMode::Balanced => AudioMode::Balanced,
+        SbAudioMode::HighQuality => AudioMode::HighQuality,
+        SbAudioMode::LowLatency => AudioMode::LowLatency,
+    };
+
+    // 通过 AudioModeManager 切换模式
+    engine.mode_manager.switch_mode(audio_mode);
+
+    let config = engine.mode_manager.current_config();
+    tracing::info!(
+        "Audio mode switched to {:?}: bitrate={}, complexity={}, frame_size_ms={}",
+        audio_mode,
+        config.bitrate,
+        config.complexity,
+        config.frame_size_ms
+    );
+
     SbError::Ok as c_int
 }
 
@@ -1660,6 +1749,66 @@ pub unsafe extern "C" fn sb_get_audio_mode(engine: *mut c_void, mode: *mut SbAud
     let engine = unsafe { &*(engine as *const SbEngine) };
     unsafe {
         *mode = engine.audio_mode;
+    }
+    SbError::Ok as c_int
+}
+
+/// 设置混音比例
+///
+/// 控制 PC（本地）和手机（远端）的音量平衡。
+/// `pc_volume` 和 `phone_volume` 范围为 0.0 到 1.0。
+/// 默认值为 0.5 / 0.5（均衡混合）。
+///
+/// # Safety
+/// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_set_mix_ratio(
+    engine: *mut c_void,
+    pc_volume: f32,
+    phone_volume: f32,
+) -> c_int {
+    clear_error();
+
+    if engine.is_null() {
+        set_error("engine is null");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    if !(0.0..=1.0).contains(&pc_volume) || !(0.0..=1.0).contains(&phone_volume) {
+        set_error("volume must be between 0.0 and 1.0");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let engine = unsafe { &mut *(engine as *mut SbEngine) };
+    engine.mix_pc_volume = pc_volume;
+    engine.mix_phone_volume = phone_volume;
+
+    tracing::info!("Mix ratio set: pc={}, phone={}", pc_volume, phone_volume);
+    SbError::Ok as c_int
+}
+
+/// 获取混音比例
+///
+/// # Safety
+/// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
+/// `pc_volume` 和 `phone_volume` 必须是有效的指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_get_mix_ratio(
+    engine: *mut c_void,
+    pc_volume: *mut f32,
+    phone_volume: *mut f32,
+) -> c_int {
+    clear_error();
+
+    if engine.is_null() || pc_volume.is_null() || phone_volume.is_null() {
+        set_error("engine or volume pointer is null");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let engine = unsafe { &*(engine as *const SbEngine) };
+    unsafe {
+        *pc_volume = engine.mix_pc_volume;
+        *phone_volume = engine.mix_phone_volume;
     }
     SbError::Ok as c_int
 }
@@ -2237,5 +2386,99 @@ mod tests {
         assert_eq!(SbAudioMode::Balanced as c_int, 0);
         assert_eq!(SbAudioMode::HighQuality as c_int, 1);
         assert_eq!(SbAudioMode::LowLatency as c_int, 2);
+    }
+
+    #[test]
+    fn test_mix_ratio_default() {
+        unsafe {
+            let engine = sb_engine_create();
+
+            let mut pc_volume = 0.0f32;
+            let mut phone_volume = 0.0f32;
+            let result = sb_get_mix_ratio(engine, &mut pc_volume, &mut phone_volume);
+            assert_eq!(result, SbError::Ok as c_int);
+            assert!((pc_volume - 0.5).abs() < 0.001);
+            assert!((phone_volume - 0.5).abs() < 0.001);
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_mix_ratio_set_and_get() {
+        unsafe {
+            let engine = sb_engine_create();
+
+            // 设置混音比例
+            let result = sb_set_mix_ratio(engine, 0.3, 0.7);
+            assert_eq!(result, SbError::Ok as c_int);
+
+            // 验证设置后的值
+            let mut pc_volume = 0.0f32;
+            let mut phone_volume = 0.0f32;
+            let result = sb_get_mix_ratio(engine, &mut pc_volume, &mut phone_volume);
+            assert_eq!(result, SbError::Ok as c_int);
+            assert!((pc_volume - 0.3).abs() < 0.001);
+            assert!((phone_volume - 0.7).abs() < 0.001);
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_mix_ratio_boundary_values() {
+        unsafe {
+            let engine = sb_engine_create();
+
+            // 测试最小值
+            let result = sb_set_mix_ratio(engine, 0.0, 0.0);
+            assert_eq!(result, SbError::Ok as c_int);
+
+            // 测试最大值
+            let result = sb_set_mix_ratio(engine, 1.0, 1.0);
+            assert_eq!(result, SbError::Ok as c_int);
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_mix_ratio_invalid_values() {
+        unsafe {
+            let engine = sb_engine_create();
+
+            // 测试超出范围的值
+            let result = sb_set_mix_ratio(engine, -0.1, 0.5);
+            assert_eq!(result, SbError::InvalidArgument as c_int);
+
+            let result = sb_set_mix_ratio(engine, 0.5, 1.1);
+            assert_eq!(result, SbError::InvalidArgument as c_int);
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_mix_ratio_null_engine() {
+        let mut pc_volume = 0.0f32;
+        let mut phone_volume = 0.0f32;
+
+        let result = unsafe { sb_set_mix_ratio(ptr::null_mut(), 0.5, 0.5) };
+        assert_eq!(result, SbError::InvalidArgument as c_int);
+
+        let result = unsafe { sb_get_mix_ratio(ptr::null_mut(), &mut pc_volume, &mut phone_volume) };
+        assert_eq!(result, SbError::InvalidArgument as c_int);
+    }
+
+    #[test]
+    fn test_mix_ratio_null_pointers() {
+        unsafe {
+            let engine = sb_engine_create();
+
+            let result = sb_get_mix_ratio(engine, ptr::null_mut(), ptr::null_mut());
+            assert_eq!(result, SbError::InvalidArgument as c_int);
+
+            sb_engine_destroy(engine);
+        }
     }
 }
