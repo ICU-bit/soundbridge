@@ -241,7 +241,6 @@ impl OpusEncoderCodec {
             *dst = (src * 32767.0).clamp(-32768.0, 32767.0) as i16;
         }
 
-        let frame_size = self.config.frame_size_samples();
         let encoded_len = self
             .encoder
             .encode(&i16_buf[..expected], output)

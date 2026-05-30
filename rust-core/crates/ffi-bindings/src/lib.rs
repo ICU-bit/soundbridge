@@ -2555,13 +2555,13 @@ mod tests {
         assert_eq!(stats.loss_rate_bits.load(Ordering::Relaxed), 0);
 
         // 模拟接收 10 个包，丢失 2 个
-        stats.packets_sent.store(10, Ordering::Relaxed);
+        stats.frames_decoded.store(10, Ordering::Relaxed);
         stats.packets_lost.store(2, Ordering::Relaxed);
 
-        // 计算丢包率
-        let total_sent = stats.packets_sent.load(Ordering::Relaxed);
+        // 计算丢包率（使用 frames_decoded 而非 packets_sent）
+        let total_received = stats.frames_decoded.load(Ordering::Relaxed);
         let total_lost = stats.packets_lost.load(Ordering::Relaxed);
-        let loss_rate = total_lost as f32 / (total_sent + total_lost) as f32;
+        let loss_rate = total_lost as f32 / (total_received + total_lost) as f32;
 
         // 验证丢包率计算
         assert!((loss_rate - 0.16666667).abs() < 0.001);
