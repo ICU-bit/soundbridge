@@ -9,9 +9,9 @@ use audio_mixer::AudioMixer;
 use audio_playback::{PlaybackConfig, PlaybackDevice};
 use audio_processor::AudioProcessor;
 use network::{
-    AdbConfig, AdbState, BluetoothConfig, BluetoothState, Capability, ConnectionType, CryptoKeys,
-    HotspotConfig, HotspotState, RawJitterBuffer, Session, SessionConfig, SrtpContext,
-    generate_session_id,
+    generate_session_id, AdbConfig, AdbState, BluetoothConfig, BluetoothState, Capability,
+    ConnectionType, CryptoKeys, HotspotConfig, HotspotState, RawJitterBuffer, Session,
+    SessionConfig, SrtpContext,
 };
 use protocol::{ControlMessage, ControlMessageType, Packet, PacketHeader, Protocol};
 use std::borrow::Cow;
@@ -1033,8 +1033,11 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
         let session_config = SessionConfig::default();
         let capability = Capability::default();
 
-        let mut client =
-            Session::new_client(session_id.clone(), capability.clone(), session_config.clone());
+        let mut client = Session::new_client(
+            session_id.clone(),
+            capability.clone(),
+            session_config.clone(),
+        );
         let mut server = Session::new_server(String::new(), capability, session_config);
 
         let client_hello = match client.initiate_handshake() {
@@ -1364,27 +1367,26 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                 match recv_socket.recv_from(&mut recv_buf) {
                     Ok((len, _from)) => {
                         // 如果启用加密，先解密
-                        let packet_data: Cow<'_, [u8]> =
-                            if let Some(ref mut srtp) = receiver_srtp {
-                                match srtp.unprotect(&recv_buf[..len]) {
-                                    Ok(decrypted) => {
-                                        if decrypted.len() <= 12 {
-                                            tracing::warn!(
-                                                "SRTP decrypted packet too short: {} bytes",
-                                                decrypted.len()
-                                            );
-                                            continue;
-                                        }
-                                        Cow::Owned(decrypted[12..].to_vec())
-                                    }
-                                    Err(e) => {
-                                        tracing::warn!("SRTP unprotect error: {}", e);
+                        let packet_data: Cow<'_, [u8]> = if let Some(ref mut srtp) = receiver_srtp {
+                            match srtp.unprotect(&recv_buf[..len]) {
+                                Ok(decrypted) => {
+                                    if decrypted.len() <= 12 {
+                                        tracing::warn!(
+                                            "SRTP decrypted packet too short: {} bytes",
+                                            decrypted.len()
+                                        );
                                         continue;
                                     }
+                                    Cow::Owned(decrypted[12..].to_vec())
                                 }
-                            } else {
-                                Cow::Borrowed(&recv_buf[..len])
-                            };
+                                Err(e) => {
+                                    tracing::warn!("SRTP unprotect error: {}", e);
+                                    continue;
+                                }
+                            }
+                        } else {
+                            Cow::Borrowed(&recv_buf[..len])
+                        };
 
                         match protocol.deserialize_header(&packet_data) {
                             Ok((header, data, is_audio)) => {

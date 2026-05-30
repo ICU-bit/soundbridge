@@ -77,35 +77,21 @@ pub enum ControlMessage {
         device_name: String,
     },
     /// 接受会话
-    SessionAccept {
-        session_id: String,
-    },
+    SessionAccept { session_id: String },
     /// 拒绝会话
-    SessionReject {
-        session_id: String,
-        reason: String,
-    },
+    SessionReject { session_id: String, reason: String },
     /// 关闭会话
-    SessionClose {
-        session_id: String,
-    },
+    SessionClose { session_id: String },
 
     // ── 音频参数协商 ──────────────────────────────────────────
     /// 请求协商音频配置
-    AudioConfigRequest {
-        config: AudioConfig,
-    },
+    AudioConfigRequest { config: AudioConfig },
     /// 响应音频配置协商
-    AudioConfigResponse {
-        accepted: bool,
-        config: AudioConfig,
-    },
+    AudioConfigResponse { accepted: bool, config: AudioConfig },
 
     // ── 网络统计上报 ──────────────────────────────────────────
     /// 上报网络统计
-    NetworkStatsReport {
-        stats: NetworkStatsData,
-    },
+    NetworkStatsReport { stats: NetworkStatsData },
 
     // ── 设备发现 ──────────────────────────────────────────────
     /// 广播设备上线
@@ -117,9 +103,7 @@ pub enum ControlMessage {
     /// 查询在线设备
     DeviceQuery,
     /// 响应设备列表
-    DeviceResponse {
-        devices: Vec<DeviceInfo>,
-    },
+    DeviceResponse { devices: Vec<DeviceInfo> },
 }
 
 // ──────────────────────────────── TLS 辅助 ────────────────────────────────
@@ -137,10 +121,7 @@ fn generate_self_signed_cert() -> Result<(rustls::Certificate, rustls::PrivateKe
 
     let key_der = cert.serialize_private_key_der();
 
-    Ok((
-        rustls::Certificate(cert_der),
-        rustls::PrivateKey(key_der),
-    ))
+    Ok((rustls::Certificate(cert_der), rustls::PrivateKey(key_der)))
 }
 
 /// 创建 QUIC 服务器配置
@@ -426,9 +407,7 @@ mod tests {
         let server_addr = server.local_addr().expect("获取地址失败");
         let cert = server.certificate();
 
-        let client = QuicClient::new(cert)
-            .await
-            .expect("客户端创建失败");
+        let client = QuicClient::new(cert).await.expect("客户端创建失败");
         let conn = client
             .connect(server_addr, "localhost")
             .await
@@ -537,10 +516,7 @@ mod tests {
                 .expect("未收到连接")
         });
 
-        let _client_conn = client
-            .connect(addr, "localhost")
-            .await
-            .expect("连接失败");
+        let _client_conn = client.connect(addr, "localhost").await.expect("连接失败");
 
         let server_conn = accept_handle.await.expect("任务失败");
         assert_eq!(
@@ -589,9 +565,7 @@ mod tests {
 
         // 客户端发送请求
         let send_msg = msg.clone();
-        let client_handle = tokio::spawn(async move {
-            client_conn.send_and_recv(&send_msg).await
-        });
+        let client_handle = tokio::spawn(async move { client_conn.send_and_recv(&send_msg).await });
 
         // 服务器接受并回复
         let server_conn = server.accept().await.expect("接受连接失败");
@@ -630,9 +604,7 @@ mod tests {
             config: config.clone(),
         };
 
-        let client_handle = tokio::spawn(async move {
-            client_conn.send_and_recv(&msg).await
-        });
+        let client_handle = tokio::spawn(async move { client_conn.send_and_recv(&msg).await });
 
         let server_conn = server.accept().await.expect("接受连接失败");
         server_conn
@@ -674,9 +646,7 @@ mod tests {
         };
         let msg = ControlMessage::NetworkStatsReport { stats };
 
-        let client_handle = tokio::spawn(async move {
-            client_conn.send_and_recv(&msg).await
-        });
+        let client_handle = tokio::spawn(async move { client_conn.send_and_recv(&msg).await });
 
         let server_conn = server.accept().await.expect("接受连接失败");
         server_conn
@@ -710,9 +680,7 @@ mod tests {
 
         let msg = ControlMessage::DeviceQuery;
 
-        let client_handle = tokio::spawn(async move {
-            client_conn.send_and_recv(&msg).await
-        });
+        let client_handle = tokio::spawn(async move { client_conn.send_and_recv(&msg).await });
 
         let server_conn = server.accept().await.expect("接受连接失败");
         server_conn
@@ -761,9 +729,7 @@ mod tests {
 
         // 客户端发送单向消息
         let send_msg = msg.clone();
-        let client_handle = tokio::spawn(async move {
-            client_conn.send_uni(&send_msg).await
-        });
+        let client_handle = tokio::spawn(async move { client_conn.send_uni(&send_msg).await });
 
         // 服务器接收单向消息
         let server_conn = server.accept().await.expect("接受连接失败");
@@ -789,9 +755,7 @@ mod tests {
         for i in 0..3 {
             let cert_clone = cert.clone();
             let handle = tokio::spawn(async move {
-                let client = QuicClient::new(cert_clone)
-                    .await
-                    .expect("客户端创建失败");
+                let client = QuicClient::new(cert_clone).await.expect("客户端创建失败");
                 let conn = client
                     .connect(server_addr, "localhost")
                     .await
@@ -882,9 +846,7 @@ mod tests {
             device_name: "Unknown".into(),
         };
 
-        let client_handle = tokio::spawn(async move {
-            client_conn.send_and_recv(&msg).await
-        });
+        let client_handle = tokio::spawn(async move { client_conn.send_and_recv(&msg).await });
 
         let server_conn = server.accept().await.expect("接受连接失败");
         server_conn
@@ -918,17 +880,12 @@ mod tests {
             .map(|i| DeviceInfo {
                 device_id: format!("dev-{i}"),
                 device_name: format!("Device {i}"),
-                address: SocketAddr::new(
-                    "192.168.1.100".parse().unwrap(),
-                    5000 + i as u16,
-                ),
+                address: SocketAddr::new("192.168.1.100".parse().unwrap(), 5000 + i as u16),
             })
             .collect();
         let msg = ControlMessage::DeviceResponse { devices };
 
-        let client_handle = tokio::spawn(async move {
-            client_conn.send_and_recv(&msg).await
-        });
+        let client_handle = tokio::spawn(async move { client_conn.send_and_recv(&msg).await });
 
         let server_conn = server.accept().await.expect("接受连接失败");
         server_conn
@@ -965,9 +922,7 @@ mod tests {
             session_id: "s1".into(),
             device_name: "PC".into(),
         };
-        let client_handle = tokio::spawn(async move {
-            client_conn.send_and_recv(&msg).await
-        });
+        let client_handle = tokio::spawn(async move { client_conn.send_and_recv(&msg).await });
 
         let server_conn = server.accept().await.expect("接受连接失败");
         server_conn

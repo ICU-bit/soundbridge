@@ -58,14 +58,14 @@ impl Default for PlcConfig {
     fn default() -> Self {
         Self {
             sample_rate: 48000,
-            frame_size: 960,            // 20ms @ 48kHz
-            history_frames: 4,          // 保留最近 4 帧
-            decay_factor: 0.95,         // 每帧衰减 5%
-            fade_in_samples: 120,       // 2.5ms 淡入 @ 48kHz
-            comfort_noise_level: 0.005, // -46 dB 舒适噪声
+            frame_size: 960,             // 20ms @ 48kHz
+            history_frames: 4,           // 保留最近 4 帧
+            decay_factor: 0.95,          // 每帧衰减 5%
+            fade_in_samples: 120,        // 2.5ms 淡入 @ 48kHz
+            comfort_noise_level: 0.005,  // -46 dB 舒适噪声
             silence_threshold_frames: 6, // >5 帧进入静音
-            min_pitch_period: 120,      // 2.5ms（~400Hz）
-            max_pitch_period: 960,      // 20ms（~50Hz）
+            min_pitch_period: 120,       // 2.5ms（~400Hz）
+            max_pitch_period: 960,       // 20ms（~50Hz）
         }
     }
 }
@@ -512,7 +512,11 @@ mod tests {
         // 隐藏帧应该有内容（非静音）
         let rms: f32 =
             (concealed.iter().map(|&s| s * s).sum::<f32>() / concealed.len() as f32).sqrt();
-        assert!(rms > 0.1, "Single frame concealment should have content, RMS: {}", rms);
+        assert!(
+            rms > 0.1,
+            "Single frame concealment should have content, RMS: {}",
+            rms
+        );
 
         // 隐藏帧不应该有爆音（样本值不应超过输入幅度太多）
         let max_sample = concealed.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
@@ -569,7 +573,10 @@ mod tests {
         // 第一帧丢失
         plc.conceal().unwrap();
         let decay1 = plc.current_decay();
-        assert!((decay1 - 0.95).abs() < 0.001, "First loss decay should be 0.95");
+        assert!(
+            (decay1 - 0.95).abs() < 0.001,
+            "First loss decay should be 0.95"
+        );
 
         // 第二帧丢失
         plc.conceal().unwrap();
@@ -606,11 +613,7 @@ mod tests {
         // 静音帧应该接近零（只有舒适噪声）
         let rms: f32 =
             (concealed.iter().map(|&s| s * s).sum::<f32>() / concealed.len() as f32).sqrt();
-        assert!(
-            rms < 0.05,
-            "Silent frame should be near zero, RMS: {}",
-            rms
-        );
+        assert!(rms < 0.05, "Silent frame should be near zero, RMS: {}", rms);
     }
 
     #[test]
@@ -633,7 +636,11 @@ mod tests {
         // 有舒适噪声时，输出不应完全为零
         let rms: f32 =
             (concealed.iter().map(|&s| s * s).sum::<f32>() / concealed.len() as f32).sqrt();
-        assert!(rms > 0.0, "Comfort noise should produce some signal, RMS: {}", rms);
+        assert!(
+            rms > 0.0,
+            "Comfort noise should produce some signal, RMS: {}",
+            rms
+        );
     }
 
     // ── 恢复测试 ──────────────────────────────────────────────
@@ -732,7 +739,11 @@ mod tests {
         // 即使历史是静音，舒适噪声也应该产生一些信号
         let rms: f32 =
             (concealed.iter().map(|&s| s * s).sum::<f32>() / concealed.len() as f32).sqrt();
-        assert!(rms > 0.0, "Comfort noise should produce some signal, RMS: {}", rms);
+        assert!(
+            rms > 0.0,
+            "Comfort noise should produce some signal, RMS: {}",
+            rms
+        );
     }
 
     #[test]

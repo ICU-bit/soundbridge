@@ -51,10 +51,10 @@ pub struct NetMonitorConfig {
 impl Default for NetMonitorConfig {
     fn default() -> Self {
         Self {
-            ewma_alpha: 0.125,           // TCP 标准 RTT 平滑因子
-            window_duration_secs: 10,    // 10 秒滑动窗口
-            burst_loss_threshold: 3,     // 连续 3 包视为突发丢包
-            min_samples: 3,              // 至少 3 个采样才报告
+            ewma_alpha: 0.125,            // TCP 标准 RTT 平滑因子
+            window_duration_secs: 10,     // 10 秒滑动窗口
+            burst_loss_threshold: 3,      // 连续 3 包视为突发丢包
+            min_samples: 3,               // 至少 3 个采样才报告
             bandwidth_min_interval_ms: 5, // 最小 5ms 间隔
         }
     }
@@ -969,7 +969,10 @@ mod tests {
             monitor.report_packet_received(i);
         }
 
-        assert_eq!(monitor.bitrate_recommendation(), BitrateRecommendation::Increase);
+        assert_eq!(
+            monitor.bitrate_recommendation(),
+            BitrateRecommendation::Increase
+        );
     }
 
     #[test]
@@ -1096,10 +1099,7 @@ mod tests {
     #[test]
     fn test_bitrate_recommendation_eq() {
         assert_eq!(BitrateRecommendation::Hold, BitrateRecommendation::Hold);
-        assert_ne!(
-            BitrateRecommendation::Hold,
-            BitrateRecommendation::Increase
-        );
+        assert_ne!(BitrateRecommendation::Hold, BitrateRecommendation::Increase);
     }
 
     #[test]

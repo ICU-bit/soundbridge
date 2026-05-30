@@ -9,9 +9,9 @@
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use network::{
-    AudioConfig, Capability, ControlMessage, CryptoKeys, EcdhPublicKey, HandshakeMessage,
-    JitterBuffer, JitterBufferConfig, NetMonitor, NetworkStatsData, RawJitterBuffer, Session,
-    SessionConfig, SrtpContext, SessionState, generate_session_id,
+    generate_session_id, AudioConfig, Capability, ControlMessage, CryptoKeys, EcdhPublicKey,
+    HandshakeMessage, JitterBuffer, JitterBufferConfig, NetMonitor, NetworkStatsData,
+    RawJitterBuffer, Session, SessionConfig, SessionState, SrtpContext,
 };
 use rand::Rng;
 
@@ -73,17 +73,13 @@ fn bench_srtp_unprotect(c: &mut Criterion) {
         let mut encrypt_ctx = SrtpContext::new(keys.clone(), 0x12345678).unwrap();
         let encrypted = encrypt_ctx.protect(&rtp).unwrap();
 
-        group.bench_with_input(
-            BenchmarkId::from_parameter(size),
-            &encrypted,
-            |b, enc| {
-                let mut ctx = SrtpContext::new(keys.clone(), 0x12345678).unwrap();
-                b.iter(|| {
-                    let result = ctx.unprotect(black_box(enc)).unwrap();
-                    black_box(result);
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::from_parameter(size), &encrypted, |b, enc| {
+            let mut ctx = SrtpContext::new(keys.clone(), 0x12345678).unwrap();
+            b.iter(|| {
+                let result = ctx.unprotect(black_box(enc)).unwrap();
+                black_box(result);
+            });
+        });
     }
 
     group.finish();
@@ -119,13 +115,9 @@ fn bench_session_full_handshake(c: &mut Criterion) {
             let session_id = generate_session_id();
             let config = SessionConfig::default();
 
-            let mut client = Session::new_client(
-                session_id.clone(),
-                Capability::default(),
-                config.clone(),
-            );
-            let mut server =
-                Session::new_server(String::new(), Capability::default(), config);
+            let mut client =
+                Session::new_client(session_id.clone(), Capability::default(), config.clone());
+            let mut server = Session::new_server(String::new(), Capability::default(), config);
 
             // 1. Client → ClientHello
             let client_hello = client.initiate_handshake().unwrap();
@@ -181,11 +173,7 @@ fn bench_session_heartbeat(c: &mut Criterion) {
     let session_id = generate_session_id();
     let config = SessionConfig::default();
 
-    let mut client = Session::new_client(
-        session_id.clone(),
-        Capability::default(),
-        config.clone(),
-    );
+    let mut client = Session::new_client(session_id.clone(), Capability::default(), config.clone());
     let mut server = Session::new_server(String::new(), Capability::default(), config);
 
     // Complete handshake first
@@ -234,10 +222,7 @@ fn bench_control_message_serialize(c: &mut Criterion) {
                 },
             },
         ),
-        (
-            "device_query",
-            ControlMessage::DeviceQuery,
-        ),
+        ("device_query", ControlMessage::DeviceQuery),
     ];
 
     for (name, msg) in &messages {
@@ -280,18 +265,14 @@ fn bench_control_message_deserialize(c: &mut Criterion) {
                 },
             },
         ),
-        (
-            "device_query",
-            ControlMessage::DeviceQuery,
-        ),
+        ("device_query", ControlMessage::DeviceQuery),
     ];
 
     for (name, msg) in &messages {
         let data = bincode::serialize(msg).unwrap();
         group.bench_function(*name, |b| {
             b.iter(|| {
-                let decoded: ControlMessage =
-                    bincode::deserialize(black_box(&data)).unwrap();
+                let decoded: ControlMessage = bincode::deserialize(black_box(&data)).unwrap();
                 black_box(decoded);
             });
         });
@@ -342,33 +323,29 @@ fn bench_jitter_buffer_pop(c: &mut Criterion) {
     let mut group = c.benchmark_group("jitter_buffer_pop");
 
     for &count in &[100usize, 1000] {
-        group.bench_with_input(
-            BenchmarkId::from_parameter(count),
-            &count,
-            |b, &count| {
-                b.iter_batched(
-                    || {
-                        // Setup: fill buffer
-                        let config = JitterBufferConfig {
-                            max_packets: count + 10,
-                            ..Default::default()
-                        };
-                        let mut jb = JitterBuffer::new(config);
-                        for i in 0..count as u32 {
-                            jb.push(i, random_pcm_frame(960));
-                        }
-                        jb
-                    },
-                    |mut jb| {
-                        // Benchmark: pop all
-                        while jb.pop().is_some() {
-                            // drain
-                        }
-                    },
-                    criterion::BatchSize::SmallInput,
-                );
-            },
-        );
+        group.bench_with_input(BenchmarkId::from_parameter(count), &count, |b, &count| {
+            b.iter_batched(
+                || {
+                    // Setup: fill buffer
+                    let config = JitterBufferConfig {
+                        max_packets: count + 10,
+                        ..Default::default()
+                    };
+                    let mut jb = JitterBuffer::new(config);
+                    for i in 0..count as u32 {
+                        jb.push(i, random_pcm_frame(960));
+                    }
+                    jb
+                },
+                |mut jb| {
+                    // Benchmark: pop all
+                    while jb.pop().is_some() {
+                        // drain
+                    }
+                },
+                criterion::BatchSize::SmallInput,
+            );
+        });
     }
 
     group.finish();

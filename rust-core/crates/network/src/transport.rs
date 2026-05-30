@@ -123,9 +123,9 @@ impl UdpTransport {
     pub async fn send_to(&self, data: &[u8], addr: SocketAddr) -> Result<usize> {
         // 如果启用加密，先保护（加密）数据
         let send_data = if let Some(ref srtp_mutex) = self.srtp {
-            let mut ctx = srtp_mutex.lock().map_err(|e| {
-                NetworkError::CryptoError(format!("SRTP 锁获取失败: {}", e))
-            })?;
+            let mut ctx = srtp_mutex
+                .lock()
+                .map_err(|e| NetworkError::CryptoError(format!("SRTP 锁获取失败: {}", e)))?;
             ctx.protect(data)?
         } else {
             data.to_vec()
@@ -156,9 +156,9 @@ impl UdpTransport {
 
         // 如果启用加密，解密接收到的数据
         if let Some(ref srtp_mutex) = self.srtp {
-            let mut ctx = srtp_mutex.lock().map_err(|e| {
-                NetworkError::CryptoError(format!("SRTP 锁获取失败: {}", e))
-            })?;
+            let mut ctx = srtp_mutex
+                .lock()
+                .map_err(|e| NetworkError::CryptoError(format!("SRTP 锁获取失败: {}", e)))?;
             let decrypted = ctx.unprotect(&buf[..received])?;
             let decrypted_len = decrypted.len();
             buf[..decrypted_len].copy_from_slice(&decrypted);
@@ -338,7 +338,9 @@ mod tests {
         let mut transport = transport;
         let master_key = vec![0xABu8; SRTP_MASTER_KEY_LEN];
         let master_salt = vec![0xCDu8; SRTP_MASTER_SALT_LEN];
-        transport.enable_encryption(master_key, master_salt).unwrap();
+        transport
+            .enable_encryption(master_key, master_salt)
+            .unwrap();
         assert!(transport.is_encrypted());
     }
 
@@ -384,9 +386,7 @@ mod tests {
         sender
             .enable_encryption(master_key.clone(), master_salt.clone())
             .unwrap();
-        receiver
-            .enable_encryption(master_key, master_salt)
-            .unwrap();
+        receiver.enable_encryption(master_key, master_salt).unwrap();
 
         let receiver_addr = receiver.local_addr().unwrap();
 
@@ -463,9 +463,7 @@ mod tests {
         sender
             .enable_encryption(master_key.clone(), master_salt.clone())
             .unwrap();
-        receiver
-            .enable_encryption(master_key, master_salt)
-            .unwrap();
+        receiver.enable_encryption(master_key, master_salt).unwrap();
 
         let receiver_addr = receiver.local_addr().unwrap();
 
@@ -491,10 +489,16 @@ mod tests {
 
         // 使用不同密钥
         sender
-            .enable_encryption(vec![0x01u8; SRTP_MASTER_KEY_LEN], vec![0x02u8; SRTP_MASTER_SALT_LEN])
+            .enable_encryption(
+                vec![0x01u8; SRTP_MASTER_KEY_LEN],
+                vec![0x02u8; SRTP_MASTER_SALT_LEN],
+            )
             .unwrap();
         receiver
-            .enable_encryption(vec![0xFFu8; SRTP_MASTER_KEY_LEN], vec![0xFEu8; SRTP_MASTER_SALT_LEN])
+            .enable_encryption(
+                vec![0xFFu8; SRTP_MASTER_KEY_LEN],
+                vec![0xFEu8; SRTP_MASTER_SALT_LEN],
+            )
             .unwrap();
 
         let receiver_addr = receiver.local_addr().unwrap();

@@ -541,12 +541,7 @@ impl Session {
                 capabilities,
                 negotiated,
                 server_public_key,
-            } => (
-                session_id,
-                capabilities,
-                negotiated,
-                server_public_key,
-            ),
+            } => (session_id, capabilities, negotiated, server_public_key),
             _ => {
                 return Err(NetworkError::ConnectionFailed(
                     "Expected ServerHello message".into(),
@@ -828,8 +823,7 @@ impl Session {
         if self.state != SessionState::Established {
             return false;
         }
-        self.last_activity.elapsed()
-            >= Duration::from_millis(self.config.heartbeat_interval_ms)
+        self.last_activity.elapsed() >= Duration::from_millis(self.config.heartbeat_interval_ms)
     }
 
     /// 检查心跳是否超时
@@ -873,10 +867,7 @@ impl Session {
     /// 处理断开请求
     pub fn handle_disconnect(&mut self, msg: &HandshakeMessage) -> Result<()> {
         let (session_id, reason) = match msg {
-            HandshakeMessage::Disconnect {
-                session_id,
-                reason,
-            } => (session_id, reason),
+            HandshakeMessage::Disconnect { session_id, reason } => (session_id, reason),
             _ => {
                 return Err(NetworkError::ConnectionFailed(
                     "Expected Disconnect message".into(),
@@ -918,8 +909,7 @@ impl Session {
 
     /// 从字节反序列化握手消息
     pub fn deserialize_message(data: &[u8]) -> Result<HandshakeMessage> {
-        bincode::deserialize(data)
-            .map_err(|e| NetworkError::SerializationError(e.to_string()))
+        bincode::deserialize(data).map_err(|e| NetworkError::SerializationError(e.to_string()))
     }
 
     // ── 内部方法 ──────────────────────────────────────────────
@@ -1170,7 +1160,9 @@ mod tests {
             opus_config: OpusConfig::default(),
         };
 
-        assert!(client_no_none.validate_negotiation(&bad_encryption).is_err());
+        assert!(client_no_none
+            .validate_negotiation(&bad_encryption)
+            .is_err());
     }
 
     // ── 完整握手流程测试 ──────────────────────────────────────────────
@@ -1293,11 +1285,8 @@ mod tests {
             default_capability("c1", "Client"),
             config.clone(),
         );
-        let mut server = Session::new_server(
-            String::new(),
-            default_capability("s1", "Server"),
-            config,
-        );
+        let mut server =
+            Session::new_server(String::new(), default_capability("s1", "Server"), config);
 
         // 完成握手
         complete_handshake(&mut client, &mut server);
@@ -1355,11 +1344,8 @@ mod tests {
             default_capability("c1", "Client"),
             config.clone(),
         );
-        let mut server = Session::new_server(
-            String::new(),
-            default_capability("s1", "Server"),
-            config,
-        );
+        let mut server =
+            Session::new_server(String::new(), default_capability("s1", "Server"), config);
 
         complete_handshake(&mut client, &mut server);
 
@@ -1416,11 +1402,8 @@ mod tests {
             ..Default::default()
         };
 
-        let mut client = Session::new_client(
-            "test".into(),
-            default_capability("c1", "Client"),
-            config,
-        );
+        let mut client =
+            Session::new_client("test".into(), default_capability("c1", "Client"), config);
 
         client.initiate_handshake().unwrap();
 
@@ -1437,11 +1420,8 @@ mod tests {
             ..Default::default()
         };
 
-        let mut client = Session::new_client(
-            "test".into(),
-            default_capability("c1", "Client"),
-            config,
-        );
+        let mut client =
+            Session::new_client("test".into(), default_capability("c1", "Client"), config);
         let mut server = Session::new_server(
             String::new(),
             default_capability("s1", "Server"),
@@ -1461,11 +1441,8 @@ mod tests {
             ..Default::default()
         };
 
-        let mut client = Session::new_client(
-            "test".into(),
-            default_capability("c1", "Client"),
-            config,
-        );
+        let mut client =
+            Session::new_client("test".into(), default_capability("c1", "Client"), config);
         let mut server = Session::new_server(
             String::new(),
             default_capability("s1", "Server"),

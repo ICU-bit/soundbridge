@@ -110,7 +110,8 @@ impl CryptoKeys {
 
     /// 派生会话盐值
     fn derive_session_salt(&self) -> Result<[u8; SRTP_SALT_LEN]> {
-        let result: [u8; SRTP_SALT_LEN] = srtp_kdf(&self.master_key, &self.master_salt, KDF_LABEL_SALT, 0)?;
+        let result: [u8; SRTP_SALT_LEN] =
+            srtp_kdf(&self.master_key, &self.master_salt, KDF_LABEL_SALT, 0)?;
         Ok(result)
     }
 }
@@ -263,9 +264,7 @@ impl SrtpContext {
     /// 解密后的 RTP 数据包（不含认证标签）
     pub fn unprotect(&mut self, srtp_packet: &[u8]) -> Result<Vec<u8>> {
         if srtp_packet.len() < 12 + SRTP_AUTH_TAG_LEN {
-            return Err(NetworkError::CryptoError(
-                "SRTP 数据包长度不足".to_string(),
-            ));
+            return Err(NetworkError::CryptoError("SRTP 数据包长度不足".to_string()));
         }
 
         // 分离认证标签
@@ -375,12 +374,24 @@ impl SrtpContext {
     /// 每 2^31 个包后重新派生会话密钥，防止密钥过度使用。
     fn rotate_keys(&mut self) -> Result<()> {
         let rotation_index = self.packet_index / KEY_ROTATION_THRESHOLD;
-        self.cipher_key =
-            srtp_kdf(&self.keys.master_key, &self.keys.master_salt, KDF_LABEL_CIPHER, rotation_index)?;
-        self.auth_key =
-            srtp_kdf(&self.keys.master_key, &self.keys.master_salt, KDF_LABEL_AUTH, rotation_index)?;
-        let new_salt: [u8; SRTP_SALT_LEN] =
-            srtp_kdf(&self.keys.master_key, &self.keys.master_salt, KDF_LABEL_SALT, rotation_index)?;
+        self.cipher_key = srtp_kdf(
+            &self.keys.master_key,
+            &self.keys.master_salt,
+            KDF_LABEL_CIPHER,
+            rotation_index,
+        )?;
+        self.auth_key = srtp_kdf(
+            &self.keys.master_key,
+            &self.keys.master_salt,
+            KDF_LABEL_AUTH,
+            rotation_index,
+        )?;
+        let new_salt: [u8; SRTP_SALT_LEN] = srtp_kdf(
+            &self.keys.master_key,
+            &self.keys.master_salt,
+            KDF_LABEL_SALT,
+            rotation_index,
+        )?;
         self.session_salt = new_salt;
         Ok(())
     }
@@ -494,9 +505,10 @@ impl DtlsSession {
     /// 生成密钥材料并进入握手流程。
     pub fn start_handshake(&mut self) -> Result<()> {
         if self.state != DtlsState::Idle {
-            return Err(NetworkError::CryptoError(
-                format!("DTLS 非空闲状态无法开始握手: {:?}", self.state),
-            ));
+            return Err(NetworkError::CryptoError(format!(
+                "DTLS 非空闲状态无法开始握手: {:?}",
+                self.state
+            )));
         }
         self.state = DtlsState::WaitingClientHello;
         self.retry_count = 0;
@@ -532,18 +544,20 @@ impl DtlsSession {
                 // 已建立，忽略
                 Ok(None)
             }
-            _ => Err(NetworkError::CryptoError(
-                format!("DTLS 无效握手状态: {:?}", self.state),
-            )),
+            _ => Err(NetworkError::CryptoError(format!(
+                "DTLS 无效握手状态: {:?}",
+                self.state
+            ))),
         }
     }
 
     /// 完成握手（服务端响应后调用）
     pub fn complete_handshake(&mut self) -> Result<()> {
         if self.state != DtlsState::ServerHelloSent {
-            return Err(NetworkError::CryptoError(
-                format!("DTLS 无法完成握手，当前状态: {:?}", self.state),
-            ));
+            return Err(NetworkError::CryptoError(format!(
+                "DTLS 无法完成握手，当前状态: {:?}",
+                self.state
+            )));
         }
         self.state = DtlsState::Established;
         Ok(())
@@ -763,7 +777,9 @@ mod tests {
         let mut ctx2 = SrtpContext::new(keys, 0x22222222).unwrap();
 
         let enc1 = ctx1.protect(&rtp).unwrap();
-        let enc2 = ctx2.protect(&make_rtp_packet(0x22222222, 1, b"same payload")).unwrap();
+        let enc2 = ctx2
+            .protect(&make_rtp_packet(0x22222222, 1, b"same payload"))
+            .unwrap();
 
         // 不同 SSRC 应产生不同密文
         assert_ne!(&enc1[12..22], &enc2[12..22]);

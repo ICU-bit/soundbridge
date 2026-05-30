@@ -684,7 +684,9 @@ impl JitterBuffer {
         } else {
             0
         };
-        100_u8.saturating_sub(loss_penalty).saturating_sub(jitter_penalty)
+        100_u8
+            .saturating_sub(loss_penalty)
+            .saturating_sub(jitter_penalty)
     }
 
     /// 获取下一个期望的序列号
@@ -900,7 +902,9 @@ impl RawJitterBuffer {
         } else {
             0
         };
-        100_u8.saturating_sub(loss_penalty).saturating_sub(jitter_penalty)
+        100_u8
+            .saturating_sub(loss_penalty)
+            .saturating_sub(jitter_penalty)
     }
 }
 
