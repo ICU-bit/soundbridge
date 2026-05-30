@@ -30,23 +30,23 @@
 - ✅ 均衡模式（50-100ms 延迟）
 - ✅ 高音质模式（48kHz/24bit）
 - ✅ 超低延迟模式（<30ms）
-- ⚠️ 动态切换 - 框架存在，未接入 UI
+- ✅ 动态切换 - UI 已接入（Windows ComboBox + Android SettingsScreen）
 
 ### 🔄 传输方式
 - ✅ 双向同时传输（手机↔电脑）
 - ✅ 混音模式（两边音频混合播放）
 
 ### 🎛️ 控制方式
-- ⚠️ Windows 桌面客户端 - 骨架，无 MainWindow
-- ⚠️ Android App - UI 存在，连接逻辑 TODO
-- ⚠️ 系统托盘常驻 - 未实现
-- ⚠️ 全局快捷键 - 未实现
-- ⚠️ 双向控制 - 未实现
+- ✅ Windows 桌面客户端 - MainWindow + ViewModel + 8 个 Converter
+- ✅ Android App - Jetpack Compose UI + NativeAudioEngine JNI
+- ✅ 系统托盘常驻 - TrayIcon.cs（Shell_NotifyIcon P/Invoke）
+- ✅ 全局快捷键 - HotkeyManager.cs（RegisterHotKey, Ctrl+Alt+T/M/S）
+- ✅ 双向控制 - sb_send_volume / sb_send_pause / sb_send_resume
 
 ### ✨ 附加功能
-- ⚠️ 设备自动记忆 - DeviceStore 存在，无文件持久化
-- ⚠️ 启动自启 - 未实现
-- ⚠️ 连接状态通知 - 未实现
+- ✅ 设备自动记忆 - DeviceStore + JSON 持久化（%LocalAppData%/SoundBridge/devices.json）
+- ✅ 启动自启 - Windows Registry（HKCU\...\Run）
+- ✅ 连接状态通知 - ConnectionNotificationService + Toast 通知
 - ✅ 回声消除（AEC）- NLMS 自适应滤波器
 - ✅ 噪声抑制（NS）- SNR 估计
 - ✅ 自动增益控制（AGC）- 攻击/释放时间平滑
@@ -125,21 +125,23 @@
 
 ## 📅 开发阶段
 
-### 第一阶段：MVP (6-8周)
-- [ ] WiFi 局域网连接
-- [ ] 双向音频传输
-- [ ] Windows 托盘 + Android App
-- [ ] 基础混音
-- [ ] 电平指示器
+### 第一阶段：MVP ✅ 已完成
+- ✅ WiFi 局域网连接
+- ✅ 双向音频传输
+- ✅ Windows 托盘 + Android App
+- ✅ 基础混音
+- ✅ 电平指示器
 
-### 第二阶段：完整功能 (4-6周)
-- [ ] 其他连接方式（WiFi直连、USB、蓝牙）
-- [ ] 回声消除、噪声抑制
-- [ ] 设备记忆、启动自启
-- [ ] 快捷键
+### 第二阶段：完整功能 ✅ 已完成
+- ✅ 回声消除（NLMS）、噪声抑制（SNR）、自动增益控制（AGC）
+- ✅ 设备记忆（JSON 持久化）、启动自启（Registry）
+- ✅ 全局快捷键（Ctrl+Alt+T/M/S）
+- ✅ 系统托盘 + 连接状态通知（Toast）
+- ✅ 音频模式动态切换（均衡/高音质/超低延迟）
+- ⚠️ 其他连接方式（WiFi直连、USB、蓝牙）- 未实现
 
-### 第三阶段：优化完善 (3-4周)
-- [ ] 音频模式动态切换
+### 第三阶段：优化完善 ⏳ 进行中
+- ✅ 音频模式动态切换
 - [ ] 高级混音控制
 - [ ] 性能优化
 - [ ] 用户体验完善
@@ -207,6 +209,11 @@
 
 ## 📝 版本历史
 
+- **v0.3.0** - FFI bindings + Windows/Android UI 完整实现
+  - FFI: 音频模式切换、连接状态回调、双向控制
+  - Windows: MainWindow + ViewModel + TrayIcon + HotkeyManager + 设备持久化 + 自启
+  - Android: SettingsScreen 音频模式下拉 + JNI 音频模式切换
+- **v0.2.0** - Rust 核心 MVP（10 个 crate，181+ 测试）
 - **v0.1.0** - 初始设计文档完成
 
 ---
