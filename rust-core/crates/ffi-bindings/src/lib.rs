@@ -15,7 +15,7 @@ use audio_core::{AudioMode, AudioModeManager, RingBuffer};
 use audio_mixer::AudioMixer;
 use audio_playback::{PlaybackConfig, PlaybackDevice};
 use audio_processor::AudioProcessor;
-use network::{ConnectionType, RawJitterBuffer};
+use network::{ConnectionType, RawJitterBuffer, HotspotConfig, HotspotState};
 use protocol::{ControlMessage, ControlMessageType, Packet, PacketHeader, Protocol};
 use std::time::Instant;
 
@@ -237,6 +237,12 @@ pub struct SbEngine {
 
     /// 连接方式
     connection_type: ConnectionType,
+
+    /// 热点状态（WiFi Direct）
+    hotspot_state: HotspotState,
+
+    /// 热点配置（WiFi Direct）
+    hotspot_config: HotspotConfig,
 }
 
 /// 创建引擎
@@ -265,6 +271,8 @@ pub extern "C" fn sb_engine_create() -> *mut c_void {
         volume: 1.0,
         paused: false,
         connection_type: ConnectionType::WiFiLan,
+        hotspot_state: HotspotState::Idle,
+        hotspot_config: HotspotConfig::default(),
     };
 
     Box::into_raw(Box::new(engine)) as *mut c_void
@@ -1461,6 +1469,154 @@ pub unsafe extern "C" fn sb_set_exclusive_mode(engine: *mut c_void, exclusive: b
         pipeline.stats.exclusive_mode.store(exclusive, Ordering::Relaxed);
     }
 
+    SbError::Ok as c_int
+}
+
+/// 创建 WiFi Direct 热点
+///
+/// 使用指定配置创建热点。平台层（Windows/Android）实现具体热点创建逻辑。
+/// 热点创建后，其他设备可连接到此热点进行音频传输。
+///
+/// # Safety
+/// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
+/// `ssid` 和 `password` 必须是非空 C 字符串。
+#[no_mangle]
+pub unsafe extern "C" fn sb_hotspot_create(
+    engine: *mut c_void,
+    ssid: *const c_char,
+    password: *const c_char,
+    channel: u32,
+) -> c_int {
+    clear_error();
+
+    if engine.is_null() || ssid.is_null() || password.is_null() {
+        set_error("invalid arguments");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let engine = unsafe { &mut *(engine as *mut SbEngine) };
+
+    let ssid_str = match unsafe { CStr::from_ptr(ssid) }.to_str() {
+        Ok(s) => s.to_string(),
+        Err(_) => {
+            set_error("invalid SSID encoding");
+            return SbError::InvalidArgument as c_int;
+        }
+    };
+
+    let password_str = match unsafe { CStr::from_ptr(password) }.to_str() {
+        Ok(s) => s.to_string(),
+        Err(_) => {
+            set_error("invalid password encoding");
+            return SbError::InvalidArgument as c_int;
+        }
+    };
+
+    if !(1..=13).contains(&channel) {
+        set_error("channel must be 1-13");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    engine.hotspot_config = HotspotConfig {
+        ssid: ssid_str,
+        password: password_str,
+        channel,
+        max_clients: 2,
+    };
+    engine.hotspot_state = HotspotState::Creating;
+
+    tracing::info!(
+        "Hotspot creating: SSID={}, channel={}",
+        engine.hotspot_config.ssid,
+        channel
+    );
+
+    // 注意：实际热点创建由平台层实现（Windows WLAN API / Android WifiP2pManager）
+    // 此处仅更新状态，平台层完成创建后应调用 sb_hotspot_set_state(Running)
+    SbError::Ok as c_int
+}
+
+/// 销毁 WiFi Direct 热点
+///
+/// # Safety
+/// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_hotspot_destroy(engine: *mut c_void) -> c_int {
+    clear_error();
+
+    if engine.is_null() {
+        set_error("engine is null");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let engine = unsafe { &mut *(engine as *mut SbEngine) };
+    engine.hotspot_state = HotspotState::Stopped;
+
+    tracing::info!("Hotspot destroyed");
+    SbError::Ok as c_int
+}
+
+/// 获取热点状态
+///
+/// # Safety
+/// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
+/// `state` 必须是非空指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_hotspot_state(engine: *mut c_void, state: *mut i32) -> c_int {
+    clear_error();
+
+    if engine.is_null() || state.is_null() {
+        set_error("invalid arguments");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let engine = unsafe { &*(engine as *const SbEngine) };
+
+    let state_value = match engine.hotspot_state {
+        HotspotState::Idle => 0i32,
+        HotspotState::Creating => 1,
+        HotspotState::Running => 2,
+        HotspotState::Stopped => 3,
+        HotspotState::Error => 4,
+    };
+
+    unsafe {
+        *state = state_value;
+    }
+
+    SbError::Ok as c_int
+}
+
+/// 设置热点状态（供平台层调用）
+///
+/// 平台层完成热点创建/销毁后调用此函数更新状态。
+///
+/// # Safety
+/// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_hotspot_set_state(engine: *mut c_void, state: i32) -> c_int {
+    clear_error();
+
+    if engine.is_null() {
+        set_error("engine is null");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let engine = unsafe { &mut *(engine as *mut SbEngine) };
+
+    engine.hotspot_state = match state {
+        0 => HotspotState::Idle,
+        1 => HotspotState::Creating,
+        2 => HotspotState::Running,
+        3 => HotspotState::Stopped,
+        4 => HotspotState::Error,
+        _ => {
+            set_error("invalid hotspot state (0-4)");
+            return SbError::InvalidArgument as c_int;
+        }
+    };
+
+    tracing::info!("Hotspot state set to {:?}", engine.hotspot_state);
     SbError::Ok as c_int
 }
 
@@ -3110,6 +3266,121 @@ mod tests {
             let engine = sb_engine_create();
             let result = sb_set_exclusive_mode(engine, true);
             assert_eq!(result, SbError::Ok as c_int);
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_hotspot_create_null_engine() {
+        let ssid = CString::new("TestSSID").unwrap();
+        let password = CString::new("test1234").unwrap();
+        let result = unsafe { sb_hotspot_create(ptr::null_mut(), ssid.as_ptr(), password.as_ptr(), 6) };
+        assert_eq!(result, SbError::InvalidArgument as c_int);
+    }
+
+    #[test]
+    fn test_hotspot_create_null_ssid() {
+        unsafe {
+            let engine = sb_engine_create();
+            let password = CString::new("test1234").unwrap();
+            let result = sb_hotspot_create(engine, ptr::null(), password.as_ptr(), 6);
+            assert_eq!(result, SbError::InvalidArgument as c_int);
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_hotspot_create_invalid_channel() {
+        unsafe {
+            let engine = sb_engine_create();
+            let ssid = CString::new("TestSSID").unwrap();
+            let password = CString::new("test1234").unwrap();
+            let result = sb_hotspot_create(engine, ssid.as_ptr(), password.as_ptr(), 0);
+            assert_eq!(result, SbError::InvalidArgument as c_int);
+            let result = sb_hotspot_create(engine, ssid.as_ptr(), password.as_ptr(), 14);
+            assert_eq!(result, SbError::InvalidArgument as c_int);
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_hotspot_create_and_state() {
+        unsafe {
+            let engine = sb_engine_create();
+            let ssid = CString::new("SoundBridge").unwrap();
+            let password = CString::new("soundbridge123").unwrap();
+            let result = sb_hotspot_create(engine, ssid.as_ptr(), password.as_ptr(), 6);
+            assert_eq!(result, SbError::Ok as c_int);
+
+            // 创建后状态应为 Creating (1)
+            let mut state = -1i32;
+            let result = sb_hotspot_state(engine, &mut state);
+            assert_eq!(result, SbError::Ok as c_int);
+            assert_eq!(state, 1); // Creating
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_hotspot_destroy_null_engine() {
+        let result = unsafe { sb_hotspot_destroy(ptr::null_mut()) };
+        assert_eq!(result, SbError::InvalidArgument as c_int);
+    }
+
+    #[test]
+    fn test_hotspot_state_null_engine() {
+        let mut state = 0i32;
+        let result = unsafe { sb_hotspot_state(ptr::null_mut(), &mut state) };
+        assert_eq!(result, SbError::InvalidArgument as c_int);
+    }
+
+    #[test]
+    fn test_hotspot_state_null_pointer() {
+        unsafe {
+            let engine = sb_engine_create();
+            let result = sb_hotspot_state(engine, ptr::null_mut());
+            assert_eq!(result, SbError::InvalidArgument as c_int);
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_hotspot_set_state() {
+        unsafe {
+            let engine = sb_engine_create();
+
+            // 设置为 Running (2)
+            let result = sb_hotspot_set_state(engine, 2);
+            assert_eq!(result, SbError::Ok as c_int);
+
+            let mut state = -1i32;
+            let result = sb_hotspot_state(engine, &mut state);
+            assert_eq!(result, SbError::Ok as c_int);
+            assert_eq!(state, 2); // Running
+
+            // 无效状态应返回错误
+            let result = sb_hotspot_set_state(engine, 99);
+            assert_eq!(result, SbError::InvalidArgument as c_int);
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_hotspot_set_state_null_engine() {
+        let result = unsafe { sb_hotspot_set_state(ptr::null_mut(), 2) };
+        assert_eq!(result, SbError::InvalidArgument as c_int);
+    }
+
+    #[test]
+    fn test_hotspot_default_state() {
+        unsafe {
+            let engine = sb_engine_create();
+            let mut state = -1i32;
+            let result = sb_hotspot_state(engine, &mut state);
+            assert_eq!(result, SbError::Ok as c_int);
+            assert_eq!(state, 0); // Idle
             sb_engine_destroy(engine);
         }
     }

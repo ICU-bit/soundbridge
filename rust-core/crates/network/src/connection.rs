@@ -20,6 +20,45 @@ pub enum ConnectionType {
     Bluetooth,
 }
 
+/// 热点配置
+#[derive(Debug, Clone)]
+pub struct HotspotConfig {
+    /// 热点名称（SSID）
+    pub ssid: String,
+    /// 热点密码（WPA2）
+    pub password: String,
+    /// 热点频道（1-13，默认自动选择）
+    pub channel: u32,
+    /// 最大连接设备数
+    pub max_clients: u32,
+}
+
+impl Default for HotspotConfig {
+    fn default() -> Self {
+        Self {
+            ssid: "SoundBridge".to_string(),
+            password: "soundbridge123".to_string(),
+            channel: 6,
+            max_clients: 2,
+        }
+    }
+}
+
+/// 热点状态
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HotspotState {
+    /// 未创建
+    Idle,
+    /// 创建中
+    Creating,
+    /// 运行中
+    Running,
+    /// 已停止
+    Stopped,
+    /// 错误
+    Error,
+}
+
 impl std::fmt::Display for ConnectionType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
