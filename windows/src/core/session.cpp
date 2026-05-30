@@ -1,6 +1,7 @@
 #include "session.h"
 #include "audio/network/udp_transport.h"
 #include "audio/network/quic_transport.h"
+#include "audio/network/dtls_session.h"
 
 #include <spdlog/spdlog.h>
 
@@ -45,6 +46,47 @@ bool SessionImpl::connect(const SessionConfig& config) {
         spdlog::error("Failed to connect to remote endpoint");
         state_ = AudioStreamState::Error;
         return false;
+    }
+
+    // 如果配置了加密，执行 DTLS 握手
+    if (config.security.encryption == EncryptionMode::SRTP) {
+        dtls_session_ = std::make_unique<DtlsSession>();
+        DtlsConfig dtls_config;
+        dtls_config.handshake_timeout_ms = config.security.handshake_timeout_ms;
+        dtls_config.max_retries = config.security.max_retries;
+        dtls_config.cert_fingerprint = DtlsSession::generate_certificate();
+
+        if (!dtls_session_->initialize(dtls_config)) {
+            spdlog::error("Failed to initialize DTLS session");
+            state_ = AudioStreamState::Error;
+            return false;
+        }
+
+        // 启动握手
+        if (!dtls_session_->start_handshake()) {
+            spdlog::error("Failed to start DTLS handshake");
+            state_ = AudioStreamState::Error;
+            return false;
+        }
+
+        // 模拟握手完成（实际应通过网络交换消息）
+        std::vector<uint8_t> response;
+        dtls_session_->process_handshake(nullptr, 0, response);
+        dtls_session_->complete_handshake();
+
+        // 启用 SRTP 加密
+        if (dtls_session_->keys()) {
+            auto* udp = dynamic_cast<UdpTransport*>(transport_.get());
+            if (udp) {
+                if (!udp->enable_encryption(*dtls_session_->keys(), 0x12345678)) {
+                    spdlog::error("Failed to enable SRTP encryption");
+                    state_ = AudioStreamState::Error;
+                    return false;
+                }
+                encryption_enabled_ = true;
+                spdlog::info("DTLS/SRTP encryption enabled");
+            }
+        }
     }
 
     engine_ = create_audio_engine();
@@ -96,6 +138,9 @@ void SessionImpl::disconnect() {
         pipeline_.reset();
     }
 
+    dtls_session_.reset();
+    encryption_enabled_ = false;
+
     if (receive_thread_.joinable()) {
         receive_thread_.join();
     }
@@ -124,6 +169,54 @@ void SessionImpl::set_receive_callback(AudioFrameCallback callback) {
 
 AudioStreamState SessionImpl::state() const {
     return state_;
+}
+
+bool SessionImpl::enable_encryption() {
+    if (encryption_enabled_) {
+        return true;
+    }
+
+    if (!transport_) {
+        return false;
+    }
+
+    auto* udp = dynamic_cast<UdpTransport*>(transport_.get());
+    if (!udp) {
+        return false;
+    }
+
+    // 生成新的密钥材料
+    auto keys = CryptoKeys::generate();
+    if (!udp->enable_encryption(keys, 0x12345678)) {
+        return false;
+    }
+
+    encryption_enabled_ = true;
+    return true;
+}
+
+void SessionImpl::disable_encryption() {
+    if (!encryption_enabled_) {
+        return;
+    }
+
+    auto* udp = dynamic_cast<UdpTransport*>(transport_.get());
+    if (udp) {
+        udp->disable_encryption();
+    }
+
+    encryption_enabled_ = false;
+}
+
+bool SessionImpl::is_encrypted() const {
+    return encryption_enabled_;
+}
+
+DtlsState SessionImpl::dtls_state() const {
+    if (dtls_session_) {
+        return dtls_session_->state();
+    }
+    return DtlsState::Idle;
 }
 
 void SessionImpl::receive_thread_func() {

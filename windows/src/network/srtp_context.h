@@ -84,10 +84,6 @@ private:
                           uint8_t tag[SRTP_AUTH_TAG_LEN]) const;
     bool rotate_keys();
 
-    // Windows CNG 句柄
-    void* aes_handle_ = nullptr;    // BCRYPT_ALG_HANDLE for AES
-    void* hmac_handle_ = nullptr;   // BCRYPT_ALG_HANDLE for HMAC-SHA1
-
     // 会话密钥
     std::array<uint8_t, AES_128_KEY_LEN> cipher_key_{};
     std::array<uint8_t, AES_128_KEY_LEN> auth_key_{};

@@ -38,6 +38,18 @@ public:
     virtual void set_receive_callback(AudioFrameCallback callback) = 0;
 
     virtual AudioStreamState state() const = 0;
+
+    /// 启用 DTLS/SRTP 加密
+    virtual bool enable_encryption() = 0;
+
+    /// 禁用加密
+    virtual void disable_encryption() = 0;
+
+    /// 获取加密状态
+    virtual bool is_encrypted() const = 0;
+
+    /// 获取 DTLS 握手状态
+    virtual DtlsState dtls_state() const = 0;
 };
 
 SOUNDBRIDGE_API std::unique_ptr<IAudioEngine> SOUNDBRIDGE_CALL create_audio_engine();

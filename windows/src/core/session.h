@@ -13,6 +13,8 @@ namespace soundbridge {
 
 class ITransport;
 class AudioEngineImpl;
+class DtlsSession;
+class SrtpContext;
 
 class SessionImpl final : public ISession {
 public:
@@ -30,6 +32,18 @@ public:
 
     AudioStreamState state() const override;
 
+    /// 启用 DTLS/SRTP 加密
+    bool enable_encryption() override;
+
+    /// 禁用加密
+    void disable_encryption() override;
+
+    /// 获取加密状态
+    bool is_encrypted() const override;
+
+    /// 获取 DTLS 握手状态
+    DtlsState dtls_state() const override;
+
 private:
     void receive_thread_func();
     void on_audio_captured(const float* data, uint32_t frame_count, uint8_t channels);
@@ -46,6 +60,10 @@ private:
 
     std::thread receive_thread_;
     std::atomic<bool> running_{false};
+
+    // DTLS/SRTP 加密
+    std::unique_ptr<DtlsSession> dtls_session_;
+    bool encryption_enabled_ = false;
 };
 
 } // namespace soundbridge
