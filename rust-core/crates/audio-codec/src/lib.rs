@@ -731,4 +731,43 @@ mod tests {
         assert_eq!(decoded.samples().len(), 1920);
         assert_not_silence(decoded.samples(), "AudioCodec stereo");
     }
+
+    #[test]
+    fn test_encoder_runtime_bitrate_change() {
+        let config = OpusConfig::new(
+            SampleRate::Hz48000,
+            ChannelConfig::Mono,
+            Bitrate::Kbps128,
+            FrameSize::Ms20,
+        );
+        let mut codec = OpusEncoderCodec::new(config).unwrap();
+
+        // 初始码率
+        assert_eq!(codec.bitrate(), Bitrate::Kbps128);
+
+        // 动态调整到 64kbps
+        codec.set_bitrate(Bitrate::Kbps64).unwrap();
+        assert_eq!(codec.bitrate(), Bitrate::Kbps64);
+
+        // 动态调整到 96kbps
+        codec.set_bitrate(Bitrate::Kbps96).unwrap();
+        assert_eq!(codec.bitrate(), Bitrate::Kbps96);
+
+        // 动态调整到 256kbps
+        codec.set_bitrate(Bitrate::Kbps256).unwrap();
+        assert_eq!(codec.bitrate(), Bitrate::Kbps256);
+
+        // 调整码率后仍然能正常编码
+        let samples = create_sine_samples(960, 440.0, 48000.0);
+        let mut i16_buf = vec![0i16; 960];
+        let mut opus_buf = vec![0u8; 1500];
+        let encoded_len = codec.encode_interleaved_into(&samples, &mut i16_buf, &mut opus_buf).unwrap();
+        assert!(encoded_len > 0);
+    }
+
+    #[test]
+    fn test_bitrate_kbps96_value() {
+        assert_eq!(Bitrate::Kbps96 as i32, 96000);
+        assert_eq!(Bitrate::Kbps96.bits_per_second(), 96000);
+    }
 }
