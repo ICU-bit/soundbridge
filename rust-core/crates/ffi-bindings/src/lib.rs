@@ -1937,11 +1937,14 @@ mod tests {
     // ---- 连接状态回调测试 ----
 
     use std::sync::atomic::AtomicI32;
+    use std::sync::Mutex;
 
     /// 测试用全局状态：记录回调收到的状态值
     static CALLBACK_STATE: AtomicI32 = AtomicI32::new(-1);
     /// 测试用全局状态：记录回调被调用的次数
     static CALLBACK_COUNT: AtomicI32 = AtomicI32::new(0);
+    /// 串行化使用共享全局状态的回调测试，防止并行竞态
+    static CALLBACK_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     extern "C" fn test_state_callback(state: SbConnectionState, _user_data: *mut c_void) {
         CALLBACK_STATE.store(state as i32, Ordering::SeqCst);
@@ -2013,6 +2016,8 @@ mod tests {
 
     #[test]
     fn test_state_callback_fires_on_connect() {
+        let _guard = CALLBACK_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
         CALLBACK_STATE.store(-1, Ordering::SeqCst);
         CALLBACK_COUNT.store(0, Ordering::SeqCst);
 
@@ -2034,6 +2039,8 @@ mod tests {
 
     #[test]
     fn test_state_callback_no_fire_on_same_state() {
+        let _guard = CALLBACK_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
         CALLBACK_STATE.store(-1, Ordering::SeqCst);
         CALLBACK_COUNT.store(0, Ordering::SeqCst);
 
