@@ -136,10 +136,12 @@ struct SharedPipelineStats {
     packets_lost: AtomicU64,
     /// 丢包率（f32 的 bits 表示，用于原子存储）
     loss_rate_bits: AtomicU32,
+    /// 帧大小（毫秒），用于动态计算延迟
+    frame_size_ms: AtomicU32,
 }
 
 impl SharedPipelineStats {
-    fn new() -> Self {
+    fn new(frame_size_ms: u32) -> Self {
         Self {
             frames_encoded: AtomicU64::new(0),
             frames_decoded: AtomicU64::new(0),
@@ -148,6 +150,7 @@ impl SharedPipelineStats {
             last_received_seq: AtomicU64::new(0),
             packets_lost: AtomicU64::new(0),
             loss_rate_bits: AtomicU32::new(0),
+            frame_size_ms: AtomicU32::new(frame_size_ms),
         }
     }
 }
@@ -935,7 +938,7 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
 
     // 创建共享状态
     let running = Arc::new(AtomicBool::new(true));
-    let stats = Arc::new(SharedPipelineStats::new());
+    let stats = Arc::new(SharedPipelineStats::new(mode_config.frame_size_ms));
     let sequence = engine.sequence.clone();
 
     // 获取采集和播放设备的 ring buffer（线程安全的 Arc 引用）
@@ -1276,10 +1279,10 @@ pub unsafe extern "C" fn sb_pipeline_stats(
         unsafe {
             *frames_captured = stats.frames_encoded.load(Ordering::Relaxed);
             *frames_played = stats.frames_decoded.load(Ordering::Relaxed);
-            // 基于缓冲区大小估算管线延迟
-            // WASAPI buffer (50ms) + ring buffer (~42ms) + cpal buffer (20ms) + codec (~5ms) + network (~5ms)
-            // 注：精确测量需要端到端时间戳同步，此处为保守估算
-            *latency_ms = 122.0;
+            // 动态估算管线延迟（基于帧大小）
+            // 公式: WASAPI(50ms) + ring_buf(frame_ms*2) + cpal_buf(frame_ms) + codec(5ms) + network(5ms)
+            let frame_ms = stats.frame_size_ms.load(Ordering::Relaxed) as f32;
+            *latency_ms = 50.0 + (frame_ms * 3.0) + 10.0;
             *loss_rate = f32::from_bits(stats.loss_rate_bits.load(Ordering::Relaxed));
         }
     } else {
@@ -2548,7 +2551,7 @@ mod tests {
 
     #[test]
     fn test_shared_pipeline_stats_loss_rate() {
-        let stats = SharedPipelineStats::new();
+        let stats = SharedPipelineStats::new(20);
 
         // 初始状态：无丢包
         assert_eq!(stats.packets_lost.load(Ordering::Relaxed), 0);
@@ -2569,7 +2572,7 @@ mod tests {
 
     #[test]
     fn test_shared_pipeline_stats_sequence_tracking() {
-        let stats = SharedPipelineStats::new();
+        let stats = SharedPipelineStats::new(20);
 
         // 模拟接收序列号：1, 2, 3, 5, 6, 8（丢失 4 和 7）
         let sequences = vec![1, 2, 3, 5, 6, 8];
