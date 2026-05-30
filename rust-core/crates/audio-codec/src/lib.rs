@@ -65,6 +65,7 @@ impl ChannelConfig {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Bitrate {
     Kbps64 = 64000,
+    Kbps96 = 96000,
     Kbps128 = 128000,
     Kbps256 = 256000,
 }
@@ -180,6 +181,17 @@ impl OpusEncoderCodec {
             .set_bitrate(OpusBitrate::Bits(self.config.bitrate.bits_per_second()))
             .map_err(|e| CodecError::EncoderError(e.to_string()))?;
         Ok(())
+    }
+
+    /// 运行时动态调整码率（带宽自适应）
+    pub fn set_bitrate(&mut self, bitrate: Bitrate) -> Result<()> {
+        self.config.bitrate = bitrate;
+        self.apply_bitrate()
+    }
+
+    /// 获取当前码率
+    pub fn bitrate(&self) -> Bitrate {
+        self.config.bitrate
     }
 
     fn encode_samples(&mut self, samples: &[f32]) -> Result<Vec<u8>> {

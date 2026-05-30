@@ -972,9 +972,38 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
             let mut packet_buf = Vec::with_capacity(1500); // 预分配序列化缓冲区
             let start_time = Instant::now();
 
-            tracing::info!("Sender thread started, frame_size={}", frame_size);
+            // 带宽自适应状态
+            let frames_per_sec = 48000 / frame_size; // 每秒帧数（960 samples = 50 frames/sec）
+            let mut adapt_counter: u64 = 0;
+            let mut current_bitrate = audio_codec::Bitrate::Kbps128;
+
+            tracing::info!("Sender thread started, frame_size={}, adapt_interval={} frames", frame_size, frames_per_sec);
 
             while sender_running.load(Ordering::Relaxed) {
+                // 带宽自适应：每秒检查一次丢包率，动态调整码率
+                adapt_counter += 1;
+                if adapt_counter >= frames_per_sec as u64 {
+                    adapt_counter = 0;
+                    let loss_bits = sender_stats.loss_rate_bits.load(Ordering::Relaxed);
+                    let loss_rate = f32::from_bits(loss_bits);
+                    let new_bitrate = if loss_rate > 0.15 {
+                        audio_codec::Bitrate::Kbps64
+                    } else if loss_rate > 0.05 {
+                        audio_codec::Bitrate::Kbps96
+                    } else if loss_rate < 0.02 {
+                        audio_codec::Bitrate::Kbps128
+                    } else {
+                        current_bitrate // 保持不变，避免频繁切换
+                    };
+                    if new_bitrate != current_bitrate {
+                        if encoder.set_bitrate(new_bitrate).is_ok() {
+                            tracing::info!("Bandwidth adapt: loss={:.1}% -> bitrate={:?}",
+                                loss_rate * 100.0, new_bitrate);
+                            current_bitrate = new_bitrate;
+                        }
+                    }
+                }
+
                 // 从采集 ring buffer 读取一帧数据
                 // cpal 回调持续向 ring buffer 写入数据，这里轮询读取
                 let read = sender_capture_ring.read(&mut frame_buf);
