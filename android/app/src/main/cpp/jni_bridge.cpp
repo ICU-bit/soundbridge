@@ -3,7 +3,9 @@
 #include <string>
 
 #include "include/audio_engine.h"
+#ifdef SOUNDBRIDGE_HAS_OPUS
 #include "include/opus_codec.h"
+#endif
 #include "include/udp_socket.h"
 
 #define LOG_TAG "SoundBridge_JNI"
@@ -14,6 +16,7 @@ static soundbridge::AudioEngine* getEngine(jlong handle) {
     return reinterpret_cast<soundbridge::AudioEngine*>(handle);
 }
 
+#ifdef SOUNDBRIDGE_HAS_OPUS
 static soundbridge::OpusEncoderWrapper* getEncoder(jlong handle) {
     return reinterpret_cast<soundbridge::OpusEncoderWrapper*>(handle);
 }
@@ -21,6 +24,7 @@ static soundbridge::OpusEncoderWrapper* getEncoder(jlong handle) {
 static soundbridge::OpusDecoderWrapper* getDecoder(jlong handle) {
     return reinterpret_cast<soundbridge::OpusDecoderWrapper*>(handle);
 }
+#endif
 
 static soundbridge::UdpSocket* getSocket(jlong handle) {
     return reinterpret_cast<soundbridge::UdpSocket*>(handle);
@@ -158,6 +162,7 @@ Java_com_soundbridge_native_NativeAudioEngine_nativeGetMixRatio(
 JNIEXPORT jlong JNICALL
 Java_com_soundbridge_native_NativeAudioEngine_nativeCreateEncoder(
         JNIEnv* env, jobject thiz, jint bitrate, jint complexity) {
+#ifdef SOUNDBRIDGE_HAS_OPUS
     auto* encoder = new soundbridge::OpusEncoderWrapper(48000, 1, bitrate, complexity);
 
     if (!encoder->initialize()) {
@@ -168,11 +173,16 @@ Java_com_soundbridge_native_NativeAudioEngine_nativeCreateEncoder(
 
     LOGI("Opus encoder created: %dbps, complexity=%d", bitrate, complexity);
     return reinterpret_cast<jlong>(encoder);
+#else
+    LOGE("Opus not available");
+    return 0;
+#endif
 }
 
 JNIEXPORT jbyteArray JNICALL
 Java_com_soundbridge_native_NativeAudioEngine_nativeEncodeFrame(
         JNIEnv* env, jobject thiz, jlong encoderHandle, jbyteArray pcmData, jint frameSize) {
+#ifdef SOUNDBRIDGE_HAS_OPUS
     auto* encoder = getEncoder(encoderHandle);
     if (!encoder) return nullptr;
 
@@ -190,21 +200,27 @@ Java_com_soundbridge_native_NativeAudioEngine_nativeEncodeFrame(
                              reinterpret_cast<const jbyte*>(encoded.data()));
 
     return result;
+#else
+    return nullptr;
+#endif
 }
 
 JNIEXPORT void JNICALL
 Java_com_soundbridge_native_NativeAudioEngine_nativeReleaseEncoder(
         JNIEnv* env, jobject thiz, jlong encoderHandle) {
+#ifdef SOUNDBRIDGE_HAS_OPUS
     auto* encoder = getEncoder(encoderHandle);
     if (encoder) {
         encoder->release();
         delete encoder;
     }
+#endif
 }
 
 JNIEXPORT jlong JNICALL
 Java_com_soundbridge_native_NativeAudioEngine_nativeCreateDecoder(
         JNIEnv* env, jobject thiz) {
+#ifdef SOUNDBRIDGE_HAS_OPUS
     auto* decoder = new soundbridge::OpusDecoderWrapper(48000, 1);
 
     if (!decoder->initialize()) {
@@ -215,11 +231,16 @@ Java_com_soundbridge_native_NativeAudioEngine_nativeCreateDecoder(
 
     LOGI("Opus decoder created");
     return reinterpret_cast<jlong>(decoder);
+#else
+    LOGE("Opus not available");
+    return 0;
+#endif
 }
 
 JNIEXPORT jbyteArray JNICALL
 Java_com_soundbridge_native_NativeAudioEngine_nativeDecodeFrame(
         JNIEnv* env, jobject thiz, jlong decoderHandle, jbyteArray opusData) {
+#ifdef SOUNDBRIDGE_HAS_OPUS
     auto* decoder = getDecoder(decoderHandle);
     if (!decoder) return nullptr;
 
@@ -238,16 +259,21 @@ Java_com_soundbridge_native_NativeAudioEngine_nativeDecodeFrame(
                              reinterpret_cast<const jbyte*>(decoded.data()));
 
     return result;
+#else
+    return nullptr;
+#endif
 }
 
 JNIEXPORT void JNICALL
 Java_com_soundbridge_native_NativeAudioEngine_nativeReleaseDecoder(
         JNIEnv* env, jobject thiz, jlong decoderHandle) {
+#ifdef SOUNDBRIDGE_HAS_OPUS
     auto* decoder = getDecoder(decoderHandle);
     if (decoder) {
         decoder->release();
         delete decoder;
     }
+#endif
 }
 
 JNIEXPORT jlong JNICALL

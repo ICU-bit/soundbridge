@@ -55,7 +55,10 @@ fn test_last_error_initially_null() {
         // NOTE: relaxed assertion — mutex may be poisoned from other tests
         if !err.is_null() {
             let msg = CStr::from_ptr(err).to_string_lossy();
-            eprintln!("Warning: last error not null after engine creation: {}", msg);
+            eprintln!(
+                "Warning: last error not null after engine creation: {}",
+                msg
+            );
         }
         sb_engine_destroy(engine);
     }
