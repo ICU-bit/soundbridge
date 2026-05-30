@@ -12,6 +12,10 @@ target_include_directories(SoundBridgeCore PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../../include
 )
 
+target_compile_definitions(SoundBridgeCore PRIVATE
+    SOUNDBRIDGE_EXPORTS
+)
+
 target_link_libraries(SoundBridgeCore PUBLIC
     Opus::Opus
 )

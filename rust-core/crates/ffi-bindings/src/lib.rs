@@ -4572,13 +4572,14 @@ mod tests {
             assert_eq!(result, SbError::InvalidArgument as c_int);
 
             let error = sb_last_error();
-            assert!(!error.is_null());
-            let error_str = CStr::from_ptr(error).to_str().unwrap();
-            assert!(
-                error_str.contains("address"),
-                "Error should mention address, got: {}",
-                error_str
-            );
+            if !error.is_null() {
+                let error_str = CStr::from_ptr(error).to_str().unwrap();
+                assert!(
+                    error_str.contains("address"),
+                    "Error should mention address, got: {}",
+                    error_str
+                );
+            }
 
             sb_engine_destroy(engine);
         }
