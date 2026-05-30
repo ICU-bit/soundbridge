@@ -13,7 +13,6 @@ target_link_libraries(SoundBridge PUBLIC
     SoundBridgeAudio
     SoundBridgeNetwork
     Opus::Opus
-    WebRTC::APM
     ws2_32
     mfplat
     mfuuid
@@ -21,6 +20,11 @@ target_link_libraries(SoundBridge PUBLIC
     mmdevapi
     avrt
 )
+
+if(WebRTC_FOUND)
+    target_link_libraries(SoundBridge PUBLIC WebRTC::APM)
+    target_compile_definitions(SoundBridge PRIVATE SOUNDBRIDGE_HAS_WEBRTC=1)
+endif()
 
 target_include_directories(SoundBridge PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../include

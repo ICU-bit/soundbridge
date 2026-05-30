@@ -4,10 +4,12 @@
 #include <memory>
 #include <vector>
 
+#ifdef SOUNDBRIDGE_HAS_WEBRTC
 namespace webrtc {
 class AudioProcessing;
 struct StreamConfig;
 }
+#endif
 
 namespace soundbridge {
 
@@ -36,7 +38,9 @@ private:
     uint32_t sample_rate_ = 0;
     uint8_t channels_ = 0;
 
+#ifdef SOUNDBRIDGE_HAS_WEBRTC
     std::unique_ptr<webrtc::AudioProcessing> apm_;
+#endif
 };
 
 } // namespace soundbridge

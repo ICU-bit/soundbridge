@@ -1,7 +1,33 @@
-//! UDP 传输实现
+//! # UDP 传输实现
 //!
-//! 提供 UDP 传输、带宽自适应和丢包恢复功能。
-//! 支持可选的 SRTP 加密/解密（透明集成）。
+//! 提供基于 UDP 的低延迟音频传输，支持可选的 SRTP 加密/解密和带宽自适应。
+//!
+//! ## 功能特性
+//!
+//! - **UDP 数据报收发**：基于 tokio 异步 UDP socket
+//! - **SRTP 加密**：透明集成，调用 `enable_encryption` 后自动加密/解密
+//! - **带宽自适应**：根据丢包率动态调整发送码率（32kbps ~ 256kbps）
+//! - **传输统计**：跟踪发送/接收字节数、包数、丢包率
+//!
+//! ## 快速开始
+//!
+//! ```rust,no_run
+//! use network::transport::{UdpTransport, TransportConfig};
+//!
+//! # async fn example() -> network::Result<()> {
+//! // 创建传输实例
+//! let transport = UdpTransport::new(TransportConfig::default()).await?;
+//!
+//! // 如需 SRTP 加密
+//! let mut transport = UdpTransport::new(TransportConfig::default()).await?;
+//! transport.enable_encryption(vec![0u8; 16], vec![0u8; 14])?;
+//!
+//! // 发送数据
+//! let addr = "192.168.1.10:5000".parse().unwrap();
+//! transport.send_to(b"audio data", addr).await?;
+//! # Ok(())
+//! # }
+//! ```
 
 use crate::crypto::{CryptoKeys, SrtpContext, SRTP_MASTER_KEY_LEN, SRTP_MASTER_SALT_LEN};
 use crate::{NetworkError, Result};
@@ -11,27 +37,41 @@ use std::sync::Mutex;
 use tokio::net::UdpSocket;
 
 /// 传输配置
+///
+/// 控制 UDP 传输的绑定地址、缓冲区大小和带宽自适应参数。
+///
+/// # 示例
+///
+/// ```rust
+/// use network::transport::TransportConfig;
+///
+/// let config = TransportConfig::default();
+/// assert_eq!(config.initial_bitrate, 128000);
+/// assert_eq!(config.min_bitrate, 32000);
+/// assert_eq!(config.max_bitrate, 256000);
+/// assert_eq!(config.loss_threshold, 0.05);
+/// ```
 #[derive(Debug, Clone)]
 pub struct TransportConfig {
-    /// 绑定地址
+    /// 绑定地址（如 `0.0.0.0:0` 表示自动分配端口）
     pub bind_addr: SocketAddr,
 
-    /// 发送缓冲区大小
+    /// 发送缓冲区大小（字节）
     pub send_buffer_size: usize,
 
-    /// 接收缓冲区大小
+    /// 接收缓冲区大小（字节）
     pub recv_buffer_size: usize,
 
-    /// 初始比特率（bps）
+    /// 初始比特率（bps），默认 128000
     pub initial_bitrate: u32,
 
-    /// 最小比特率（bps）
+    /// 最小比特率（bps），带宽自适应下限，默认 32000
     pub min_bitrate: u32,
 
-    /// 最大比特率（bps）
+    /// 最大比特率（bps），带宽自适应上限，默认 256000
     pub max_bitrate: u32,
 
-    /// 丢包率阈值（触发降码率）
+    /// 丢包率阈值（0.0 ~ 1.0），超过此值触发降码率，默认 0.05
     pub loss_threshold: f32,
 }
 
@@ -49,34 +89,67 @@ impl Default for TransportConfig {
     }
 }
 
-/// 传输统计
+/// 传输统计信息
+///
+/// 收集 UDP 传输过程中的关键指标，用于网络质量监控和带宽自适应。
 #[derive(Debug, Clone)]
 pub struct TransportStats {
-    /// 发送字节数
+    /// 累计发送字节数
     pub bytes_sent: u64,
 
-    /// 接收字节数
+    /// 累计接收字节数
     pub bytes_received: u64,
 
-    /// 发送包数
+    /// 累计发送包数
     pub packets_sent: u64,
 
-    /// 接收包数
+    /// 累计接收包数
     pub packets_received: u64,
 
-    /// 丢包数
+    /// 累计丢包数（通过 `report_packet_loss` 上报）
     pub packets_lost: u64,
 
-    /// 当前比特率（bps）
+    /// 当前自适应比特率（bps）
     pub current_bitrate: u32,
 
-    /// 丢包率（0.0 - 1.0）
+    /// 丢包率（0.0 ~ 1.0）
     pub loss_rate: f32,
 }
 
 /// UDP 传输
 ///
-/// 支持可选的 SRTP 加密/解密。默认不加密，调用 `enable_encryption` 启用。
+/// 基于 tokio 异步 UDP socket 的音频传输实现，支持可选的 SRTP 加密。
+///
+/// # 线程安全
+///
+/// `UdpTransport` 内部使用原子计数器统计，`send_to` 和 `receive_from`
+/// 可在多线程中并发调用（UDP socket 本身是线程安全的）。
+///
+/// # SRTP 加密
+///
+/// 调用 [`enable_encryption`](Self::enable_encryption) 后：
+/// - `send_to` 自动先加密再发送
+/// - `receive_from` 自动先解密再返回
+/// - 加密对调用者完全透明
+///
+/// # 示例
+///
+/// ```rust,no_run
+/// use network::transport::{UdpTransport, TransportConfig};
+///
+/// # async fn example() -> network::Result<()> {
+/// let transport = UdpTransport::new(TransportConfig::default()).await?;
+///
+/// // 获取统计信息
+/// let stats = transport.stats();
+/// assert_eq!(stats.packets_sent, 0);
+///
+/// // 带宽自适应
+/// transport.adjust_bitrate(0.1); // 10% 丢包率，降低码率
+/// assert!(transport.current_bitrate() < 128000);
+/// # Ok(())
+/// # }
+/// ```
 pub struct UdpTransport {
     socket: UdpSocket,
     config: TransportConfig,
@@ -92,6 +165,28 @@ pub struct UdpTransport {
 
 impl UdpTransport {
     /// 创建新的 UDP 传输
+    ///
+    /// 绑定 UDP socket 并初始化统计计数器。
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - 传输配置
+    ///
+    /// # Errors
+    ///
+    /// 如果 Socket 绑定失败，返回 [`NetworkError::BindFailed`]。
+    ///
+    /// # 示例
+    ///
+    /// ```rust,no_run
+    /// use network::transport::{UdpTransport, TransportConfig};
+    ///
+    /// # async fn example() -> network::Result<()> {
+    /// let transport = UdpTransport::new(TransportConfig::default()).await?;
+    /// println!("本地地址: {}", transport.local_addr()?);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn new(config: TransportConfig) -> Result<Self> {
         let socket = UdpSocket::bind(config.bind_addr)
             .await
@@ -112,7 +207,9 @@ impl UdpTransport {
         })
     }
 
-    /// 使用默认配置创建
+    /// 使用默认配置创建 UDP 传输
+    ///
+    /// 等效于 `UdpTransport::new(TransportConfig::default())`。
     pub async fn with_default_config() -> Result<Self> {
         Self::new(TransportConfig::default()).await
     }
@@ -120,6 +217,20 @@ impl UdpTransport {
     /// 发送数据到指定地址
     ///
     /// 如果启用了 SRTP 加密，会自动先加密再发送。
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - 要发送的数据（明文 RTP 包或任意数据）
+    /// * `addr` - 目标地址
+    ///
+    /// # Returns
+    ///
+    /// 实际发送的字节数（加密后可能大于原始数据长度）。
+    ///
+    /// # Errors
+    ///
+    /// - [`NetworkError::SendFailed`] — UDP 发送失败
+    /// - [`NetworkError::CryptoError`] — SRTP 加密失败
     pub async fn send_to(&self, data: &[u8], addr: SocketAddr) -> Result<usize> {
         // 如果启用加密，先保护（加密）数据
         let send_data = if let Some(ref srtp_mutex) = self.srtp {
@@ -144,6 +255,19 @@ impl UdpTransport {
     /// 接收数据
     ///
     /// 如果启用了 SRTP 加密，会自动先解密再返回。
+    ///
+    /// # Arguments
+    ///
+    /// * `buf` - 接收缓冲区
+    ///
+    /// # Returns
+    ///
+    /// `(接收字节数, 发送方地址)` 元组。
+    ///
+    /// # Errors
+    ///
+    /// - [`NetworkError::ReceiveFailed`] — UDP 接收失败
+    /// - [`NetworkError::CryptoError`] — SRTP 解密失败（认证标签不匹配）
     pub async fn receive_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
         let (received, addr) = self
             .socket
@@ -168,12 +292,19 @@ impl UdpTransport {
         Ok((received, addr))
     }
 
-    /// 报告丢包
+    /// 报告丢包事件
+    ///
+    /// 由接收端调用，通知传输层检测到丢包。
+    /// 丢包计数用于统计和带宽自适应。
     pub fn report_packet_loss(&self) {
         self.packets_lost.fetch_add(1, Ordering::Relaxed);
     }
 
-    /// 获取当前统计
+    /// 获取当前传输统计信息
+    ///
+    /// # Returns
+    ///
+    /// 包含发送/接收字节数、包数、丢包率和当前比特率的快照。
     pub fn stats(&self) -> TransportStats {
         let packets_sent = self.packets_sent.load(Ordering::Relaxed);
         let packets_received = self.packets_received.load(Ordering::Relaxed);
@@ -196,7 +327,16 @@ impl UdpTransport {
         }
     }
 
-    /// 调整比特率（带宽自适应）
+    /// 根据丢包率调整比特率（带宽自适应）
+    ///
+    /// 算法逻辑：
+    /// - 丢包率 > 阈值：降低码率（按丢包百分比）
+    /// - 丢包率 < 1%：尝试提高 10%
+    /// - 其他：保持不变
+    ///
+    /// # Arguments
+    ///
+    /// * `loss_rate` - 当前丢包率（0.0 ~ 1.0）
     pub fn adjust_bitrate(&self, loss_rate: f32) {
         let current = self.current_bitrate.load(Ordering::Relaxed);
         let new_bitrate = if loss_rate > self.config.loss_threshold {
@@ -215,19 +355,27 @@ impl UdpTransport {
         self.current_bitrate.store(new_bitrate, Ordering::Relaxed);
     }
 
-    /// 获取当前比特率
+    /// 获取当前自适应比特率（bps）
+    ///
+    /// # Returns
+    ///
+    /// 当前发送码率，单位 bps。
     pub fn current_bitrate(&self) -> u32 {
         self.current_bitrate.load(Ordering::Relaxed)
     }
 
-    /// 获取本地地址
+    /// 获取本地绑定地址
+    ///
+    /// # Errors
+    ///
+    /// 如果获取地址失败，返回 [`NetworkError::BindFailed`]。
     pub fn local_addr(&self) -> Result<SocketAddr> {
         self.socket
             .local_addr()
             .map_err(|e| NetworkError::BindFailed(e.to_string()))
     }
 
-    /// 获取配置
+    /// 获取传输配置的引用
     pub fn config(&self) -> &TransportConfig {
         &self.config
     }
@@ -235,14 +383,32 @@ impl UdpTransport {
     /// 启用 SRTP 加密
     ///
     /// 使用提供的主密钥和主盐值初始化 SRTP 上下文。
-    /// 启用后，`send_to` 自动加密，`receive_from` 自动解密。
+    /// 启用后，[`send_to`](Self::send_to) 自动加密，[`receive_from`](Self::receive_from) 自动解密。
     ///
-    /// # 参数
-    /// - `master_key`: 主加密密钥（必须为 16 字节）
-    /// - `master_salt`: 主盐值（必须为 14 字节）
+    /// # Arguments
     ///
-    /// # 错误
-    /// 如果密钥或盐值长度不正确，返回 `NetworkError::CryptoError`。
+    /// * `master_key` - 主加密密钥（必须为 16 字节）
+    /// * `master_salt` - 主盐值（必须为 14 字节）
+    ///
+    /// # Errors
+    ///
+    /// - [`NetworkError::CryptoError`] — 密钥长度不是 16 字节
+    /// - [`NetworkError::CryptoError`] — 盐值长度不是 14 字节
+    ///
+    /// # 示例
+    ///
+    /// ```rust,no_run
+    /// use network::transport::{UdpTransport, TransportConfig};
+    ///
+    /// # async fn example() -> network::Result<()> {
+    /// let mut transport = UdpTransport::new(TransportConfig::default()).await?;
+    /// assert!(!transport.is_encrypted());
+    ///
+    /// transport.enable_encryption(vec![0u8; 16], vec![0u8; 14])?;
+    /// assert!(transport.is_encrypted());
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn enable_encryption(&mut self, master_key: Vec<u8>, master_salt: Vec<u8>) -> Result<()> {
         if master_key.len() != SRTP_MASTER_KEY_LEN {
             return Err(NetworkError::CryptoError(format!(
@@ -272,7 +438,11 @@ impl UdpTransport {
         Ok(())
     }
 
-    /// 是否启用了加密
+    /// 是否已启用 SRTP 加密
+    ///
+    /// # Returns
+    ///
+    /// `true` 表示已启用加密，`send_to` 和 `receive_from` 会自动加解密。
     pub fn is_encrypted(&self) -> bool {
         self.srtp.is_some()
     }

@@ -43,7 +43,7 @@ struct CryptoKeys {
     /// 派生会话盐值
     std::array<uint8_t, SRTP_SALT_LEN> derive_session_salt() const;
 
-private:
+    /// SRTP 密钥派生函数（KDF）
     template<size_t N>
     std::array<uint8_t, N> srtp_kdf(uint8_t label, uint64_t index) const;
 };

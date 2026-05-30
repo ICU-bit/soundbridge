@@ -4547,7 +4547,10 @@ mod tests {
 
         // 验证错误信息已设置
         let error = sb_last_error();
-        assert!(!error.is_null(), "Error message should be set after null engine");
+        assert!(
+            !error.is_null(),
+            "Error message should be set after null engine"
+        );
         let error_str = unsafe { CStr::from_ptr(error) }.to_str().unwrap();
         assert!(
             error_str.contains("engine is null"),
@@ -4565,7 +4568,7 @@ mod tests {
             // 绑定一个已被占用的端口会失败（使用一个不太可能成功的地址）
             // 这里测试错误信息的设置
             sb_bind(engine, 0); // 先绑定成功
-            // 测试 sb_connect 失败时的错误信息
+                                // 测试 sb_connect 失败时的错误信息
             let bad_addr = CString::new("not-a-valid-address").unwrap();
             let result = sb_connect(engine, bad_addr.as_ptr());
             assert_eq!(result, SbError::InvalidArgument as c_int);
@@ -4611,9 +4614,7 @@ mod tests {
     #[test]
     fn test_device_store_get_address_zero_buf() {
         unsafe {
-            let store = sb_device_store_open(
-                CString::new(":memory:").unwrap().as_ptr(),
-            );
+            let store = sb_device_store_open(CString::new(":memory:").unwrap().as_ptr());
             let name = CString::new("test").unwrap();
             let mut buf = [0u8; 64];
             let result = sb_device_store_get_address(
@@ -4630,9 +4631,7 @@ mod tests {
     #[test]
     fn test_device_store_get_name_at_out_of_range() {
         unsafe {
-            let store = sb_device_store_open(
-                CString::new(":memory:").unwrap().as_ptr(),
-            );
+            let store = sb_device_store_open(CString::new(":memory:").unwrap().as_ptr());
             let mut buf = [0u8; 64];
             let result = sb_device_store_get_name_at(
                 store,

@@ -1,5 +1,7 @@
 #include "webrtc_apm.h"
 
+#ifdef SOUNDBRIDGE_HAS_WEBRTC
+
 #include <api/audio/audio_processing.h>
 #include <api/audio/echo_canceller3_config.h>
 #include <modules/audio_processing/audio_processing_impl.h>
@@ -141,3 +143,42 @@ void WebRtcApm::set_agc_enabled(bool enabled) {
 }
 
 } // namespace soundbridge
+
+#else // !SOUNDBRIDGE_HAS_WEBRTC
+
+// Stub implementation when WebRTC is not available
+namespace soundbridge {
+
+WebRtcApm::WebRtcApm() = default;
+WebRtcApm::~WebRtcApm() = default;
+
+bool WebRtcApm::initialize(uint32_t sample_rate, uint8_t channels) {
+    (void)sample_rate;
+    (void)channels;
+    return false;
+}
+
+void WebRtcApm::shutdown() {}
+
+bool WebRtcApm::process_stream(const float* input, float* output, uint32_t frame_count) {
+    // No-op passthrough when WebRTC is unavailable
+    if (input && output && frame_count > 0) {
+        std::copy(input, input + frame_count, output);
+    }
+    return false;
+}
+
+bool WebRtcApm::process_reverse_stream(const float* input, float* output, uint32_t frame_count) {
+    if (input && output && frame_count > 0) {
+        std::copy(input, input + frame_count, output);
+    }
+    return false;
+}
+
+void WebRtcApm::set_echo_cancellation_enabled(bool) {}
+void WebRtcApm::set_noise_suppression_enabled(bool) {}
+void WebRtcApm::set_agc_enabled(bool) {}
+
+} // namespace soundbridge
+
+#endif // SOUNDBRIDGE_HAS_WEBRTC

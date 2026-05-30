@@ -14,6 +14,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.soundbridge.native.NativeAudioEngine
+import com.soundbridge.audio.AudioService
 
 enum class AudioMode(val label: String, val subtitle: String) {
     BALANCED("Balanced", "50-100ms latency"),
@@ -22,13 +23,21 @@ enum class AudioMode(val label: String, val subtitle: String) {
 }
 
 @Composable
-fun SettingsScreen(engineHandle: Long = 0L) {
+fun SettingsScreen(engineHandle: Long = 0L, audioService: AudioService? = null) {
     var echoCancellation by remember { mutableStateOf(true) }
     var noiseSuppression by remember { mutableStateOf(true) }
     var gainControl by remember { mutableStateOf(true) }
     var selectedSampleRate by remember { mutableIntStateOf(48000) }
     var selectedBitrate by remember { mutableIntStateOf(64000) }
     var selectedAudioMode by remember { mutableStateOf(AudioMode.BALANCED) }
+    val encryptionState by (audioService?.encryptionState?.collectAsState()
+        ?: remember { mutableStateOf(AudioService.EncryptionState.DISABLED) })
+    var encryptionEnabled by remember { mutableStateOf(encryptionState == AudioService.EncryptionState.ENABLED) }
+
+    // 同步外部加密状态变化
+    LaunchedEffect(encryptionState) {
+        encryptionEnabled = encryptionState == AudioService.EncryptionState.ENABLED
+    }
 
     Column(
         modifier = Modifier
@@ -118,6 +127,25 @@ fun SettingsScreen(engineHandle: Long = 0L) {
                 title = "Buffer Size",
                 subtitle = "20ms",
                 icon = Icons.Default.Timer
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        SettingsSection(title = "Security") {
+            SettingsSwitch(
+                title = "Encryption (DTLS/SRTP)",
+                subtitle = if (encryptionEnabled) "AES-128-CM + HMAC-SHA1-80 enabled" else "End-to-end audio encryption disabled",
+                icon = Icons.Default.Lock,
+                checked = encryptionEnabled,
+                onCheckedChange = { enabled ->
+                    encryptionEnabled = enabled
+                    if (enabled) {
+                        audioService?.enableEncryption()
+                    } else {
+                        audioService?.disableEncryption()
+                    }
+                }
             )
         }
 

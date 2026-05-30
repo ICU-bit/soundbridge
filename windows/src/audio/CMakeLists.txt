@@ -13,9 +13,13 @@ target_include_directories(SoundBridgeAudio PUBLIC
 
 target_link_libraries(SoundBridgeAudio PUBLIC
     Opus::Opus
-    WebRTC::APM
     mfplat
     mfuuid
     mmdevapi
     avrt
 )
+
+if(WebRTC_FOUND)
+    target_link_libraries(SoundBridgeAudio PUBLIC WebRTC::APM)
+    target_compile_definitions(SoundBridgeAudio PRIVATE SOUNDBRIDGE_HAS_WEBRTC=1)
+endif()
