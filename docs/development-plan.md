@@ -173,9 +173,15 @@ private:
 - ✅ 带宽自适应（丢包检测 + loss_rate 返回）
 
 #### Week 3-4：性能优化 + UI 完善
-- ✅ 延迟优化（动态估算：Balanced ~120ms，LowLatency ~90ms，<30ms 需独占 WASAPI 架构重构）
+- ✅ 延迟优化（WASAPI 独占模式 10ms 缓冲区：Balanced ~40ms，LowLatency ~30ms）
+- ✅ Jitter Buffer 集成（RawJitterBuffer 存储原始 Opus 字节，按序解码）
 - ✅ CPU/内存优化（零分配热路径：decode_into, encode_interleaved_into, mix_two_into, serialize_audio_into, deserialize_header）
+- ✅ 混音比例 UI（Windows Slider + Android Slider，接入 sb_set_mix_ratio FFI）
+- ✅ 多连接方式架构（ConnectionType: WiFiLan, WiFiDirect, UsbAdb, Bluetooth）
 - [ ] UI 动画和交互优化
+- [ ] WiFi 直连（热点模式）实现
+- [ ] USB/ADB 连接实现
+- [ ] 蓝牙连接实现
 - [ ] 最终测试和发布准备
 
 ### 3.2 技术实现细节
