@@ -1,10 +1,13 @@
 //! UDP 传输实现
 //!
 //! 提供 UDP 传输、带宽自适应和丢包恢复功能。
+//! 支持可选的 SRTP 加密/解密（透明集成）。
 
+use crate::crypto::{CryptoKeys, SrtpContext, SRTP_MASTER_KEY_LEN, SRTP_MASTER_SALT_LEN};
 use crate::{NetworkError, Result};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::Mutex;
 use tokio::net::UdpSocket;
 
 /// 传输配置
@@ -72,6 +75,8 @@ pub struct TransportStats {
 }
 
 /// UDP 传输
+///
+/// 支持可选的 SRTP 加密/解密。默认不加密，调用 `enable_encryption` 启用。
 pub struct UdpTransport {
     socket: UdpSocket,
     config: TransportConfig,
@@ -81,6 +86,8 @@ pub struct UdpTransport {
     packets_received: AtomicU64,
     packets_lost: AtomicU64,
     current_bitrate: AtomicU32,
+    /// SRTP 加密上下文（可选，默认 None = 不加密）
+    srtp: Option<Mutex<SrtpContext>>,
 }
 
 impl UdpTransport {
@@ -101,6 +108,7 @@ impl UdpTransport {
             packets_received: AtomicU64::new(0),
             packets_lost: AtomicU64::new(0),
             current_bitrate: AtomicU32::new(initial_bitrate),
+            srtp: None,
         })
     }
 
@@ -110,10 +118,22 @@ impl UdpTransport {
     }
 
     /// 发送数据到指定地址
+    ///
+    /// 如果启用了 SRTP 加密，会自动先加密再发送。
     pub async fn send_to(&self, data: &[u8], addr: SocketAddr) -> Result<usize> {
+        // 如果启用加密，先保护（加密）数据
+        let send_data = if let Some(ref srtp_mutex) = self.srtp {
+            let mut ctx = srtp_mutex.lock().map_err(|e| {
+                NetworkError::CryptoError(format!("SRTP 锁获取失败: {}", e))
+            })?;
+            ctx.protect(data)?
+        } else {
+            data.to_vec()
+        };
+
         let sent = self
             .socket
-            .send_to(data, addr)
+            .send_to(&send_data, addr)
             .await
             .map_err(|e| NetworkError::SendFailed(e.to_string()))?;
         self.bytes_sent.fetch_add(sent as u64, Ordering::Relaxed);
@@ -122,6 +142,8 @@ impl UdpTransport {
     }
 
     /// 接收数据
+    ///
+    /// 如果启用了 SRTP 加密，会自动先解密再返回。
     pub async fn receive_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
         let (received, addr) = self
             .socket
@@ -131,6 +153,18 @@ impl UdpTransport {
         self.bytes_received
             .fetch_add(received as u64, Ordering::Relaxed);
         self.packets_received.fetch_add(1, Ordering::Relaxed);
+
+        // 如果启用加密，解密接收到的数据
+        if let Some(ref srtp_mutex) = self.srtp {
+            let mut ctx = srtp_mutex.lock().map_err(|e| {
+                NetworkError::CryptoError(format!("SRTP 锁获取失败: {}", e))
+            })?;
+            let decrypted = ctx.unprotect(&buf[..received])?;
+            let decrypted_len = decrypted.len();
+            buf[..decrypted_len].copy_from_slice(&decrypted);
+            return Ok((decrypted_len, addr));
+        }
+
         Ok((received, addr))
     }
 
@@ -197,6 +231,51 @@ impl UdpTransport {
     pub fn config(&self) -> &TransportConfig {
         &self.config
     }
+
+    /// 启用 SRTP 加密
+    ///
+    /// 使用提供的主密钥和主盐值初始化 SRTP 上下文。
+    /// 启用后，`send_to` 自动加密，`receive_from` 自动解密。
+    ///
+    /// # 参数
+    /// - `master_key`: 主加密密钥（必须为 16 字节）
+    /// - `master_salt`: 主盐值（必须为 14 字节）
+    ///
+    /// # 错误
+    /// 如果密钥或盐值长度不正确，返回 `NetworkError::CryptoError`。
+    pub fn enable_encryption(&mut self, master_key: Vec<u8>, master_salt: Vec<u8>) -> Result<()> {
+        if master_key.len() != SRTP_MASTER_KEY_LEN {
+            return Err(NetworkError::CryptoError(format!(
+                "主密钥长度错误: 期望 {} 字节, 实际 {} 字节",
+                SRTP_MASTER_KEY_LEN,
+                master_key.len()
+            )));
+        }
+        if master_salt.len() != SRTP_MASTER_SALT_LEN {
+            return Err(NetworkError::CryptoError(format!(
+                "主盐值长度错误: 期望 {} 字节, 实际 {} 字节",
+                SRTP_MASTER_SALT_LEN,
+                master_salt.len()
+            )));
+        }
+
+        let mut key_arr = [0u8; SRTP_MASTER_KEY_LEN];
+        key_arr.copy_from_slice(&master_key);
+        let mut salt_arr = [0u8; SRTP_MASTER_SALT_LEN];
+        salt_arr.copy_from_slice(&master_salt);
+
+        let keys = CryptoKeys::from_bytes(&key_arr, &salt_arr);
+        let ctx = SrtpContext::new(keys, 0)
+            .map_err(|e| NetworkError::CryptoError(format!("SRTP 上下文创建失败: {}", e)))?;
+
+        self.srtp = Some(Mutex::new(ctx));
+        Ok(())
+    }
+
+    /// 是否启用了加密
+    pub fn is_encrypted(&self) -> bool {
+        self.srtp.is_some()
+    }
 }
 
 #[cfg(test)]
@@ -227,5 +306,205 @@ mod tests {
 
         assert_eq!(stats.bytes_sent, 1000);
         assert_eq!(stats.loss_rate, 0.2);
+    }
+
+    /// 创建本地回环传输（测试用）
+    async fn new_loopback() -> Result<UdpTransport> {
+        let config = TransportConfig {
+            bind_addr: "127.0.0.1:0".parse().unwrap(),
+            ..Default::default()
+        };
+        UdpTransport::new(config).await
+    }
+
+    /// 构造测试用 RTP 数据包
+    fn make_rtp_packet(ssrc: u32, seq: u16, payload: &[u8]) -> Vec<u8> {
+        let mut pkt = Vec::with_capacity(12 + payload.len());
+        pkt.push(0x80); // V=2, P=0, X=0, CC=0
+        pkt.push(0x60); // M=0, PT=96
+        pkt.extend_from_slice(&seq.to_be_bytes());
+        pkt.extend_from_slice(&0u32.to_be_bytes()); // timestamp
+        pkt.extend_from_slice(&ssrc.to_be_bytes());
+        pkt.extend_from_slice(payload);
+        pkt
+    }
+
+    #[tokio::test]
+    async fn test_enable_encryption_and_is_encrypted() {
+        let transport = new_loopback().await.unwrap();
+        assert!(!transport.is_encrypted());
+
+        // 使用可变引用需要重新绑定
+        let mut transport = transport;
+        let master_key = vec![0xABu8; SRTP_MASTER_KEY_LEN];
+        let master_salt = vec![0xCDu8; SRTP_MASTER_SALT_LEN];
+        transport.enable_encryption(master_key, master_salt).unwrap();
+        assert!(transport.is_encrypted());
+    }
+
+    #[tokio::test]
+    async fn test_enable_encryption_wrong_key_length() {
+        let mut transport = new_loopback().await.unwrap();
+
+        // 密钥太短
+        let result = transport.enable_encryption(vec![0x01; 8], vec![0x02; SRTP_MASTER_SALT_LEN]);
+        assert!(result.is_err());
+
+        // 密钥太长
+        let result = transport.enable_encryption(vec![0x01; 32], vec![0x02; SRTP_MASTER_SALT_LEN]);
+        assert!(result.is_err());
+
+        assert!(!transport.is_encrypted());
+    }
+
+    #[tokio::test]
+    async fn test_enable_encryption_wrong_salt_length() {
+        let mut transport = new_loopback().await.unwrap();
+
+        // 盐值太短
+        let result = transport.enable_encryption(vec![0x01; SRTP_MASTER_KEY_LEN], vec![0x02; 8]);
+        assert!(result.is_err());
+
+        // 盐值太长
+        let result = transport.enable_encryption(vec![0x01; SRTP_MASTER_KEY_LEN], vec![0x02; 32]);
+        assert!(result.is_err());
+
+        assert!(!transport.is_encrypted());
+    }
+
+    #[tokio::test]
+    async fn test_encrypted_send_receive_roundtrip() {
+        // 创建两个传输端，共享相同密钥
+        let mut sender = new_loopback().await.unwrap();
+        let mut receiver = new_loopback().await.unwrap();
+
+        let master_key = vec![0x42u8; SRTP_MASTER_KEY_LEN];
+        let master_salt = vec![0x69u8; SRTP_MASTER_SALT_LEN];
+
+        sender
+            .enable_encryption(master_key.clone(), master_salt.clone())
+            .unwrap();
+        receiver
+            .enable_encryption(master_key, master_salt)
+            .unwrap();
+
+        let receiver_addr = receiver.local_addr().unwrap();
+
+        // 构造 RTP 数据包
+        let payload = b"Hello SRTP encrypted audio!";
+        let rtp_packet = make_rtp_packet(0x12345678, 1, payload);
+
+        // 发送加密数据
+        let sent = sender.send_to(&rtp_packet, receiver_addr).await.unwrap();
+        // 发送的字节数应大于原始包（含认证标签）
+        assert!(sent > rtp_packet.len());
+
+        // 接收并解密
+        let mut recv_buf = vec![0u8; 4096];
+        let (received_len, _) = receiver.receive_from(&mut recv_buf).await.unwrap();
+
+        // 解密后的数据应与原始 RTP 包一致
+        assert_eq!(received_len, rtp_packet.len());
+        assert_eq!(&recv_buf[..received_len], &rtp_packet[..]);
+    }
+
+    #[tokio::test]
+    async fn test_unencrypted_send_receive() {
+        // 不启用加密，验证现有行为不变
+        let sender = new_loopback().await.unwrap();
+        let receiver = new_loopback().await.unwrap();
+
+        assert!(!sender.is_encrypted());
+        assert!(!receiver.is_encrypted());
+
+        let receiver_addr = receiver.local_addr().unwrap();
+
+        let data = b"plain audio data";
+        let sent = sender.send_to(data, receiver_addr).await.unwrap();
+        assert_eq!(sent, data.len());
+
+        let mut recv_buf = vec![0u8; 4096];
+        let (received_len, _) = receiver.receive_from(&mut recv_buf).await.unwrap();
+
+        assert_eq!(received_len, data.len());
+        assert_eq!(&recv_buf[..received_len], data);
+    }
+
+    #[tokio::test]
+    async fn test_encrypted_transport_stats() {
+        let mut transport = new_loopback().await.unwrap();
+        let master_key = vec![0x01u8; SRTP_MASTER_KEY_LEN];
+        let master_salt = vec![0x02u8; SRTP_MASTER_SALT_LEN];
+        transport
+            .enable_encryption(master_key, master_salt)
+            .unwrap();
+
+        // 创建对端（不加密，仅用于接收）
+        let receiver = new_loopback().await.unwrap();
+        let receiver_addr = receiver.local_addr().unwrap();
+
+        let payload = b"stats test";
+        let rtp = make_rtp_packet(0xAABBCCDD, 1, payload);
+        transport.send_to(&rtp, receiver_addr).await.unwrap();
+
+        let stats = transport.stats();
+        assert_eq!(stats.packets_sent, 1);
+        assert!(stats.bytes_sent > 0);
+    }
+
+    #[tokio::test]
+    async fn test_encrypted_multiple_packets() {
+        let mut sender = new_loopback().await.unwrap();
+        let mut receiver = new_loopback().await.unwrap();
+
+        let master_key = vec![0x55u8; SRTP_MASTER_KEY_LEN];
+        let master_salt = vec![0xAAu8; SRTP_MASTER_SALT_LEN];
+
+        sender
+            .enable_encryption(master_key.clone(), master_salt.clone())
+            .unwrap();
+        receiver
+            .enable_encryption(master_key, master_salt)
+            .unwrap();
+
+        let receiver_addr = receiver.local_addr().unwrap();
+
+        // 发送多个加密包
+        for seq in 0..5u16 {
+            let payload = format!("frame_{}", seq);
+            let rtp = make_rtp_packet(0x11111111, seq, payload.as_bytes());
+            sender.send_to(&rtp, receiver_addr).await.unwrap();
+
+            let mut recv_buf = vec![0u8; 4096];
+            let (received_len, _) = receiver.receive_from(&mut recv_buf).await.unwrap();
+            assert_eq!(&recv_buf[..received_len], &rtp[..]);
+        }
+
+        let stats = sender.stats();
+        assert_eq!(stats.packets_sent, 5);
+    }
+
+    #[tokio::test]
+    async fn test_encrypted_wrong_key_rejected() {
+        let mut sender = new_loopback().await.unwrap();
+        let mut receiver = new_loopback().await.unwrap();
+
+        // 使用不同密钥
+        sender
+            .enable_encryption(vec![0x01u8; SRTP_MASTER_KEY_LEN], vec![0x02u8; SRTP_MASTER_SALT_LEN])
+            .unwrap();
+        receiver
+            .enable_encryption(vec![0xFFu8; SRTP_MASTER_KEY_LEN], vec![0xFEu8; SRTP_MASTER_SALT_LEN])
+            .unwrap();
+
+        let receiver_addr = receiver.local_addr().unwrap();
+
+        let rtp = make_rtp_packet(0x12345678, 1, b"secret");
+        sender.send_to(&rtp, receiver_addr).await.unwrap();
+
+        let mut recv_buf = vec![0u8; 4096];
+        let result = receiver.receive_from(&mut recv_buf).await;
+        // 解密应失败（认证标签不匹配）
+        assert!(result.is_err());
     }
 }

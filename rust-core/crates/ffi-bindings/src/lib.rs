@@ -9,10 +9,12 @@ use audio_mixer::AudioMixer;
 use audio_playback::{PlaybackConfig, PlaybackDevice};
 use audio_processor::AudioProcessor;
 use network::{
-    AdbConfig, AdbState, BluetoothConfig, BluetoothState, ConnectionType, HotspotConfig,
-    HotspotState, RawJitterBuffer,
+    AdbConfig, AdbState, BluetoothConfig, BluetoothState, Capability, ConnectionType, CryptoKeys,
+    HotspotConfig, HotspotState, RawJitterBuffer, Session, SessionConfig, SrtpContext,
+    generate_session_id,
 };
 use protocol::{ControlMessage, ControlMessageType, Packet, PacketHeader, Protocol};
+use std::borrow::Cow;
 use std::ffi::{CStr, CString};
 use std::net::{SocketAddr, UdpSocket};
 use std::os::raw::{c_char, c_int, c_void};
@@ -117,6 +119,9 @@ fn clear_error() {
         *error = None;
     }
 }
+
+/// SRTP 包装用 RTP 头模板（V=2, P=0, X=0, CC=0, M=0, PT=96）
+const SRTP_RTP_HEADER: [u8; 12] = [0x80, 0x60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
 /// 管线状态
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -261,6 +266,15 @@ pub struct SbEngine {
 
     /// 蓝牙连接配置
     bt_config: BluetoothConfig,
+
+    /// 会话握手状态
+    session: Option<Session>,
+
+    /// 是否启用加密
+    encryption_enabled: bool,
+
+    /// SRTP 密钥材料（在 sb_enable_encryption 时设置）
+    crypto_keys: Option<CryptoKeys>,
 }
 
 /// 创建引擎
@@ -296,6 +310,9 @@ pub extern "C" fn sb_engine_create() -> *mut c_void {
         adb_config: AdbConfig::default(),
         bt_state: BluetoothState::Idle,
         bt_config: BluetoothConfig::default(),
+        session: None,
+        encryption_enabled: false,
+        crypto_keys: None,
     };
 
     Box::into_raw(Box::new(engine)) as *mut c_void
@@ -1001,6 +1018,83 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
         }
     };
 
+    // ── 加密准备：会话握手 + SRTP 上下文 ──
+    let (send_srtp_ctx, recv_srtp_ctx) = if engine.encryption_enabled {
+        let keys = match engine.crypto_keys.clone() {
+            Some(k) => k,
+            None => {
+                set_error("encryption enabled but no keys - call sb_enable_encryption first");
+                return SbError::Error as c_int;
+            }
+        };
+
+        // 模拟会话握手（验证协议状态机）
+        let session_id = generate_session_id();
+        let session_config = SessionConfig::default();
+        let capability = Capability::default();
+
+        let mut client =
+            Session::new_client(session_id.clone(), capability.clone(), session_config.clone());
+        let mut server = Session::new_server(String::new(), capability, session_config);
+
+        let client_hello = match client.initiate_handshake() {
+            Ok(msg) => msg,
+            Err(e) => {
+                set_error(&format!("session handshake init failed: {}", e));
+                return SbError::Error as c_int;
+            }
+        };
+        let server_hello = match server.handle_client_hello(&client_hello) {
+            Ok(msg) => msg,
+            Err(e) => {
+                set_error(&format!("session handshake server failed: {}", e));
+                return SbError::Error as c_int;
+            }
+        };
+        let key_exchange = match client.handle_server_hello(&server_hello) {
+            Ok(msg) => msg,
+            Err(e) => {
+                set_error(&format!("session handshake key exchange failed: {}", e));
+                return SbError::Error as c_int;
+            }
+        };
+        let finished = match server.handle_key_exchange(&key_exchange) {
+            Ok(msg) => msg,
+            Err(e) => {
+                set_error(&format!("session handshake finished failed: {}", e));
+                return SbError::Error as c_int;
+            }
+        };
+        if let Err(e) = client.handle_finished_client(&finished) {
+            set_error(&format!("session handshake client finish failed: {}", e));
+            return SbError::Error as c_int;
+        }
+
+        engine.session = Some(client);
+        tracing::info!("Session handshake completed: id={}", session_id);
+
+        // 创建 SRTP 上下文（发送/接收各一个，独立包索引）
+        let send_ctx = match SrtpContext::new(keys.clone(), 0x00000001) {
+            Ok(ctx) => Some(ctx),
+            Err(e) => {
+                set_error(&format!("failed to create send SRTP context: {}", e));
+                return SbError::Error as c_int;
+            }
+        };
+        let recv_ctx = match SrtpContext::new(keys, 0x00000002) {
+            Ok(ctx) => Some(ctx),
+            Err(e) => {
+                set_error(&format!("failed to create recv SRTP context: {}", e));
+                return SbError::Error as c_int;
+            }
+        };
+
+        tracing::info!("SRTP contexts created (send_ssrc=0x00000001, recv_ssrc=0x00000002)");
+        (send_ctx, recv_ctx)
+    } else {
+        (None, None)
+    };
+
     // 创建共享状态
     let running = Arc::new(AtomicBool::new(true));
     let stats = Arc::new(SharedPipelineStats::new(mode_config.frame_size_ms));
@@ -1029,11 +1123,13 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
         .name("sb-sender".to_string())
         .spawn(move || {
             let mut encoder = encoder;
+            let mut srtp_ctx = send_srtp_ctx;
             let mut frame_buf = vec![0.0f32; frame_size];
             let mut i16_buf = vec![0i16; frame_size]; // 预分配 i16 缓冲区
             let mut opus_buf = vec![0u8; 1500]; // 预分配编码输出缓冲区
             let protocol = Protocol::new();
             let mut packet_buf = Vec::with_capacity(1500); // 预分配序列化缓冲区
+            let mut rtp_buf = Vec::with_capacity(1522); // 预分配 SRTP 包装缓冲区（12 header + 1500 + 10 auth）
             let start_time = Instant::now();
 
             // 带宽自适应状态
@@ -1128,14 +1224,37 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                     continue;
                 }
 
-                match send_socket.send_to(&packet_buf, target) {
-                    Ok(_) => {
-                        sender_stats.packets_sent.fetch_add(1, Ordering::Relaxed);
-                        sender_stats.frames_encoded.fetch_add(1, Ordering::Relaxed);
+                // 加密并发送
+                if let Some(ref mut srtp) = srtp_ctx {
+                    rtp_buf.clear();
+                    rtp_buf.extend_from_slice(&SRTP_RTP_HEADER);
+                    rtp_buf.extend_from_slice(&packet_buf);
+                    match srtp.protect(&rtp_buf) {
+                        Ok(encrypted) => match send_socket.send_to(&encrypted, target) {
+                            Ok(_) => {
+                                sender_stats.packets_sent.fetch_add(1, Ordering::Relaxed);
+                                sender_stats.frames_encoded.fetch_add(1, Ordering::Relaxed);
+                            }
+                            Err(e) => {
+                                tracing::warn!("Failed to send encrypted packet: {}", e);
+                                sender_stats.frames_dropped.fetch_add(1, Ordering::Relaxed);
+                            }
+                        },
+                        Err(e) => {
+                            tracing::warn!("SRTP protect error: {}", e);
+                            sender_stats.frames_dropped.fetch_add(1, Ordering::Relaxed);
+                        }
                     }
-                    Err(e) => {
-                        tracing::warn!("Failed to send packet: {}", e);
-                        sender_stats.frames_dropped.fetch_add(1, Ordering::Relaxed);
+                } else {
+                    match send_socket.send_to(&packet_buf, target) {
+                        Ok(_) => {
+                            sender_stats.packets_sent.fetch_add(1, Ordering::Relaxed);
+                            sender_stats.frames_encoded.fetch_add(1, Ordering::Relaxed);
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to send packet: {}", e);
+                            sender_stats.frames_dropped.fetch_add(1, Ordering::Relaxed);
+                        }
                     }
                 }
             }
@@ -1161,6 +1280,7 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
         .name("sb-receiver".to_string())
         .spawn(move || {
             let mut decoder = decoder;
+            let mut receiver_srtp = recv_srtp_ctx;
             let protocol = Protocol::new();
             let mut recv_buf = vec![0u8; 1500]; // 一个 UDP MTU
             let mut mix_buf = vec![0.0f32; frame_size];
@@ -1243,7 +1363,30 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                 // 阶段 1：接收 UDP 包，推入 jitter buffer
                 match recv_socket.recv_from(&mut recv_buf) {
                     Ok((len, _from)) => {
-                        match protocol.deserialize_header(&recv_buf[..len]) {
+                        // 如果启用加密，先解密
+                        let packet_data: Cow<'_, [u8]> =
+                            if let Some(ref mut srtp) = receiver_srtp {
+                                match srtp.unprotect(&recv_buf[..len]) {
+                                    Ok(decrypted) => {
+                                        if decrypted.len() <= 12 {
+                                            tracing::warn!(
+                                                "SRTP decrypted packet too short: {} bytes",
+                                                decrypted.len()
+                                            );
+                                            continue;
+                                        }
+                                        Cow::Owned(decrypted[12..].to_vec())
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!("SRTP unprotect error: {}", e);
+                                        continue;
+                                    }
+                                }
+                            } else {
+                                Cow::Borrowed(&recv_buf[..len])
+                            };
+
+                        match protocol.deserialize_header(&packet_data) {
                             Ok((header, data, is_audio)) => {
                                 if is_audio {
                                     let seq = header.sequence;
@@ -1934,6 +2077,109 @@ pub unsafe extern "C" fn sb_bt_set_state(engine: *mut c_void, state: i32) -> c_i
 
     tracing::info!("Bluetooth state set to {:?}", engine.bt_state);
     SbError::Ok as c_int
+}
+
+// ============================================================
+// 加密控制 FFI
+// ============================================================
+
+/// 启用加密传输
+///
+/// 设置 SRTP 主密钥（16 字节）和盐值（14 字节），管线启动时将执行会话握手并使用 SRTP 加密音频数据。
+/// 必须在 `sb_pipeline_start` 之前调用。
+/// 管线运行中不允许修改加密状态。
+///
+/// # Safety
+/// - `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
+/// - `master_key` 必须指向至少 16 字节的密钥数据。
+/// - `master_salt` 必须指向至少 14 字节的盐值数据。
+#[no_mangle]
+pub unsafe extern "C" fn sb_enable_encryption(
+    engine: *mut c_void,
+    master_key: *const u8,
+    master_salt: *const u8,
+) -> c_int {
+    clear_error();
+
+    if engine.is_null() || master_key.is_null() || master_salt.is_null() {
+        set_error("engine, master_key, or master_salt is null");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let engine = unsafe { &mut *(engine as *mut SbEngine) };
+
+    if engine.pipeline_state == PipelineState::Running {
+        set_error("cannot change encryption while pipeline is running");
+        return SbError::Error as c_int;
+    }
+
+    let key_slice = unsafe { std::slice::from_raw_parts(master_key, 16) };
+    let salt_slice = unsafe { std::slice::from_raw_parts(master_salt, 14) };
+
+    let mut key_arr = [0u8; 16];
+    let mut salt_arr = [0u8; 14];
+    key_arr.copy_from_slice(key_slice);
+    salt_arr.copy_from_slice(salt_slice);
+
+    engine.crypto_keys = Some(CryptoKeys::from_bytes(&key_arr, &salt_arr));
+    engine.encryption_enabled = true;
+
+    tracing::info!("Encryption enabled with provided SRTP keys");
+    SbError::Ok as c_int
+}
+
+/// 禁用加密传输
+///
+/// 清除加密状态和密钥材料。必须在 `sb_pipeline_start` 之前调用。
+///
+/// # Safety
+/// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_disable_encryption(engine: *mut c_void) -> c_int {
+    clear_error();
+
+    if engine.is_null() {
+        set_error("engine is null");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let engine = unsafe { &mut *(engine as *mut SbEngine) };
+
+    if engine.pipeline_state == PipelineState::Running {
+        set_error("cannot change encryption while pipeline is running");
+        return SbError::Error as c_int;
+    }
+
+    engine.encryption_enabled = false;
+    engine.crypto_keys = None;
+    engine.session = None;
+
+    tracing::info!("Encryption disabled");
+    SbError::Ok as c_int
+}
+
+/// 查询加密状态
+///
+/// 返回 1 表示加密已启用，0 表示未启用，负数表示错误。
+///
+/// # Safety
+/// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_is_encrypted(engine: *mut c_void) -> c_int {
+    clear_error();
+
+    if engine.is_null() {
+        set_error("engine is null");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let engine = unsafe { &*(engine as *const SbEngine) };
+
+    if engine.encryption_enabled {
+        1
+    } else {
+        0
+    }
 }
 
 // ============================================================
@@ -4021,6 +4267,203 @@ mod tests {
             let result = sb_bt_state(engine, &mut state);
             assert_eq!(result, SbError::Ok as c_int);
             assert_eq!(state, 0); // Idle
+            sb_engine_destroy(engine);
+        }
+    }
+
+    // ============================================================
+    // 加密控制 FFI 测试
+    // ============================================================
+
+    #[test]
+    fn test_enable_encryption_null_engine() {
+        let key = [0u8; 16];
+        let salt = [0u8; 14];
+        let result = unsafe { sb_enable_encryption(ptr::null_mut(), key.as_ptr(), salt.as_ptr()) };
+        assert_eq!(result, SbError::InvalidArgument as c_int);
+    }
+
+    #[test]
+    fn test_enable_encryption_null_key() {
+        unsafe {
+            let engine = sb_engine_create();
+            let salt = [0u8; 14];
+            let result = sb_enable_encryption(engine, ptr::null(), salt.as_ptr());
+            assert_eq!(result, SbError::InvalidArgument as c_int);
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_enable_encryption_null_salt() {
+        unsafe {
+            let engine = sb_engine_create();
+            let key = [0u8; 16];
+            let result = sb_enable_encryption(engine, key.as_ptr(), ptr::null());
+            assert_eq!(result, SbError::InvalidArgument as c_int);
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_enable_encryption_success() {
+        unsafe {
+            let engine = sb_engine_create();
+            let key = [0xABu8; 16];
+            let salt = [0xCDu8; 14];
+            let result = sb_enable_encryption(engine, key.as_ptr(), salt.as_ptr());
+            assert_eq!(result, SbError::Ok as c_int);
+
+            // 验证加密已启用
+            assert_eq!(sb_is_encrypted(engine), 1);
+
+            // 验证内部状态
+            let engine_ref = &*(engine as *const SbEngine);
+            assert!(engine_ref.encryption_enabled);
+            assert!(engine_ref.crypto_keys.is_some());
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_disable_encryption_null_engine() {
+        let result = unsafe { sb_disable_encryption(ptr::null_mut()) };
+        assert_eq!(result, SbError::InvalidArgument as c_int);
+    }
+
+    #[test]
+    fn test_disable_encryption_success() {
+        unsafe {
+            let engine = sb_engine_create();
+            let key = [0xABu8; 16];
+            let salt = [0xCDu8; 14];
+
+            // 先启用
+            sb_enable_encryption(engine, key.as_ptr(), salt.as_ptr());
+            assert_eq!(sb_is_encrypted(engine), 1);
+
+            // 再禁用
+            let result = sb_disable_encryption(engine);
+            assert_eq!(result, SbError::Ok as c_int);
+            assert_eq!(sb_is_encrypted(engine), 0);
+
+            // 验证内部状态已清除
+            let engine_ref = &*(engine as *const SbEngine);
+            assert!(!engine_ref.encryption_enabled);
+            assert!(engine_ref.crypto_keys.is_none());
+            assert!(engine_ref.session.is_none());
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_is_encrypted_null_engine() {
+        let result = unsafe { sb_is_encrypted(ptr::null_mut()) };
+        assert_eq!(result, SbError::InvalidArgument as c_int);
+    }
+
+    #[test]
+    fn test_is_encrypted_default() {
+        unsafe {
+            let engine = sb_engine_create();
+            // 默认应为未加密
+            assert_eq!(sb_is_encrypted(engine), 0);
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_is_encrypted_after_enable() {
+        unsafe {
+            let engine = sb_engine_create();
+            let key = [0x42u8; 16];
+            let salt = [0x69u8; 14];
+            sb_enable_encryption(engine, key.as_ptr(), salt.as_ptr());
+            assert_eq!(sb_is_encrypted(engine), 1);
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_is_encrypted_after_disable() {
+        unsafe {
+            let engine = sb_engine_create();
+            let key = [0x42u8; 16];
+            let salt = [0x69u8; 14];
+            sb_enable_encryption(engine, key.as_ptr(), salt.as_ptr());
+            assert_eq!(sb_is_encrypted(engine), 1);
+            sb_disable_encryption(engine);
+            assert_eq!(sb_is_encrypted(engine), 0);
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_encryption_state_persists() {
+        unsafe {
+            let engine = sb_engine_create();
+            let key = [0xAAu8; 16];
+            let salt = [0xBBu8; 14];
+
+            // 启用加密
+            sb_enable_encryption(engine, key.as_ptr(), salt.as_ptr());
+            {
+                let engine_ref = &*(engine as *const SbEngine);
+                assert!(engine_ref.encryption_enabled);
+                let stored_keys = engine_ref.crypto_keys.as_ref().unwrap();
+                assert_eq!(stored_keys.master_key, key);
+                assert_eq!(stored_keys.master_salt, salt);
+            }
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_encryption_toggle() {
+        unsafe {
+            let engine = sb_engine_create();
+            let key1 = [0x01u8; 16];
+            let salt1 = [0x02u8; 14];
+            let key2 = [0x03u8; 16];
+            let salt2 = [0x04u8; 14];
+
+            // 启用 → 禁用 → 用不同密钥重新启用
+            sb_enable_encryption(engine, key1.as_ptr(), salt1.as_ptr());
+            assert_eq!(sb_is_encrypted(engine), 1);
+
+            sb_disable_encryption(engine);
+            assert_eq!(sb_is_encrypted(engine), 0);
+
+            sb_enable_encryption(engine, key2.as_ptr(), salt2.as_ptr());
+            assert_eq!(sb_is_encrypted(engine), 1);
+
+            // 验证使用了新密钥
+            let engine_ref = &*(engine as *const SbEngine);
+            let stored_keys = engine_ref.crypto_keys.as_ref().unwrap();
+            assert_eq!(stored_keys.master_key, key2);
+            assert_eq!(stored_keys.master_salt, salt2);
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_disable_encryption_clears_keys() {
+        unsafe {
+            let engine = sb_engine_create();
+            let key = [0xFFu8; 16];
+            let salt = [0xEEu8; 14];
+
+            sb_enable_encryption(engine, key.as_ptr(), salt.as_ptr());
+            sb_disable_encryption(engine);
+
+            // 重新启用时需要提供新密钥（旧密钥已清除）
+            let engine_ref = &*(engine as *const SbEngine);
+            assert!(engine_ref.crypto_keys.is_none());
+
             sb_engine_destroy(engine);
         }
     }
