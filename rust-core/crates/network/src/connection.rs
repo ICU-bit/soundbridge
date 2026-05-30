@@ -59,6 +59,45 @@ pub enum HotspotState {
     Error,
 }
 
+/// ADB 连接配置
+#[derive(Debug, Clone)]
+pub struct AdbConfig {
+    /// ADB 端口号（默认 5555）
+    pub adb_port: u32,
+    /// 音频传输端口（本地）
+    pub local_port: u32,
+    /// 音频传输端口（远程）
+    pub remote_port: u32,
+    /// 设备序列号（空字符串表示默认设备）
+    pub device_serial: String,
+}
+
+impl Default for AdbConfig {
+    fn default() -> Self {
+        Self {
+            adb_port: 5555,
+            local_port: 12345,
+            remote_port: 12345,
+            device_serial: String::new(),
+        }
+    }
+}
+
+/// ADB 连接状态
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdbState {
+    /// 未连接
+    Disconnected,
+    /// 设备已连接
+    DeviceConnected,
+    /// 端口转发中
+    Forwarding,
+    /// 端口转发已就绪
+    Ready,
+    /// 错误
+    Error,
+}
+
 impl std::fmt::Display for ConnectionType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

@@ -15,7 +15,7 @@ use audio_core::{AudioMode, AudioModeManager, RingBuffer};
 use audio_mixer::AudioMixer;
 use audio_playback::{PlaybackConfig, PlaybackDevice};
 use audio_processor::AudioProcessor;
-use network::{ConnectionType, RawJitterBuffer, HotspotConfig, HotspotState};
+use network::{ConnectionType, RawJitterBuffer, HotspotConfig, HotspotState, AdbConfig, AdbState};
 use protocol::{ControlMessage, ControlMessageType, Packet, PacketHeader, Protocol};
 use std::time::Instant;
 
@@ -243,6 +243,12 @@ pub struct SbEngine {
 
     /// 热点配置（WiFi Direct）
     hotspot_config: HotspotConfig,
+
+    /// ADB 连接状态
+    adb_state: AdbState,
+
+    /// ADB 连接配置
+    adb_config: AdbConfig,
 }
 
 /// 创建引擎
@@ -273,6 +279,8 @@ pub extern "C" fn sb_engine_create() -> *mut c_void {
         connection_type: ConnectionType::WiFiLan,
         hotspot_state: HotspotState::Idle,
         hotspot_config: HotspotConfig::default(),
+        adb_state: AdbState::Disconnected,
+        adb_config: AdbConfig::default(),
     };
 
     Box::into_raw(Box::new(engine)) as *mut c_void
@@ -1617,6 +1625,131 @@ pub unsafe extern "C" fn sb_hotspot_set_state(engine: *mut c_void, state: i32) -
     };
 
     tracing::info!("Hotspot state set to {:?}", engine.hotspot_state);
+    SbError::Ok as c_int
+}
+
+/// 设置 ADB 端口转发
+///
+/// 配置 ADB 端口转发参数。平台层调用 `adb reverse tcp:<local> tcp:<remote>` 建立端口转发。
+/// 端口转发建立后，使用与 WiFi LAN 相同的 UDP 音频传输。
+///
+/// # Safety
+/// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
+/// `device_serial` 可以是空字符串表示默认设备。
+#[no_mangle]
+pub unsafe extern "C" fn sb_adb_setup_port_forward(
+    engine: *mut c_void,
+    local_port: u32,
+    remote_port: u32,
+    device_serial: *const c_char,
+) -> c_int {
+    clear_error();
+
+    if engine.is_null() {
+        set_error("engine is null");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    if local_port == 0 || remote_port == 0 {
+        set_error("port numbers must be > 0");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let engine = unsafe { &mut *(engine as *mut SbEngine) };
+
+    let serial = if device_serial.is_null() {
+        String::new()
+    } else {
+        match unsafe { CStr::from_ptr(device_serial) }.to_str() {
+            Ok(s) => s.to_string(),
+            Err(_) => {
+                set_error("invalid device serial encoding");
+                return SbError::InvalidArgument as c_int;
+            }
+        }
+    };
+
+    engine.adb_config = AdbConfig {
+        local_port,
+        remote_port,
+        device_serial: serial,
+        ..AdbConfig::default()
+    };
+    engine.adb_state = AdbState::Forwarding;
+
+    tracing::info!(
+        "ADB port forward configured: local={}, remote={}, serial={}",
+        local_port,
+        remote_port,
+        engine.adb_config.device_serial
+    );
+
+    // 注意：实际端口转发由平台层实现（adb reverse tcp:<local> tcp:<remote>）
+    // 平台层完成后应调用 sb_adb_set_state(Ready)
+    SbError::Ok as c_int
+}
+
+/// 获取 ADB 连接状态
+///
+/// # Safety
+/// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
+/// `state` 必须是非空指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_adb_state(engine: *mut c_void, state: *mut i32) -> c_int {
+    clear_error();
+
+    if engine.is_null() || state.is_null() {
+        set_error("invalid arguments");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let engine = unsafe { &*(engine as *const SbEngine) };
+
+    let state_value = match engine.adb_state {
+        AdbState::Disconnected => 0i32,
+        AdbState::DeviceConnected => 1,
+        AdbState::Forwarding => 2,
+        AdbState::Ready => 3,
+        AdbState::Error => 4,
+    };
+
+    unsafe {
+        *state = state_value;
+    }
+
+    SbError::Ok as c_int
+}
+
+/// 设置 ADB 连接状态（供平台层调用）
+///
+/// 平台层完成 ADB 操作后调用此函数更新状态。
+///
+/// # Safety
+/// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_adb_set_state(engine: *mut c_void, state: i32) -> c_int {
+    clear_error();
+
+    if engine.is_null() {
+        set_error("engine is null");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let engine = unsafe { &mut *(engine as *mut SbEngine) };
+
+    engine.adb_state = match state {
+        0 => AdbState::Disconnected,
+        1 => AdbState::DeviceConnected,
+        2 => AdbState::Forwarding,
+        3 => AdbState::Ready,
+        4 => AdbState::Error,
+        _ => {
+            set_error("invalid ADB state (0-4)");
+            return SbError::InvalidArgument as c_int;
+        }
+    };
+
+    tracing::info!("ADB state set to {:?}", engine.adb_state);
     SbError::Ok as c_int
 }
 
@@ -3381,6 +3514,101 @@ mod tests {
             let result = sb_hotspot_state(engine, &mut state);
             assert_eq!(result, SbError::Ok as c_int);
             assert_eq!(state, 0); // Idle
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_adb_setup_null_engine() {
+        let serial = CString::new("").unwrap();
+        let result = unsafe { sb_adb_setup_port_forward(ptr::null_mut(), 12345, 12345, serial.as_ptr()) };
+        assert_eq!(result, SbError::InvalidArgument as c_int);
+    }
+
+    #[test]
+    fn test_adb_setup_invalid_port() {
+        unsafe {
+            let engine = sb_engine_create();
+            let serial = CString::new("").unwrap();
+            let result = sb_adb_setup_port_forward(engine, 0, 12345, serial.as_ptr());
+            assert_eq!(result, SbError::InvalidArgument as c_int);
+            let result = sb_adb_setup_port_forward(engine, 12345, 0, serial.as_ptr());
+            assert_eq!(result, SbError::InvalidArgument as c_int);
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_adb_setup_and_state() {
+        unsafe {
+            let engine = sb_engine_create();
+            let serial = CString::new("").unwrap();
+            let result = sb_adb_setup_port_forward(engine, 12345, 12345, serial.as_ptr());
+            assert_eq!(result, SbError::Ok as c_int);
+
+            // 配置后状态应为 Forwarding (2)
+            let mut state = -1i32;
+            let result = sb_adb_state(engine, &mut state);
+            assert_eq!(result, SbError::Ok as c_int);
+            assert_eq!(state, 2); // Forwarding
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_adb_state_null_engine() {
+        let mut state = 0i32;
+        let result = unsafe { sb_adb_state(ptr::null_mut(), &mut state) };
+        assert_eq!(result, SbError::InvalidArgument as c_int);
+    }
+
+    #[test]
+    fn test_adb_state_null_pointer() {
+        unsafe {
+            let engine = sb_engine_create();
+            let result = sb_adb_state(engine, ptr::null_mut());
+            assert_eq!(result, SbError::InvalidArgument as c_int);
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_adb_set_state() {
+        unsafe {
+            let engine = sb_engine_create();
+
+            // 设置为 Ready (3)
+            let result = sb_adb_set_state(engine, 3);
+            assert_eq!(result, SbError::Ok as c_int);
+
+            let mut state = -1i32;
+            let result = sb_adb_state(engine, &mut state);
+            assert_eq!(result, SbError::Ok as c_int);
+            assert_eq!(state, 3); // Ready
+
+            // 无效状态应返回错误
+            let result = sb_adb_set_state(engine, 99);
+            assert_eq!(result, SbError::InvalidArgument as c_int);
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_adb_set_state_null_engine() {
+        let result = unsafe { sb_adb_set_state(ptr::null_mut(), 3) };
+        assert_eq!(result, SbError::InvalidArgument as c_int);
+    }
+
+    #[test]
+    fn test_adb_default_state() {
+        unsafe {
+            let engine = sb_engine_create();
+            let mut state = -1i32;
+            let result = sb_adb_state(engine, &mut state);
+            assert_eq!(result, SbError::Ok as c_int);
+            assert_eq!(state, 0); // Disconnected
             sb_engine_destroy(engine);
         }
     }
