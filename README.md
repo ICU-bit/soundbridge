@@ -31,6 +31,7 @@
 - ✅ 高音质模式（48kHz/24bit）
 - ✅ 超低延迟模式（<30ms）
 - ✅ 动态切换 - UI 已接入（Windows ComboBox + Android SettingsScreen）
+- ✅ 混音比例控制 - sb_set_mix_ratio / sb_get_mix_ratio
 
 ### 🔄 传输方式
 - ✅ 双向同时传输（手机↔电脑）
@@ -209,6 +210,14 @@
 
 ## 📝 版本历史
 
+- **v0.4.0** - AudioModeManager + 混音器集成到管线
+  - FFI: sb_set_audio_mode 现在通过 AudioModeManager 切换编解码参数
+  - FFI: 接收线程集成 AudioMixer，本地采集 + 远端解码混音后播放
+  - FFI: 新增 sb_set_mix_ratio / sb_get_mix_ratio 控制 PC/手机音量平衡
+  - Android: JNI 新增 nativeGetAudioMode / nativeSetMixRatio / nativeGetMixRatio
+  - Windows: P/Invoke 新增 sb_set_mix_ratio / sb_get_mix_ratio
+  - AudioMixer 新增 Clone trait
+  - 新增 6 个 FFI 测试（混音比例边界值、无效值、null 指针）
 - **v0.3.0** - FFI bindings + Windows/Android UI 完整实现
   - FFI: 音频模式切换、连接状态回调、双向控制
   - Windows: MainWindow + ViewModel + TrayIcon + HotkeyManager + 设备持久化 + 自启
