@@ -2,7 +2,7 @@
 
 ## OVERVIEW
 
-Rust workspace (resolver="2") with 10 crates. All crates are fully implemented with 405 tests passing.
+Rust workspace (resolver="2") with 10 crates. All crates are fully implemented with 428 tests passing.
 
 ## STRUCTURE
 
