@@ -108,11 +108,11 @@ private:
 
 ### 2.1 周次规划
 
-#### Week 1-2：多种连接方式 ⏳ 部分完成
-- ⚠️ WiFi 直连（热点模式）- 未实现
-- ⚠️ USB 有线连接（ADB）- 未实现
-- ⚠️ 蓝牙连接（BLE + 经典）- 未实现
-- ⚠️ 连接方式自动选择 - 未实现
+#### Week 1-2：多种连接方式 ✅ 已完成
+- ✅ WiFi 直连（热点模式）- sb_hotspot_create / sb_hotspot_destroy / sb_hotspot_state
+- ✅ USB 有线连接（ADB）- sb_adb_setup_port_forward / sb_adb_state
+- ✅ 蓝牙连接（BLE + 经典）- sb_bt_init / sb_bt_state
+- ✅ 连接方式自动选择 - ConnectionType FFI + UI 选择器
 
 #### Week 3-4：音频处理 ✅
 - ✅ 集成 WebRTC APM（自研 NLMS/SNR/AGC 替代）
@@ -178,10 +178,15 @@ private:
 - ✅ CPU/内存优化（零分配热路径：decode_into, encode_interleaved_into, mix_two_into, serialize_audio_into, deserialize_header）
 - ✅ 混音比例 UI（Windows Slider + Android Slider，接入 sb_set_mix_ratio FFI）
 - ✅ 多连接方式架构（ConnectionType: WiFiLan, WiFiDirect, UsbAdb, Bluetooth）
+- ✅ WiFi 直连（热点模式）- sb_hotspot_create / sb_hotspot_destroy / sb_hotspot_state
+- ✅ USB/ADB 连接 - sb_adb_setup_port_forward / sb_adb_state
+- ✅ 蓝牙连接 - sb_bt_init / sb_bt_state（BLE + 经典蓝牙）
+- ✅ 真实音频电平检测（sb_get_audio_level，RMS 从采集数据计算）
+- ✅ 独占模式延迟公式自适应（sb_set_exclusive_mode）
+- ✅ 带宽自适应（发送线程根据丢包率动态调整 Opus 码率 64/96/128kbps）
+- ✅ Oracle Bug 修复（channels 2→1, ConnectionType FFI, audio mode hot-switch）
+- ✅ Windows C++ 测试文件（GTest: 27 个测试）
 - [ ] UI 动画和交互优化
-- [ ] WiFi 直连（热点模式）实现
-- [ ] USB/ADB 连接实现
-- [ ] 蓝牙连接实现
 - [ ] 最终测试和发布准备
 
 ### 3.2 技术实现细节
