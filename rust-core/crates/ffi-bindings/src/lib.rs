@@ -1046,8 +1046,10 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
         .spawn(move || {
             let mut decoder = decoder;
             let protocol = Protocol::new();
-            let mut recv_buf = vec![0u8; 4096];
+            let mut recv_buf = vec![0u8; 1500]; // 一个 UDP MTU
             let mut mix_buf = vec![0.0f32; frame_size];
+            let mut decode_buf = vec![0.0f32; frame_size]; // 预分配解码缓冲区
+            let mut remote_buf = vec![0.0f32; frame_size]; // 预分配远端音频缓冲区
 
             tracing::info!("Receiver thread started");
 
@@ -1078,9 +1080,10 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                                         receiver_stats.loss_rate_bits.store(loss_rate.to_bits(), Ordering::Relaxed);
                                     }
                                     
-                                    match decoder.decode(&data) {
-                                        Ok(audio_buffer) => {
-                                            let remote_samples = audio_buffer.samples();
+                                    // 使用零分配解码路径
+                                    match decoder.decode_into(&data, &mut decode_buf) {
+                                        Ok(decoded_count) => {
+                                            let remote_samples = &decode_buf[..decoded_count];
 
                                             // 从本地混音 ring buffer 读取本地音频（由发送线程写入）
                                             let local_read = receiver_mix_ring.read(&mut mix_buf);
@@ -1091,7 +1094,7 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                                                 
                                                 // 将远端音频填充到 frame_size（不足部分补零）
                                                 let remote_len = remote_samples.len().min(frame_size);
-                                                let mut remote_buf = vec![0.0f32; frame_size];
+                                                remote_buf.fill(0.0);
                                                 remote_buf[..remote_len].copy_from_slice(&remote_samples[..remote_len]);
                                                 
                                                 // 混音：本地采集 + 远端解码（长度一致）
