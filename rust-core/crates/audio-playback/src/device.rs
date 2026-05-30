@@ -137,8 +137,8 @@ impl PlaybackDevice {
             )));
         }
 
-        // 创建 ring buffer（容量为缓冲区大小的 4 倍）
-        let ring_buffer = Arc::new(RingBuffer::new(config.buffer_size as usize * 4));
+        // 创建 ring buffer（容量为缓冲区大小的 2 倍，减少延迟）
+        let ring_buffer = Arc::new(RingBuffer::new(config.buffer_size as usize * 2));
 
         Ok(Self {
             device,
@@ -164,7 +164,7 @@ impl PlaybackDevice {
         let stream_config = cpal::StreamConfig {
             channels: self.config.channels,
             sample_rate: cpal::SampleRate(self.config.sample_rate),
-            buffer_size: cpal::BufferSize::Default,
+            buffer_size: cpal::BufferSize::Fixed(self.config.buffer_size),
         };
 
         let ring_buffer = self.ring_buffer.clone();

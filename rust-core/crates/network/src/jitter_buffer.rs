@@ -23,10 +23,10 @@ pub struct JitterBufferConfig {
 impl Default for JitterBufferConfig {
     fn default() -> Self {
         Self {
-            target_delay_ms: 40,
-            min_delay_ms: 20,
-            max_delay_ms: 200,
-            max_packets: 100,
+            target_delay_ms: 20,
+            min_delay_ms: 10,
+            max_delay_ms: 100,
+            max_packets: 50,
         }
     }
 }
