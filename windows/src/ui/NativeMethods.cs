@@ -153,4 +153,42 @@ internal static partial class NativeMethods
         IntPtr ptr = sb_last_error();
         return ptr == IntPtr.Zero ? null : Marshal.PtrToStringAnsi(ptr);
     }
+
+    // ============================================================
+    // Win32 菜单 API（托盘图标上下文菜单）
+    // ============================================================
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct POINT
+    {
+        public int X;
+        public int Y;
+    }
+
+    /// <summary>创建弹出菜单</summary>
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern IntPtr CreatePopupMenu();
+
+    /// <summary>追加菜单项</summary>
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    internal static extern bool AppendMenu(IntPtr hMenu, uint uFlags, uint uIDNewItem, string lpNewItem);
+
+    /// <summary>获取鼠标位置</summary>
+    [DllImport("user32.dll")]
+    internal static extern bool GetCursorPos(out POINT lpPoint);
+
+    /// <summary>显示弹出菜单</summary>
+    [DllImport("user32.dll")]
+    internal static extern uint TrackPopupMenu(
+        IntPtr hMenu,
+        uint uFlags,
+        int x,
+        int y,
+        int nReserved,
+        IntPtr hWnd,
+        IntPtr prcRect);
+
+    /// <summary>销毁菜单</summary>
+    [DllImport("user32.dll")]
+    internal static extern bool DestroyMenu(IntPtr hMenu);
 }
