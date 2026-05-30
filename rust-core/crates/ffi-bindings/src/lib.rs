@@ -14,8 +14,44 @@ use audio_codec::{OpusConfig, OpusDecoderCodec, OpusEncoderCodec};
 use audio_mixer::AudioMixer;
 use audio_playback::{PlaybackConfig, PlaybackDevice};
 use audio_processor::AudioProcessor;
-use protocol::{PacketHeader, Protocol};
+use protocol::{ControlMessage, ControlMessageType, Packet, PacketHeader, Protocol};
 use std::time::Instant;
+
+/// 连接状态（FFI 暴露）
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SbConnectionState {
+    /// 未连接
+    Disconnected = 0,
+    /// 正在连接
+    Connecting = 1,
+    /// 已连接
+    Connected = 2,
+    /// 连接错误
+    Error = 3,
+}
+
+/// 状态回调函数类型
+///
+/// `state` 是新的连接状态。
+/// `user_data` 是注册回调时传入的用户数据指针。
+pub type SbStateCallback = extern "C" fn(state: SbConnectionState, user_data: *mut c_void);
+
+/// 音频模式
+///
+/// - `Balanced`（0）：均衡模式，50-100ms 延迟
+/// - `HighQuality`（1）：高音质模式，48kHz/24bit
+/// - `LowLatency`（2）：超低延迟模式，<30ms
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SbAudioMode {
+    /// 均衡模式（默认）
+    Balanced = 0,
+    /// 高音质模式
+    HighQuality = 1,
+    /// 超低延迟模式
+    LowLatency = 2,
+}
 
 /// FFI 错误码
 #[repr(C)]
@@ -138,6 +174,18 @@ pub struct SbEngine {
     /// 管线状态
     pipeline_state: PipelineState,
 
+    /// 音频模式
+    audio_mode: SbAudioMode,
+
+    /// 连接状态
+    connection_state: SbConnectionState,
+
+    /// 状态回调
+    state_callback: Option<SbStateCallback>,
+
+    /// 状态回调用户数据
+    state_user_data: *mut c_void,
+
     /// 目标地址（远端）
     target_addr: Option<SocketAddr>,
 
@@ -152,6 +200,12 @@ pub struct SbEngine {
 
     /// 管线句柄
     pipeline: Option<PipelineHandle>,
+
+    /// 音量 (0.0 ~ 1.0)
+    volume: f32,
+
+    /// 是否暂停
+    paused: bool,
 }
 
 /// 创建引擎
@@ -165,11 +219,17 @@ pub extern "C" fn sb_engine_create() -> *mut c_void {
         mixer: AudioMixer::default(),
         processor: AudioProcessor::with_default_config().expect("Failed to create AudioProcessor"),
         pipeline_state: PipelineState::Stopped,
+        audio_mode: SbAudioMode::Balanced,
+        connection_state: SbConnectionState::Disconnected,
+        state_callback: None,
+        state_user_data: ptr::null_mut(),
         target_addr: None,
         udp_socket: None,
         local_port: 0,
         sequence: Arc::new(AtomicU32::new(0)),
         pipeline: None,
+        volume: 1.0,
+        paused: false,
     };
 
     Box::into_raw(Box::new(engine)) as *mut c_void
@@ -196,6 +256,73 @@ pub unsafe extern "C" fn sb_engine_destroy(engine: *mut c_void) {
         }
         let _ = Box::from_raw(engine as *mut SbEngine);
     }
+}
+
+/// 设置连接状态并触发回调
+///
+/// 如果状态未变化则不触发回调。
+fn set_connection_state(engine: &mut SbEngine, new_state: SbConnectionState) {
+    if engine.connection_state == new_state {
+        return;
+    }
+    engine.connection_state = new_state;
+    if let Some(cb) = engine.state_callback {
+        cb(new_state, engine.state_user_data);
+    }
+}
+
+/// 设置连接状态回调
+///
+/// 当连接状态发生变化时，调用 `callback(state, user_data)`。
+/// 传入 `None` 作为 callback 可取消注册。
+///
+/// # Safety
+/// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
+/// `callback` 如果非 null，必须在引擎生命周期内保持有效。
+/// `user_data` 会被原样传递给回调，调用者负责其生命周期。
+#[no_mangle]
+pub unsafe extern "C" fn sb_set_state_callback(
+    engine: *mut c_void,
+    callback: Option<SbStateCallback>,
+    user_data: *mut c_void,
+) -> c_int {
+    clear_error();
+
+    if engine.is_null() {
+        set_error("engine is null");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let engine = unsafe { &mut *(engine as *mut SbEngine) };
+    engine.state_callback = callback;
+    engine.state_user_data = user_data;
+
+    SbError::Ok as c_int
+}
+
+/// 获取当前连接状态
+///
+/// # Safety
+/// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
+/// `state` 必须是有效的指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_get_connection_state(
+    engine: *mut c_void,
+    state: *mut SbConnectionState,
+) -> c_int {
+    clear_error();
+
+    if engine.is_null() || state.is_null() {
+        set_error("engine or state is null");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let engine = unsafe { &*(engine as *const SbEngine) };
+    unsafe {
+        *state = engine.connection_state;
+    }
+
+    SbError::Ok as c_int
 }
 
 /// 绑定本地 UDP 端口
@@ -256,6 +383,7 @@ pub unsafe extern "C" fn sb_connect(engine: *mut c_void, addr: *const c_char) ->
     match addr_str.parse::<SocketAddr>() {
         Ok(target) => {
             engine.target_addr = Some(target);
+            set_connection_state(engine, SbConnectionState::Connecting);
             SbError::Ok as c_int
         }
         Err(e) => {
@@ -926,6 +1054,7 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
     });
 
     engine.pipeline_state = PipelineState::Running;
+    set_connection_state(engine, SbConnectionState::Connected);
     SbError::Ok as c_int
 }
 
@@ -944,6 +1073,7 @@ fn stop_pipeline_internal(engine: &mut SbEngine) {
         }
     }
     engine.pipeline_state = PipelineState::Stopped;
+    set_connection_state(engine, SbConnectionState::Disconnected);
 }
 
 /// 停止音频管线
@@ -1043,6 +1173,150 @@ pub unsafe extern "C" fn sb_pipeline_stats(
     }
 
     SbError::Ok as c_int
+}
+
+// ============================================================
+// 双向控制 FFI（音量、暂停、恢复）
+// ============================================================
+
+/// 内部发送控制消息
+///
+/// 通过 UDP 发送控制消息到远端。
+/// 前置条件：engine 必须已 bind 并 connect。
+fn send_control_packet(engine: &SbEngine, msg_type: ControlMessageType, payload: &[u8]) -> c_int {
+    let socket = match engine.udp_socket.as_ref() {
+        Some(s) => s.clone(),
+        None => {
+            set_error("UDP socket not bound - call sb_bind first");
+            return SbError::PipelineNotReady as c_int;
+        }
+    };
+
+    let target = match engine.target_addr {
+        Some(t) => t,
+        None => {
+            set_error("target address not set - call sb_connect first");
+            return SbError::PipelineNotReady as c_int;
+        }
+    };
+
+    // 构造控制消息
+    let control_msg = ControlMessage {
+        message_type: msg_type,
+        payload: payload.to_vec(),
+    };
+
+    // 序列化控制消息
+    let mut control_data = Vec::new();
+    if let Err(e) = control_msg.encode(&mut control_data) {
+        set_error(&format!("failed to encode control message: {}", e));
+        return SbError::Error as c_int;
+    }
+
+    // 构造协议包头（flags=0x00 表示控制数据）
+    let seq = engine.sequence.fetch_add(1, Ordering::Relaxed);
+    let header = PacketHeader {
+        sequence: seq,
+        timestamp_ms: 0,
+        flags: 0x00,
+        channels: 0,
+        opus_length: control_data.len() as u16,
+    };
+
+    let packet = Packet::Control {
+        header,
+        data: control_data,
+    };
+
+    let protocol = Protocol::new();
+    let packet_data = match protocol.serialize(&packet) {
+        Ok(d) => d,
+        Err(e) => {
+            set_error(&format!("failed to serialize control packet: {}", e));
+            return SbError::Error as c_int;
+        }
+    };
+
+    match socket.send_to(&packet_data, target) {
+        Ok(_) => SbError::Ok as c_int,
+        Err(e) => {
+            set_error(&format!("failed to send control packet: {}", e));
+            SbError::NetworkError as c_int
+        }
+    }
+}
+
+/// 发送音量控制命令
+///
+/// 音量范围：0.0（静音）到 1.0（最大）。
+///
+/// # Safety
+/// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_send_volume(engine: *mut c_void, volume: f32) -> c_int {
+    clear_error();
+
+    if engine.is_null() {
+        set_error("engine is null");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    if !(0.0..=1.0).contains(&volume) {
+        set_error("volume must be between 0.0 and 1.0");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let engine = unsafe { &mut *(engine as *mut SbEngine) };
+
+    let result = send_control_packet(engine, ControlMessageType::Volume, &volume.to_be_bytes());
+    if result == SbError::Ok as c_int {
+        engine.volume = volume;
+    }
+    result
+}
+
+/// 发送暂停命令
+///
+/// # Safety
+/// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_send_pause(engine: *mut c_void) -> c_int {
+    clear_error();
+
+    if engine.is_null() {
+        set_error("engine is null");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let engine = unsafe { &mut *(engine as *mut SbEngine) };
+
+    let result = send_control_packet(engine, ControlMessageType::StopAudio, &[]);
+    if result == SbError::Ok as c_int {
+        engine.paused = true;
+    }
+    result
+}
+
+/// 发送恢复命令
+///
+/// # Safety
+/// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_send_resume(engine: *mut c_void) -> c_int {
+    clear_error();
+
+    if engine.is_null() {
+        set_error("engine is null");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let engine = unsafe { &mut *(engine as *mut SbEngine) };
+
+    let result = send_control_packet(engine, ControlMessageType::StartAudio, &[]);
+    if result == SbError::Ok as c_int {
+        engine.paused = false;
+    }
+    result
 }
 
 // ============================================================
@@ -1347,6 +1621,49 @@ pub unsafe extern "C" fn sb_device_store_get_name_at(
     copy_len as c_int
 }
 
+// ============================================================
+// 音频模式（AudioMode）FFI
+// ============================================================
+
+/// 设置音频模式
+///
+/// # Safety
+/// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_set_audio_mode(engine: *mut c_void, mode: SbAudioMode) -> c_int {
+    clear_error();
+
+    if engine.is_null() {
+        set_error("engine is null");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let engine = unsafe { &mut *(engine as *mut SbEngine) };
+    engine.audio_mode = mode;
+    SbError::Ok as c_int
+}
+
+/// 获取音频模式
+///
+/// # Safety
+/// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
+/// `mode` 必须是有效的指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_get_audio_mode(engine: *mut c_void, mode: *mut SbAudioMode) -> c_int {
+    clear_error();
+
+    if engine.is_null() || mode.is_null() {
+        set_error("engine or mode is null");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let engine = unsafe { &*(engine as *const SbEngine) };
+    unsafe {
+        *mode = engine.audio_mode;
+    }
+    SbError::Ok as c_int
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1446,5 +1763,479 @@ mod tests {
 
             sb_engine_destroy(engine);
         }
+    }
+
+    // ---- 连接状态回调测试 ----
+
+    use std::sync::atomic::AtomicI32;
+
+    /// 测试用全局状态：记录回调收到的状态值
+    static CALLBACK_STATE: AtomicI32 = AtomicI32::new(-1);
+    /// 测试用全局状态：记录回调被调用的次数
+    static CALLBACK_COUNT: AtomicI32 = AtomicI32::new(0);
+
+    extern "C" fn test_state_callback(state: SbConnectionState, _user_data: *mut c_void) {
+        CALLBACK_STATE.store(state as i32, Ordering::SeqCst);
+        CALLBACK_COUNT.fetch_add(1, Ordering::SeqCst);
+    }
+
+    #[test]
+    fn test_set_state_callback_null_engine() {
+        let result = unsafe {
+            sb_set_state_callback(ptr::null_mut(), Some(test_state_callback), ptr::null_mut())
+        };
+        assert_eq!(result, SbError::InvalidArgument as c_int);
+        let error = sb_last_error();
+        assert!(!error.is_null());
+    }
+
+    #[test]
+    fn test_set_state_callback_ok() {
+        unsafe {
+            let engine = sb_engine_create();
+            let result = sb_set_state_callback(engine, Some(test_state_callback), ptr::null_mut());
+            assert_eq!(result, SbError::Ok as c_int);
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_set_state_callback_none() {
+        unsafe {
+            let engine = sb_engine_create();
+            // 先设置回调
+            let result = sb_set_state_callback(engine, Some(test_state_callback), ptr::null_mut());
+            assert_eq!(result, SbError::Ok as c_int);
+            // 取消回调
+            let result = sb_set_state_callback(engine, None, ptr::null_mut());
+            assert_eq!(result, SbError::Ok as c_int);
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_get_connection_state_initial() {
+        unsafe {
+            let engine = sb_engine_create();
+            let mut state = SbConnectionState::Error; // 故意设为非默认值
+            let result = sb_get_connection_state(engine, &mut state);
+            assert_eq!(result, SbError::Ok as c_int);
+            assert_eq!(state, SbConnectionState::Disconnected);
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_get_connection_state_null_engine() {
+        let mut state = SbConnectionState::Disconnected;
+        let result = unsafe { sb_get_connection_state(ptr::null_mut(), &mut state) };
+        assert_eq!(result, SbError::InvalidArgument as c_int);
+    }
+
+    #[test]
+    fn test_get_connection_state_null_state() {
+        unsafe {
+            let engine = sb_engine_create();
+            let result = sb_get_connection_state(engine, ptr::null_mut());
+            assert_eq!(result, SbError::InvalidArgument as c_int);
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_state_callback_fires_on_connect() {
+        CALLBACK_STATE.store(-1, Ordering::SeqCst);
+        CALLBACK_COUNT.store(0, Ordering::SeqCst);
+
+        unsafe {
+            let engine = sb_engine_create();
+            sb_set_state_callback(engine, Some(test_state_callback), ptr::null_mut());
+
+            // sb_connect 成功后应触发 Connecting 状态
+            let addr = CString::new("127.0.0.1:12345").unwrap();
+            let result = sb_connect(engine, addr.as_ptr());
+            assert_eq!(result, SbError::Ok as c_int);
+
+            assert_eq!(CALLBACK_STATE.load(Ordering::SeqCst), SbConnectionState::Connecting as i32);
+            assert_eq!(CALLBACK_COUNT.load(Ordering::SeqCst), 1);
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_state_callback_no_fire_on_same_state() {
+        CALLBACK_STATE.store(-1, Ordering::SeqCst);
+        CALLBACK_COUNT.store(0, Ordering::SeqCst);
+
+        unsafe {
+            let engine = sb_engine_create();
+            sb_set_state_callback(engine, Some(test_state_callback), ptr::null_mut());
+
+            // 连接同一地址两次（状态不变，不应再次触发）
+            let addr = CString::new("127.0.0.1:12345").unwrap();
+            sb_connect(engine, addr.as_ptr());
+            assert_eq!(CALLBACK_COUNT.load(Ordering::SeqCst), 1);
+
+            sb_connect(engine, addr.as_ptr());
+            assert_eq!(CALLBACK_COUNT.load(Ordering::SeqCst), 1); // 不变
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_state_callback_user_data() {
+        extern "C" fn callback_with_data(_state: SbConnectionState, user_data: *mut c_void) {
+            unsafe {
+                let ptr = user_data as *mut i32;
+                *ptr = 42;
+            }
+        }
+
+        unsafe {
+            let engine = sb_engine_create();
+            let mut value: i32 = 0;
+            sb_set_state_callback(engine, Some(callback_with_data), &mut value as *mut i32 as *mut c_void);
+
+            let addr = CString::new("127.0.0.1:12345").unwrap();
+            sb_connect(engine, addr.as_ptr());
+
+            assert_eq!(value, 42, "user_data should have been written to 42");
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_connection_state_enum_values() {
+        // 验证 repr(C) 枚举值
+        assert_eq!(SbConnectionState::Disconnected as c_int, 0);
+        assert_eq!(SbConnectionState::Connecting as c_int, 1);
+        assert_eq!(SbConnectionState::Connected as c_int, 2);
+        assert_eq!(SbConnectionState::Error as c_int, 3);
+    }
+
+    // ============================================================
+    // 双向控制 FFI 测试（TDD - 先写测试）
+    // ============================================================
+
+    #[test]
+    fn test_send_volume_null_engine() {
+        let result = unsafe { sb_send_volume(ptr::null_mut(), 0.5) };
+        assert_eq!(result, SbError::InvalidArgument as c_int);
+    }
+
+    #[test]
+    fn test_send_volume_invalid_range() {
+        unsafe {
+            let engine = sb_engine_create();
+
+            let result = sb_send_volume(engine, -0.1);
+            assert_eq!(result, SbError::InvalidArgument as c_int);
+
+            let result = sb_send_volume(engine, 1.1);
+            assert_eq!(result, SbError::InvalidArgument as c_int);
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_send_volume_no_target() {
+        unsafe {
+            let engine = sb_engine_create();
+            sb_bind(engine, 0);
+
+            let result = sb_send_volume(engine, 0.5);
+            assert_eq!(result, SbError::PipelineNotReady as c_int);
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_send_volume_no_socket() {
+        unsafe {
+            let engine = sb_engine_create();
+            let addr = CString::new("127.0.0.1:12345").unwrap();
+            sb_connect(engine, addr.as_ptr());
+
+            let result = sb_send_volume(engine, 0.5);
+            assert_eq!(result, SbError::PipelineNotReady as c_int);
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_send_volume_success() {
+        // 创建接收端 UDP socket
+        let receiver = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let recv_addr = receiver.local_addr().unwrap();
+        receiver.set_nonblocking(true).unwrap();
+
+        unsafe {
+            let engine = sb_engine_create();
+            sb_bind(engine, 0);
+
+            let addr = CString::new(format!("{}", recv_addr)).unwrap();
+            let result = sb_connect(engine, addr.as_ptr());
+            assert_eq!(result, SbError::Ok as c_int);
+
+            // 发送音量控制
+            let result = sb_send_volume(engine, 0.75);
+            assert_eq!(result, SbError::Ok as c_int);
+
+            // 验证引擎内部状态
+            let engine_ref = &*(engine as *const SbEngine);
+            assert_eq!(engine_ref.volume, 0.75);
+
+            // 验证接收端收到了数据
+            let mut recv_buf = vec![0u8; 4096];
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            let recv_result = receiver.recv_from(&mut recv_buf);
+            assert!(recv_result.is_ok(), "Should receive control packet");
+
+            // 反序列化验证
+            let (len, _) = recv_result.unwrap();
+            let protocol = Protocol::new();
+            let packet = protocol.deserialize(&recv_buf[..len]).unwrap();
+            match packet {
+                Packet::Control { header, data } => {
+                    assert_eq!(header.flags, 0x00); // 控制数据标志
+                    let (control_msg, _) = ControlMessage::decode(&data).unwrap();
+                    assert_eq!(control_msg.message_type, ControlMessageType::Volume);
+                    assert_eq!(control_msg.payload.len(), 4);
+                    let vol = f32::from_be_bytes([
+                        control_msg.payload[0],
+                        control_msg.payload[1],
+                        control_msg.payload[2],
+                        control_msg.payload[3],
+                    ]);
+                    assert!((vol - 0.75).abs() < f32::EPSILON);
+                }
+                _ => panic!("Expected Control packet"),
+            }
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_send_pause_null_engine() {
+        let result = unsafe { sb_send_pause(ptr::null_mut()) };
+        assert_eq!(result, SbError::InvalidArgument as c_int);
+    }
+
+    #[test]
+    fn test_send_pause_success() {
+        let receiver = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let recv_addr = receiver.local_addr().unwrap();
+        receiver.set_nonblocking(true).unwrap();
+
+        unsafe {
+            let engine = sb_engine_create();
+            sb_bind(engine, 0);
+
+            let addr = CString::new(format!("{}", recv_addr)).unwrap();
+            sb_connect(engine, addr.as_ptr());
+
+            let result = sb_send_pause(engine);
+            assert_eq!(result, SbError::Ok as c_int);
+
+            // 验证引擎内部状态
+            let engine_ref = &*(engine as *const SbEngine);
+            assert!(engine_ref.paused);
+
+            // 验证接收端收到了数据
+            let mut recv_buf = vec![0u8; 4096];
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            let recv_result = receiver.recv_from(&mut recv_buf);
+            assert!(recv_result.is_ok(), "Should receive pause packet");
+
+            let (len, _) = recv_result.unwrap();
+            let protocol = Protocol::new();
+            let packet = protocol.deserialize(&recv_buf[..len]).unwrap();
+            match packet {
+                Packet::Control { header: _, data } => {
+                    let (control_msg, _) = ControlMessage::decode(&data).unwrap();
+                    assert_eq!(control_msg.message_type, ControlMessageType::StopAudio);
+                    assert!(control_msg.payload.is_empty());
+                }
+                _ => panic!("Expected Control packet"),
+            }
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_send_resume_null_engine() {
+        let result = unsafe { sb_send_resume(ptr::null_mut()) };
+        assert_eq!(result, SbError::InvalidArgument as c_int);
+    }
+
+    #[test]
+    fn test_send_resume_success() {
+        let receiver = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let recv_addr = receiver.local_addr().unwrap();
+        receiver.set_nonblocking(true).unwrap();
+
+        unsafe {
+            let engine = sb_engine_create();
+            sb_bind(engine, 0);
+
+            let addr = CString::new(format!("{}", recv_addr)).unwrap();
+            sb_connect(engine, addr.as_ptr());
+
+            // 先暂停
+            sb_send_pause(engine);
+            {
+                let engine_ref = &*(engine as *const SbEngine);
+                assert!(engine_ref.paused);
+            }
+
+            // 发送恢复
+            let result = sb_send_resume(engine);
+            assert_eq!(result, SbError::Ok as c_int);
+
+            // 验证引擎内部状态
+            let engine_ref = &*(engine as *const SbEngine);
+            assert!(!engine_ref.paused);
+
+            // 验证接收端收到恢复消息（跳过暂停消息）
+            // 先读掉暂停消息
+            let mut recv_buf = vec![0u8; 4096];
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            let _ = receiver.recv_from(&mut recv_buf);
+
+            // 再读恢复消息
+            let recv_result = receiver.recv_from(&mut recv_buf);
+            assert!(recv_result.is_ok(), "Should receive resume packet");
+
+            let (len, _) = recv_result.unwrap();
+            let protocol = Protocol::new();
+            let packet = protocol.deserialize(&recv_buf[..len]).unwrap();
+            match packet {
+                Packet::Control { header: _, data } => {
+                    let (control_msg, _) = ControlMessage::decode(&data).unwrap();
+                    assert_eq!(control_msg.message_type, ControlMessageType::StartAudio);
+                    assert!(control_msg.payload.is_empty());
+                }
+                _ => panic!("Expected Control packet"),
+            }
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_send_volume_boundary_values() {
+        let receiver = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let recv_addr = receiver.local_addr().unwrap();
+        receiver.set_nonblocking(true).unwrap();
+
+        unsafe {
+            let engine = sb_engine_create();
+            sb_bind(engine, 0);
+
+            let addr = CString::new(format!("{}", recv_addr)).unwrap();
+            sb_connect(engine, addr.as_ptr());
+
+            // 测试最小值 0.0
+            let result = sb_send_volume(engine, 0.0);
+            assert_eq!(result, SbError::Ok as c_int);
+
+            // 测试最大值 1.0
+            let result = sb_send_volume(engine, 1.0);
+            assert_eq!(result, SbError::Ok as c_int);
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_audio_mode_default() {
+        unsafe {
+            let engine = sb_engine_create();
+            let mut mode = SbAudioMode::LowLatency; // 故意设为非默认值
+
+            let result = sb_get_audio_mode(engine, &mut mode);
+            assert_eq!(result, SbError::Ok as c_int);
+            assert_eq!(mode, SbAudioMode::Balanced, "Default audio mode should be Balanced");
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_set_and_get_audio_mode() {
+        unsafe {
+            let engine = sb_engine_create();
+
+            // 设置为高音质模式
+            let result = sb_set_audio_mode(engine, SbAudioMode::HighQuality);
+            assert_eq!(result, SbError::Ok as c_int);
+
+            // 读取应该返回高音质模式
+            let mut mode = SbAudioMode::Balanced;
+            let result = sb_get_audio_mode(engine, &mut mode);
+            assert_eq!(result, SbError::Ok as c_int);
+            assert_eq!(mode, SbAudioMode::HighQuality);
+
+            // 切换为超低延迟模式
+            let result = sb_set_audio_mode(engine, SbAudioMode::LowLatency);
+            assert_eq!(result, SbError::Ok as c_int);
+
+            let mut mode = SbAudioMode::Balanced;
+            let result = sb_get_audio_mode(engine, &mut mode);
+            assert_eq!(result, SbError::Ok as c_int);
+            assert_eq!(mode, SbAudioMode::LowLatency);
+
+            // 切换回均衡模式
+            let result = sb_set_audio_mode(engine, SbAudioMode::Balanced);
+            assert_eq!(result, SbError::Ok as c_int);
+
+            let mut mode = SbAudioMode::HighQuality;
+            let result = sb_get_audio_mode(engine, &mut mode);
+            assert_eq!(result, SbError::Ok as c_int);
+            assert_eq!(mode, SbAudioMode::Balanced);
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_audio_mode_null_engine() {
+        // sb_set_audio_mode with null engine
+        let result = unsafe { sb_set_audio_mode(ptr::null_mut(), SbAudioMode::Balanced) };
+        assert_eq!(result, SbError::InvalidArgument as c_int);
+
+        // sb_get_audio_mode with null engine
+        let mut mode = SbAudioMode::Balanced;
+        let result = unsafe { sb_get_audio_mode(ptr::null_mut(), &mut mode) };
+        assert_eq!(result, SbError::InvalidArgument as c_int);
+    }
+
+    #[test]
+    fn test_audio_mode_null_mode_pointer() {
+        unsafe {
+            let engine = sb_engine_create();
+
+            // sb_get_audio_mode with null mode pointer
+            let result = sb_get_audio_mode(engine, ptr::null_mut());
+            assert_eq!(result, SbError::InvalidArgument as c_int);
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_audio_mode_enum_values() {
+        // 验证 repr(C) 枚举值
+        assert_eq!(SbAudioMode::Balanced as c_int, 0);
+        assert_eq!(SbAudioMode::HighQuality as c_int, 1);
+        assert_eq!(SbAudioMode::LowLatency as c_int, 2);
     }
 }
