@@ -191,6 +191,24 @@ impl Protocol {
         Ok(buf)
     }
 
+    /// 序列化包到预分配缓冲区（零分配版本）
+    pub fn serialize_into(&self, packet: &Packet, buf: &mut Vec<u8>) -> Result<()> {
+        buf.clear();
+
+        match packet {
+            Packet::Audio { header, data } => {
+                header.encode(buf)?;
+                buf.extend_from_slice(data);
+            }
+            Packet::Control { header, data } => {
+                header.encode(buf)?;
+                buf.extend_from_slice(data);
+            }
+        }
+
+        Ok(())
+    }
+
     /// 反序列化包
     pub fn deserialize(&self, data: &[u8]) -> Result<Packet> {
         let (header, _) = PacketHeader::decode(data)?;

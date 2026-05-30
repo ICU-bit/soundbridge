@@ -963,6 +963,7 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
             let mut encoder = encoder;
             let mut frame_buf = vec![0.0f32; frame_size];
             let protocol = Protocol::new();
+            let mut packet_buf = Vec::with_capacity(1500); // 预分配序列化缓冲区
             let start_time = Instant::now();
 
             tracing::info!("Sender thread started, frame_size={}", frame_size);
@@ -995,26 +996,23 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                             opus_length: opus_data.len() as u16,
                         };
 
-                        let packet = protocol.serialize(&protocol::Packet::Audio {
+                        // 使用零分配序列化
+                        if let Err(e) = protocol.serialize_into(&protocol::Packet::Audio {
                             header,
                             data: opus_data,
-                        });
+                        }, &mut packet_buf) {
+                            tracing::warn!("Serialize error: {}", e);
+                            continue;
+                        }
 
-                        match packet {
-                            Ok(packet_data) => {
-                                match send_socket.send_to(&packet_data, target) {
-                                    Ok(_) => {
-                                        sender_stats.packets_sent.fetch_add(1, Ordering::Relaxed);
-                                        sender_stats.frames_encoded.fetch_add(1, Ordering::Relaxed);
-                                    }
-                                    Err(e) => {
-                                        tracing::warn!("Failed to send packet: {}", e);
-                                        sender_stats.frames_dropped.fetch_add(1, Ordering::Relaxed);
-                                    }
-                                }
+                        match send_socket.send_to(&packet_buf, target) {
+                            Ok(_) => {
+                                sender_stats.packets_sent.fetch_add(1, Ordering::Relaxed);
+                                sender_stats.frames_encoded.fetch_add(1, Ordering::Relaxed);
                             }
                             Err(e) => {
-                                tracing::warn!("Failed to serialize packet: {}", e);
+                                tracing::warn!("Failed to send packet: {}", e);
+                                sender_stats.frames_dropped.fetch_add(1, Ordering::Relaxed);
                             }
                         }
                     }
