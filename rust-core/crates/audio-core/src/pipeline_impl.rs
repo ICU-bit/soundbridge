@@ -154,13 +154,18 @@ impl AudioPipeline for ConcreteAudioPipeline {
     }
     
     fn stats(&self) -> PipelineStats {
+        // Latency estimate based on buffer/codec pipeline:
+        // capture_buffer + encode + decode + playback_buffer ≈ 2× frame_duration + codec
+        let frame_duration_ms = (self.config.frame_size as f64) / (self.config.sample_rate as f64) * 1000.0;
+        let latency_ms = (frame_duration_ms * 3.0) as f32; // capture + codec + playback buffers
+        
         PipelineStats {
             frames_captured: self.frames_captured.load(Ordering::Relaxed),
             frames_played: self.frames_played.load(Ordering::Relaxed),
             frames_encoded: self.frames_encoded.load(Ordering::Relaxed),
             frames_decoded: self.frames_decoded.load(Ordering::Relaxed),
             frames_dropped: self.frames_dropped.load(Ordering::Relaxed),
-            latency_ms: 0.0, // TODO: 计算实际延迟
+            latency_ms,
         }
     }
     
