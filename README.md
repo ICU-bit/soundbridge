@@ -226,6 +226,14 @@
 
 ## 📝 版本历史
 
+- **v0.7.0** - UI 动画优化 + Android JNI 连接管理 + 最终测试
+  - Windows: ProgressRing 加载动画（连接中状态）
+  - Windows: 设备发现 UI（扫描按钮 + 设备列表 + ListView 选择）
+  - Windows: 新增 5 个 Converters（InvertBool、InvertBoolToVisibility、BoolToScanText、CollectionToVisibility、EmptyCollectionToVisibility）
+  - Windows: 连接按钮三态（Connecting... / Connect / Disconnect）
+  - Android: NativeAudioEngine 新增 11 个 JNI 函数（热点/ADB/蓝牙/独占模式）
+  - Android: jni_bridge.cpp 连接管理存根实现（静态状态跟踪）
+  - 测试: 269+ 测试全部通过，零 clippy 警告
 - **v0.6.0** - 多连接方式 + Oracle Bug 修复 + 音频电平
   - FFI: 新增 sb_get_audio_level（真实 RMS 电平，从采集数据计算）
   - FFI: 新增 sb_set_exclusive_mode（WASAPI 独占模式延迟公式自适应）
