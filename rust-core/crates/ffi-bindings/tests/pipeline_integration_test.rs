@@ -65,7 +65,12 @@ fn test_engine_lifecycle_bind_connect_verify() {
     unsafe {
         // Bind on port 0 (auto-assign)
         let rc = sb_bind(engine, 0);
-        assert_eq!(rc, 0, "sb_bind(0) should succeed, got error: {}", last_error_string());
+        assert_eq!(
+            rc,
+            0,
+            "sb_bind(0) should succeed, got error: {}",
+            last_error_string()
+        );
 
         // Verify auto-assigned port is non-zero
         let mut port: u16 = 0;
@@ -83,7 +88,12 @@ fn test_engine_lifecycle_bind_connect_verify() {
             }
         };
         let rc = sb_connect(engine, addr.as_ptr());
-        assert_eq!(rc, 0, "sb_connect should succeed, got error: {}", last_error_string());
+        assert_eq!(
+            rc,
+            0,
+            "sb_connect should succeed, got error: {}",
+            last_error_string()
+        );
 
         // Verify connection state transitioned to Connecting
         let mut state = SbConnectionState::Disconnected;
@@ -167,16 +177,20 @@ fn test_encryption_roundtrip() {
 
         // Enable encryption with test keys
         let master_key: [u8; 16] = [
-            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-            0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
+            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E,
+            0x0F, 0x10,
         ];
         let master_salt: [u8; 14] = [
-            0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7,
-            0xA8, 0xA9, 0xAA, 0xAB, 0xAC, 0xAD, 0xAE,
+            0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xA8, 0xA9, 0xAA, 0xAB, 0xAC, 0xAD, 0xAE,
         ];
 
         let rc = sb_enable_encryption(engine, master_key.as_ptr(), master_salt.as_ptr());
-        assert_eq!(rc, 0, "sb_enable_encryption should succeed, got: {}", last_error_string());
+        assert_eq!(
+            rc,
+            0,
+            "sb_enable_encryption should succeed, got: {}",
+            last_error_string()
+        );
 
         // Verify encryption is now active
         let is_enc = sb_is_encrypted(engine);
@@ -220,8 +234,16 @@ fn test_mix_ratio_hot_update() {
         let mut phone: f32 = -1.0;
         let rc = sb_get_mix_ratio(engine, &mut pc, &mut phone);
         assert_eq!(rc, 0, "sb_get_mix_ratio should succeed");
-        assert!((pc - 0.5).abs() < 0.01, "Default PC volume should be ~0.5, got {}", pc);
-        assert!((phone - 0.5).abs() < 0.01, "Default phone volume should be ~0.5, got {}", phone);
+        assert!(
+            (pc - 0.5).abs() < 0.01,
+            "Default PC volume should be ~0.5, got {}",
+            pc
+        );
+        assert!(
+            (phone - 0.5).abs() < 0.01,
+            "Default phone volume should be ~0.5, got {}",
+            phone
+        );
 
         // Test boundary values
         let test_cases: &[(f32, f32)] = &[
@@ -267,8 +289,16 @@ fn test_mix_ratio_hot_update() {
         let mut final_pc: f32 = 0.0;
         let mut final_phone: f32 = 0.0;
         sb_get_mix_ratio(engine, &mut final_pc, &mut final_phone);
-        assert!((final_pc - 0.99).abs() < 0.01, "Final PC should be ~0.99, got {}", final_pc);
-        assert!((final_phone - 0.01).abs() < 0.01, "Final phone should be ~0.01, got {}", final_phone);
+        assert!(
+            (final_pc - 0.99).abs() < 0.01,
+            "Final PC should be ~0.99, got {}",
+            final_pc
+        );
+        assert!(
+            (final_phone - 0.01).abs() < 0.01,
+            "Final phone should be ~0.01, got {}",
+            final_phone
+        );
 
         destroy_engine(engine);
     }
@@ -304,17 +334,27 @@ fn test_pipeline_state_without_hardware() {
         // Pipeline state should still be Stopped after failed start
         let mut state: c_int = -1;
         sb_pipeline_state(engine, &mut state);
-        assert_eq!(state, 0, "Pipeline should remain Stopped after failed start");
+        assert_eq!(
+            state, 0,
+            "Pipeline should remain Stopped after failed start"
+        );
 
         // Audio level should be 0.0 without pipeline
         let mut level: f32 = -1.0;
         let rc = sb_get_audio_level(engine, &mut level);
         assert_eq!(rc, 0, "sb_get_audio_level should succeed");
-        assert!((level - 0.0).abs() < 0.001, "Audio level without pipeline should be 0.0, got {}", level);
+        assert!(
+            (level - 0.0).abs() < 0.001,
+            "Audio level without pipeline should be 0.0, got {}",
+            level
+        );
 
         // Pipeline stop on already-stopped engine should succeed (no-op)
         let rc = sb_pipeline_stop(engine);
-        assert_eq!(rc, 0, "Pipeline stop on stopped engine should be a no-op success");
+        assert_eq!(
+            rc, 0,
+            "Pipeline stop on stopped engine should be a no-op success"
+        );
 
         destroy_engine(engine);
     }
@@ -423,9 +463,8 @@ fn test_encryption_error_handling() {
 #[test]
 fn test_device_store_full_lifecycle() {
     unsafe {
-        let test_file = CString::new("test_pipeline_devices.json").unwrap_or_else(|_| {
-            CString::new("fallback.json").unwrap_or_default()
-        });
+        let test_file = CString::new("test_pipeline_devices.json")
+            .unwrap_or_else(|_| CString::new("fallback.json").unwrap_or_default());
 
         // Open store
         let store = sb_device_store_open(test_file.as_ptr());
@@ -528,7 +567,11 @@ fn test_connection_type_all_values() {
             let mut got: i32 = -1;
             let rc = sb_get_connection_type(engine, &mut got);
             assert_eq!(rc, 0);
-            assert_eq!(got, conn_type, "Connection type round-trip failed for {}", name);
+            assert_eq!(
+                got, conn_type,
+                "Connection type round-trip failed for {}",
+                name
+            );
         }
 
         // Invalid type should fail
@@ -567,7 +610,11 @@ fn test_mute_toggle_roundtrip() {
         // Mute off
         let rc = sb_set_mute(engine, 0);
         assert_eq!(rc, 0);
-        assert_eq!(sb_get_mute(engine), 0, "Should be unmuted after set_mute(0)");
+        assert_eq!(
+            sb_get_mute(engine),
+            0,
+            "Should be unmuted after set_mute(0)"
+        );
 
         // Rapid toggle
         for i in 0..20 {
@@ -600,7 +647,11 @@ fn test_audio_level_without_pipeline() {
             "Audio level should be in [0.0, 1.0], got {}",
             level
         );
-        assert!((level - 0.0).abs() < 0.001, "Level without pipeline should be 0.0, got {}", level);
+        assert!(
+            (level - 0.0).abs() < 0.001,
+            "Level without pipeline should be 0.0, got {}",
+            level
+        );
 
         // Null engine
         let rc = sb_get_audio_level(ptr::null_mut(), &mut level);
@@ -641,8 +692,14 @@ fn test_pipeline_stats_without_pipeline() {
         assert_eq!(rc, 0, "sb_pipeline_stats should succeed");
         assert_eq!(frames_captured, 0, "No frames captured without pipeline");
         assert_eq!(frames_played, 0, "No frames played without pipeline");
-        assert!((latency_ms - 0.0).abs() < 0.001, "Latency should be 0.0 without pipeline");
-        assert!((loss_rate - 0.0).abs() < 0.001, "Loss rate should be 0.0 without pipeline");
+        assert!(
+            (latency_ms - 0.0).abs() < 0.001,
+            "Latency should be 0.0 without pipeline"
+        );
+        assert!(
+            (loss_rate - 0.0).abs() < 0.001,
+            "Loss rate should be 0.0 without pipeline"
+        );
 
         destroy_engine(engine);
     }
