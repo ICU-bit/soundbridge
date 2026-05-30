@@ -22,9 +22,9 @@
 
 ### 🔗 连接方式
 - ✅ WiFi 局域网（自动发现 - mDNS _soundbridge._udp）
-- ⚠️ WiFi 直连（热点模式）- 未实现
-- ⚠️ USB 有线连接 - 未实现
-- ⚠️ 蓝牙连接 - 未实现
+- ✅ WiFi 直连（热点模式）- sb_hotspot_create / sb_hotspot_destroy / sb_hotspot_state
+- ✅ USB 有线连接（ADB）- sb_adb_setup_port_forward / sb_adb_state
+- ✅ 蓝牙连接 - sb_bt_init / sb_bt_state（BLE + 经典蓝牙）
 
 ### 🎵 音频模式
 - ✅ 均衡模式（50-100ms 延迟）
@@ -226,6 +226,24 @@
 
 ## 📝 版本历史
 
+- **v0.6.0** - 多连接方式 + Oracle Bug 修复 + 音频电平
+  - FFI: 新增 sb_get_audio_level（真实 RMS 电平，从采集数据计算）
+  - FFI: 新增 sb_set_exclusive_mode（WASAPI 独占模式延迟公式自适应）
+  - FFI: 新增 sb_hotspot_create/sb_hotspot_destroy/sb_hotspot_state（WiFi Direct 热点管理）
+  - FFI: 新增 sb_adb_setup_port_forward/sb_adb_state/sb_adb_set_state（USB/ADB 端口转发）
+  - FFI: 新增 sb_bt_init/sb_bt_state/sb_bt_set_state（蓝牙连接管理）
+  - FFI: 修复 sb_playback_write channels 2→1（Oracle Bug 1）
+  - FFI: 修复 ConnectionType FFI 死代码 - sb_set_connection_type/sb_get_connection_type（Oracle Bug 2）
+  - FFI: 修复 sb_set_audio_mode 热切换 - 管线运行时自动重启（Oracle Bug 3）
+  - FFI: SharedPipelineStats 新增 captured_level_bits + exclusive_mode 字段
+  - FFI: 带宽自适应 - 发送线程根据丢包率动态调整 Opus 码率（64/96/128kbps）
+  - Windows: P/Invoke 新增 sb_get_audio_level / sb_set_exclusive_mode
+  - Windows: UI 使用真实 sb_get_audio_level 替代假数据
+  - Windows: ConnectionType 选择器（ComboBox）+ 音频模式热切换
+  - Windows: 创建 3 个 GTest 测试文件（27 个测试：Opus 编解码 + 音频管线 + UDP 传输）
+  - Android: ConnectionType 选择器（FilterChip）+ 音频模式热切换
+  - Network: 新增 HotspotConfig/HotspotState/AdbConfig/AdbState/BluetoothConfig/BluetoothState
+  - 测试: 76 个 FFI 测试，零 clippy 警告
 - **v0.5.0** - Jitter Buffer + WASAPI 独占模式
   - FFI: 接收线程集成 RawJitterBuffer，Opus 包按序解码（乱序容忍）
   - Windows: WasapiCapture/WasapiRenderer 支持独占模式（10ms 缓冲区，自动回退共享模式）
