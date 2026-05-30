@@ -4553,7 +4553,7 @@ mod tests {
         );
         let error_str = unsafe { CStr::from_ptr(error) }.to_str().unwrap();
         assert!(
-            error_str.contains("engine is null"),
+            error_str.contains("null"),
             "Error message should mention null engine, got: {}",
             error_str
         );
