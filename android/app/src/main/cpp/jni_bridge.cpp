@@ -484,4 +484,95 @@ Java_com_soundbridge_native_NativeAudioEngine_nativeDiscoveryFindDevices(
     return env->NewObjectArray(0, stringClass, nullptr);
 }
 
+// ============================================================
+// 连接方式管理（存根 - 平台层实现）
+// ============================================================
+
+// 热点状态（静态变量）
+static int g_hotspot_state = 0; // 0=Idle, 1=Creating, 2=Active, 3=Error
+static int g_adb_state = 0;     // 0=Idle, 1=Connecting, 2=Connected, 3=Error
+static int g_bt_state = 0;      // 0=Idle, 1=Initializing, 2=Ready, 3=Error
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeHotspotCreate(
+        JNIEnv* env, jobject thiz, jlong engineHandle, jstring ssid, jstring password, jint channel) {
+    LOGI("Hotspot create (stub): channel=%d", channel);
+    g_hotspot_state = 2; // Active
+    return 0; // OK
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeHotspotDestroy(
+        JNIEnv* env, jobject thiz, jlong engineHandle) {
+    LOGI("Hotspot destroy (stub)");
+    g_hotspot_state = 0; // Idle
+    return 0; // OK
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeHotspotState(
+        JNIEnv* env, jobject thiz, jlong engineHandle) {
+    return g_hotspot_state;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeHotspotSetState(
+        JNIEnv* env, jobject thiz, jlong engineHandle, jint state) {
+    LOGI("Hotspot set state: %d", state);
+    g_hotspot_state = state;
+    return 0; // OK
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeAdbSetupPortForward(
+        JNIEnv* env, jobject thiz, jlong engineHandle, jint localPort, jint remotePort) {
+    LOGI("ADB setup port forward (stub): %d -> %d", localPort, remotePort);
+    g_adb_state = 2; // Connected
+    return 0; // OK
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeAdbState(
+        JNIEnv* env, jobject thiz, jlong engineHandle) {
+    return g_adb_state;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeAdbSetState(
+        JNIEnv* env, jobject thiz, jlong engineHandle, jint state) {
+    LOGI("ADB set state: %d", state);
+    g_adb_state = state;
+    return 0; // OK
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeBtInit(
+        JNIEnv* env, jobject thiz, jlong engineHandle) {
+    LOGI("Bluetooth init (stub)");
+    g_bt_state = 2; // Ready
+    return 0; // OK
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeBtState(
+        JNIEnv* env, jobject thiz, jlong engineHandle) {
+    return g_bt_state;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeBtSetState(
+        JNIEnv* env, jobject thiz, jlong engineHandle, jint state) {
+    LOGI("Bluetooth set state: %d", state);
+    g_bt_state = state;
+    return 0; // OK
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeSetExclusiveMode(
+        JNIEnv* env, jobject thiz, jlong engineHandle, jboolean exclusive) {
+    LOGI("Set exclusive mode: %s", exclusive ? "true" : "false");
+    // 存根：Android 不使用 WASAPI 独占模式
+    return 0; // OK
+}
+
 } // extern "C"

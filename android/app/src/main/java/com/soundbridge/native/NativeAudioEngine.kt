@@ -51,4 +51,17 @@ object NativeAudioEngine {
     external fun nativeDiscoveryInit(discoveryHandle: Long): Int
     external fun nativeDiscoveryRegister(discoveryHandle: Long, name: String, port: Int): Int
     external fun nativeDiscoveryFindDevices(discoveryHandle: Long): Array<String>?
+
+    // === 连接方式管理（对应 Rust FFI sb_hotspot_*/sb_adb_*/sb_bt_*）===
+    external fun nativeHotspotCreate(engineHandle: Long, ssid: String, password: String, channel: Int): Int
+    external fun nativeHotspotDestroy(engineHandle: Long): Int
+    external fun nativeHotspotState(engineHandle: Long): Int
+    external fun nativeHotspotSetState(engineHandle: Long, state: Int): Int
+    external fun nativeAdbSetupPortForward(engineHandle: Long, localPort: Int, remotePort: Int): Int
+    external fun nativeAdbState(engineHandle: Long): Int
+    external fun nativeAdbSetState(engineHandle: Long, state: Int): Int
+    external fun nativeBtInit(engineHandle: Long): Int
+    external fun nativeBtState(engineHandle: Long): Int
+    external fun nativeBtSetState(engineHandle: Long, state: Int): Int
+    external fun nativeSetExclusiveMode(engineHandle: Long, exclusive: Boolean): Int
 }
