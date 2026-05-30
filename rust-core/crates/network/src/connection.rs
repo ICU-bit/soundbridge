@@ -1,9 +1,43 @@
 //! 连接管理模块
 //!
 //! 提供连接状态管理、自动重连、心跳检测功能。
+//! 支持多种连接方式：WiFi 局域网、WiFi 直连、USB/ADB、蓝牙。
 
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
+
+/// 连接类型
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConnectionType {
+    /// WiFi 局域网（默认，自动发现）
+    WiFiLan,
+
+    /// WiFi 直连（热点模式）
+    WiFiDirect,
+
+    /// USB 有线连接（ADB 端口转发）
+    UsbAdb,
+
+    /// 蓝牙连接
+    Bluetooth,
+}
+
+impl Default for ConnectionType {
+    fn default() -> Self {
+        Self::WiFiLan
+    }
+}
+
+impl std::fmt::Display for ConnectionType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::WiFiLan => write!(f, "WiFi LAN"),
+            Self::WiFiDirect => write!(f, "WiFi Direct"),
+            Self::UsbAdb => write!(f, "USB/ADB"),
+            Self::Bluetooth => write!(f, "Bluetooth"),
+        }
+    }
+}
 
 /// 连接状态
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -56,6 +90,9 @@ pub struct ConnectionManager {
     /// 当前状态
     state: ConnectionState,
 
+    /// 连接类型
+    connection_type: ConnectionType,
+
     /// 配置
     config: ConnectionConfig,
 
@@ -74,6 +111,7 @@ impl ConnectionManager {
     pub fn new(config: ConnectionConfig) -> Self {
         Self {
             state: ConnectionState::Disconnected,
+            connection_type: ConnectionType::default(),
             config,
             remote_addr: None,
             last_heartbeat: None,
@@ -89,6 +127,15 @@ impl ConnectionManager {
     /// 开始连接
     pub fn connect(&mut self, addr: SocketAddr) {
         self.state = ConnectionState::Connecting;
+        self.connection_type = ConnectionType::WiFiLan;
+        self.remote_addr = Some(addr);
+        self.reconnect_attempts = 0;
+    }
+
+    /// 开始连接（指定连接类型）
+    pub fn connect_with_type(&mut self, addr: SocketAddr, conn_type: ConnectionType) {
+        self.state = ConnectionState::Connecting;
+        self.connection_type = conn_type;
         self.remote_addr = Some(addr);
         self.reconnect_attempts = 0;
     }
@@ -103,9 +150,15 @@ impl ConnectionManager {
     /// 断开连接
     pub fn disconnect(&mut self) {
         self.state = ConnectionState::Disconnected;
+        self.connection_type = ConnectionType::default();
         self.remote_addr = None;
         self.last_heartbeat = None;
         self.reconnect_attempts = 0;
+    }
+
+    /// 获取连接类型
+    pub fn connection_type(&self) -> ConnectionType {
+        self.connection_type
     }
 
     /// 更新心跳
@@ -237,5 +290,59 @@ mod tests {
         assert_eq!(config.heartbeat_timeout_ms, 10000);
         assert_eq!(config.max_reconnect_attempts, 5);
         assert_eq!(config.reconnect_interval_ms, 1000);
+    }
+
+    #[test]
+    fn test_connection_type_default() {
+        assert_eq!(ConnectionType::default(), ConnectionType::WiFiLan);
+    }
+
+    #[test]
+    fn test_connection_type_display() {
+        assert_eq!(format!("{}", ConnectionType::WiFiLan), "WiFi LAN");
+        assert_eq!(format!("{}", ConnectionType::WiFiDirect), "WiFi Direct");
+        assert_eq!(format!("{}", ConnectionType::UsbAdb), "USB/ADB");
+        assert_eq!(format!("{}", ConnectionType::Bluetooth), "Bluetooth");
+    }
+
+    #[test]
+    fn test_connect_with_type() {
+        let mut manager = ConnectionManager::with_default_config();
+        let addr: SocketAddr = "192.168.1.100:12345".parse().unwrap();
+
+        manager.connect_with_type(addr, ConnectionType::UsbAdb);
+        assert_eq!(manager.state(), ConnectionState::Connecting);
+        assert_eq!(manager.connection_type(), ConnectionType::UsbAdb);
+        assert_eq!(manager.remote_addr(), Some(addr));
+    }
+
+    #[test]
+    fn test_connection_type_lifecycle() {
+        let mut manager = ConnectionManager::with_default_config();
+        let addr: SocketAddr = "192.168.1.100:12345".parse().unwrap();
+
+        // 默认连接使用 WiFiLan
+        manager.connect(addr);
+        assert_eq!(manager.connection_type(), ConnectionType::WiFiLan);
+
+        manager.connected();
+        assert_eq!(manager.connection_type(), ConnectionType::WiFiLan);
+
+        // 断开后重置为默认
+        manager.disconnect();
+        assert_eq!(manager.connection_type(), ConnectionType::WiFiLan);
+    }
+
+    #[test]
+    fn test_connection_type_clone_copy() {
+        let conn_type = ConnectionType::WiFiDirect;
+        let cloned = conn_type;
+        assert_eq!(conn_type, cloned);
+    }
+
+    #[test]
+    fn test_connection_type_eq() {
+        assert_eq!(ConnectionType::WiFiLan, ConnectionType::WiFiLan);
+        assert_ne!(ConnectionType::WiFiLan, ConnectionType::UsbAdb);
     }
 }

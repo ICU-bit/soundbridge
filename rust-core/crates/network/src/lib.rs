@@ -8,7 +8,7 @@ pub mod connection;
 
 pub use transport::{UdpTransport, TransportConfig};
 pub use jitter_buffer::{JitterBuffer, JitterBufferConfig, RawJitterBuffer, RawAudioPacket};
-pub use connection::{ConnectionManager, ConnectionState, ConnectionConfig};
+pub use connection::{ConnectionManager, ConnectionState, ConnectionConfig, ConnectionType};
 
 /// 网络错误类型
 #[derive(Debug, thiserror::Error)]
