@@ -39,7 +39,7 @@ impl AudioModeConfig {
     pub fn balanced() -> Self {
         Self {
             mode: AudioMode::Balanced,
-            sample_rate: 44100,
+            sample_rate: 48000,
             bitrate: 128000,
             frame_size_ms: 20,
             complexity: 5,
@@ -61,7 +61,7 @@ impl AudioModeConfig {
     pub fn low_latency() -> Self {
         Self {
             mode: AudioMode::LowLatency,
-            sample_rate: 44100,
+            sample_rate: 48000,
             bitrate: 64000,
             frame_size_ms: 10,
             complexity: 3,
@@ -124,7 +124,7 @@ mod tests {
     fn test_audio_mode_config() {
         let balanced = AudioModeConfig::balanced();
         assert_eq!(balanced.mode, AudioMode::Balanced);
-        assert_eq!(balanced.sample_rate, 44100);
+        assert_eq!(balanced.sample_rate, 48000);
         assert_eq!(balanced.bitrate, 128000);
         assert_eq!(balanced.frame_size_ms, 20);
 
@@ -141,10 +141,10 @@ mod tests {
     #[test]
     fn test_frame_size_samples() {
         let balanced = AudioModeConfig::balanced();
-        assert_eq!(balanced.frame_size_samples(), 882); // 44100 * 20 / 1000
+        assert_eq!(balanced.frame_size_samples(), 960); // 48000 * 20 / 1000
 
         let low_latency = AudioModeConfig::low_latency();
-        assert_eq!(low_latency.frame_size_samples(), 441); // 44100 * 10 / 1000
+        assert_eq!(low_latency.frame_size_samples(), 480); // 48000 * 10 / 1000
     }
 
     #[test]

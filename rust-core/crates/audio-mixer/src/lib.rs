@@ -116,17 +116,13 @@ impl AudioMixer {
         self.mix(&[input1, input2], &[volume1, volume2])
     }
 
-    /// Soft clipping（tanh 压缩）
+    /// Soft clipping（tanh 软削波）
     ///
-    /// 使用双曲正切函数进行软削波，避免硬削波产生的失真。
-    /// 只有当值超出 [-1.0, 1.0] 范围时才应用压缩。
+    /// 使用双曲正切函数实现平滑软削波。tanh 在全范围内连续可导，
+    /// 在 0 附近近似线性（|x|<0.3 时误差 <3%），大值时渐近趋近 ±1。
+    /// 这是音频行业标准的软削波方案，完全消除 ±1.0 边界处的不连续性。
     fn soft_clip(&self, sample: f32) -> f32 {
-        if sample.abs() > 1.0 {
-            // tanh 软削波
-            sample.signum() * (sample.abs() - 1.0).tanh()
-        } else {
-            sample
-        }
+        sample.tanh()
     }
 
     /// 获取配置
@@ -151,9 +147,11 @@ mod tests {
         let input = vec![0.5f32; 100];
         let result = mixer.mix(&[&input], &[1.0]).unwrap();
         assert_eq!(result.len(), 100);
-        // 单路输入，音量 1.0，输出应该接近输入（经过 soft clip）
-        for (out, &inp) in result.iter().zip(input.iter()) {
-            assert!((out - inp).abs() < 0.01);
+        // 单路输入，音量 1.0，经过 soft_clip (tanh) 后输出
+        // tanh(0.5) ≈ 0.4621
+        let expected = 0.5f32.tanh();
+        for out in result.iter() {
+            assert!((out - expected).abs() < 0.001, "out={}, expected={}", out, expected);
         }
     }
 
@@ -164,9 +162,10 @@ mod tests {
         let input2 = vec![0.5f32; 100];
         let result = mixer.mix_two(&input1, 0.5, &input2, 0.5).unwrap();
         assert_eq!(result.len(), 100);
-        // 两路 0.5，音量各 0.5，输出应该是 0.5
+        // 两路 0.5，音量各 0.5，总和 0.5，经过 tanh
+        let expected = 0.5f32.tanh();
         for sample in result.iter() {
-            assert!((sample - 0.5).abs() < 0.01);
+            assert!((sample - expected).abs() < 0.001, "sample={}, expected={}", sample, expected);
         }
     }
 

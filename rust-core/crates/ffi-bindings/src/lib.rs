@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use audio_capture::{CaptureConfig, CaptureDevice};
 use audio_codec::{OpusConfig, OpusDecoderCodec, OpusEncoderCodec};
-use audio_core::{AudioMode, AudioModeManager};
+use audio_core::{AudioMode, AudioModeManager, RingBuffer};
 use audio_mixer::AudioMixer;
 use audio_playback::{PlaybackConfig, PlaybackDevice};
 use audio_processor::AudioProcessor;
@@ -181,9 +181,10 @@ pub struct SbEngine {
     /// 音频模式管理器
     mode_manager: AudioModeManager,
 
-    /// 混音比例（PC 音量, 手机音量）
-    mix_pc_volume: f32,
-    mix_phone_volume: f32,
+    /// 混音比例（PC 音量, 手机音量）- 使用 AtomicU32 实现跨线程实时更新
+    /// 通过 f32::to_bits() / f32::from_bits() 进行原子读写
+    mix_pc_volume: Arc<AtomicU32>,
+    mix_phone_volume: Arc<AtomicU32>,
 
     /// 连接状态
     connection_state: SbConnectionState,
@@ -229,8 +230,8 @@ pub extern "C" fn sb_engine_create() -> *mut c_void {
         pipeline_state: PipelineState::Stopped,
         audio_mode: SbAudioMode::Balanced,
         mode_manager: AudioModeManager::new(),
-        mix_pc_volume: 0.5,
-        mix_phone_volume: 0.5,
+        mix_pc_volume: Arc::new(AtomicU32::new(0.5f32.to_bits())),
+        mix_phone_volume: Arc::new(AtomicU32::new(0.5f32.to_bits())),
         connection_state: SbConnectionState::Disconnected,
         state_callback: None,
         state_user_data: ptr::null_mut(),
@@ -932,6 +933,10 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
     let capture_ring = engine.capture.as_ref().unwrap().ring_buffer();
     let playback_ring = engine.playback.as_ref().unwrap().ring_buffer();
 
+    // 创建本地混音 ring buffer：发送线程写入采集数据副本，接收线程读取用于混音
+    // 避免接收线程和发送线程同时读取同一个 SPSC capture_ring
+    let local_mix_ring: Arc<RingBuffer<f32>> = Arc::new(RingBuffer::new(4800));
+
     // 克隆 socket 和 target 给发送线程
     let send_socket = socket.clone();
     let recv_socket = socket;
@@ -942,6 +947,7 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
     let sender_stats = stats.clone();
     let sender_sequence = sequence.clone();
     let sender_capture_ring = capture_ring.clone();
+    let sender_mix_ring = local_mix_ring.clone();
     let sender_handle = match std::thread::Builder::new()
         .name("sb-sender".to_string())
         .spawn(move || {
@@ -961,6 +967,9 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                     std::thread::sleep(std::time::Duration::from_millis(1));
                     continue;
                 }
+
+                // 将采集数据写入本地混音 ring buffer，供接收线程混音使用
+                sender_mix_ring.write(&frame_buf[..frame_size]);
 
                 // 编码一帧
                 match encoder.encode_interleaved(&frame_buf[..frame_size]) {
@@ -1019,10 +1028,10 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
     let receiver_running = running.clone();
     let receiver_stats = stats.clone();
     let receiver_playback_ring = playback_ring.clone();
-    let receiver_capture_ring = capture_ring.clone();
+    let receiver_mix_ring = local_mix_ring.clone();
     let receiver_mixer = engine.mixer.clone();
-    let pc_volume = engine.mix_pc_volume;
-    let phone_volume = engine.mix_phone_volume;
+    let pc_volume = engine.mix_pc_volume.clone();
+    let phone_volume = engine.mix_phone_volume.clone();
     let receiver_handle = match std::thread::Builder::new()
         .name("sb-receiver".to_string())
         .spawn(move || {
@@ -1047,15 +1056,24 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                                         Ok(audio_buffer) => {
                                             let remote_samples = audio_buffer.samples();
 
-                                            // 从采集 ring buffer 读取本地音频用于混音
-                                            let local_read = receiver_capture_ring.read(&mut mix_buf);
+                                            // 从本地混音 ring buffer 读取本地音频（由发送线程写入）
+                                            let local_read = receiver_mix_ring.read(&mut mix_buf);
                                             if local_read >= frame_size {
-                                                // 混音：本地采集 + 远端解码
+                                                // 读取最新的混音比例（原子读取，支持运行时更新）
+                                                let pc_vol = f32::from_bits(pc_volume.load(Ordering::Relaxed));
+                                                let phone_vol = f32::from_bits(phone_volume.load(Ordering::Relaxed));
+                                                
+                                                // 将远端音频填充到 frame_size（不足部分补零）
+                                                let remote_len = remote_samples.len().min(frame_size);
+                                                let mut remote_buf = vec![0.0f32; frame_size];
+                                                remote_buf[..remote_len].copy_from_slice(&remote_samples[..remote_len]);
+                                                
+                                                // 混音：本地采集 + 远端解码（长度一致）
                                                 match receiver_mixer.mix_two(
                                                     &mix_buf[..frame_size],
-                                                    pc_volume,
-                                                    &remote_samples[..frame_size.min(remote_samples.len())],
-                                                    phone_volume,
+                                                    pc_vol,
+                                                    &remote_buf,
+                                                    phone_vol,
                                                 ) {
                                                     Ok(mixed) => {
                                                         receiver_playback_ring.write(&mixed);
@@ -1780,8 +1798,8 @@ pub unsafe extern "C" fn sb_set_mix_ratio(
     }
 
     let engine = unsafe { &mut *(engine as *mut SbEngine) };
-    engine.mix_pc_volume = pc_volume;
-    engine.mix_phone_volume = phone_volume;
+    engine.mix_pc_volume.store(pc_volume.to_bits(), Ordering::Relaxed);
+    engine.mix_phone_volume.store(phone_volume.to_bits(), Ordering::Relaxed);
 
     tracing::info!("Mix ratio set: pc={}, phone={}", pc_volume, phone_volume);
     SbError::Ok as c_int
@@ -1807,8 +1825,8 @@ pub unsafe extern "C" fn sb_get_mix_ratio(
 
     let engine = unsafe { &*(engine as *const SbEngine) };
     unsafe {
-        *pc_volume = engine.mix_pc_volume;
-        *phone_volume = engine.mix_phone_volume;
+        *pc_volume = f32::from_bits(engine.mix_pc_volume.load(Ordering::Relaxed));
+        *phone_volume = f32::from_bits(engine.mix_phone_volume.load(Ordering::Relaxed));
     }
     SbError::Ok as c_int
 }
