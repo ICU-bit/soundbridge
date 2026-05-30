@@ -13,7 +13,7 @@ QuicTransport::~QuicTransport() {
 
 bool QuicTransport::connect(const NetworkEndpoint& endpoint) {
     if (connected_) {
-        spdlog_warn("QuicTransport already connected");
+        spdlog::warn("QuicTransport already connected");
         return false;
     }
 
@@ -23,7 +23,7 @@ bool QuicTransport::connect(const NetworkEndpoint& endpoint) {
 
     socket_ = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (socket_ == INVALID_SOCKET) {
-        spdlog_error("Failed to create socket: {}", WSAGetLastError());
+        spdlog::error("Failed to create socket: {}", WSAGetLastError());
         return false;
     }
 
@@ -34,7 +34,7 @@ bool QuicTransport::connect(const NetworkEndpoint& endpoint) {
     remote_addr_.sin_port = htons(endpoint.port);
 
     if (inet_pton(AF_INET, endpoint.address.c_str(), &remote_addr_.sin_addr) != 1) {
-        spdlog_error("Invalid address: {}", endpoint.address);
+        spdlog::error("Invalid address: {}", endpoint.address);
         closesocket(socket_);
         socket_ = INVALID_SOCKET;
         return false;
@@ -47,7 +47,7 @@ bool QuicTransport::connect(const NetworkEndpoint& endpoint) {
     }
 
     connected_ = true;
-    spdlog_info("QuicTransport connected to {}:{}", endpoint.address, endpoint.port);
+    spdlog::info("QuicTransport connected to {}:{}", endpoint.address, endpoint.port);
     return true;
 }
 
@@ -72,7 +72,7 @@ void QuicTransport::disconnect() {
     connected_ = false;
     send_sequence_ = 0;
     recv_sequence_ = 0;
-    spdlog_info("QuicTransport disconnected");
+    spdlog::info("QuicTransport disconnected");
 }
 
 bool QuicTransport::send(const uint8_t* data, size_t size) {
@@ -94,7 +94,7 @@ bool QuicTransport::send(const uint8_t* data, size_t size) {
     );
 
     if (sent == SOCKET_ERROR) {
-        spdlog_error("sendto failed: {}", WSAGetLastError());
+        spdlog::error("sendto failed: {}", WSAGetLastError());
         return false;
     }
 
@@ -122,7 +122,7 @@ bool QuicTransport::receive(uint8_t* buffer, size_t buffer_size, size_t& receive
     if (result == SOCKET_ERROR) {
         const int error = WSAGetLastError();
         if (error != WSAETIMEDOUT) {
-            spdlog_error("recvfrom failed: {}", error);
+            spdlog::error("recvfrom failed: {}", error);
         }
         received = 0;
         return false;
@@ -148,7 +148,7 @@ bool QuicTransport::init_winsock() {
     WSADATA wsa_data;
     const int result = WSAStartup(MAKEWORD(2, 2), &wsa_data);
     if (result != 0) {
-        spdlog_error("WSAStartup failed: {}", result);
+        spdlog::error("WSAStartup failed: {}", result);
         return false;
     }
     return true;
@@ -167,7 +167,7 @@ bool QuicTransport::handshake() {
     );
 
     if (sent == SOCKET_ERROR) {
-        spdlog_error("Handshake send failed: {}", WSAGetLastError());
+        spdlog::error("Handshake send failed: {}", WSAGetLastError());
         return false;
     }
 
@@ -190,14 +190,14 @@ bool QuicTransport::handshake() {
             const uint8_t* payload = nullptr;
             if (PacketBuilder::parse(buffer, static_cast<size_t>(result), header, payload)) {
                 if (header.type == static_cast<uint16_t>(PacketType::Ack)) {
-                    spdlog_info("Handshake completed");
+                    spdlog::info("Handshake completed");
                     return true;
                 }
             }
         }
     }
 
-    spdlog_error("Handshake timeout");
+    spdlog::error("Handshake timeout");
     return false;
 }
 

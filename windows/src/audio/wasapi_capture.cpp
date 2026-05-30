@@ -17,7 +17,7 @@ WasapiCapture::~WasapiCapture() {
 
 bool WasapiCapture::initialize(const AudioFormat& format, bool exclusive) {
     if (initialized_) {
-        spdlog_warn("WasapiCapture already initialized");
+        spdlog::warn("WasapiCapture already initialized");
         return false;
     }
 
@@ -37,7 +37,7 @@ bool WasapiCapture::initialize(const AudioFormat& format, bool exclusive) {
     }
 
     initialized_ = true;
-    spdlog_info("WasapiCapture initialized (mode: {})", exclusive_mode_ ? "exclusive" : "shared");
+    spdlog::info("WasapiCapture initialized (mode: {})", exclusive_mode_ ? "exclusive" : "shared");
     return true;
 }
 
@@ -60,7 +60,7 @@ void WasapiCapture::shutdown() {
     enumerator_.Reset();
 
     initialized_ = false;
-    spdlog_info("WasapiCapture shutdown");
+    spdlog::info("WasapiCapture shutdown");
 }
 
 bool WasapiCapture::start() {
@@ -70,12 +70,12 @@ bool WasapiCapture::start() {
 
     HRESULT hr = audio_client_->Start();
     if (FAILED(hr)) {
-        spdlog_error("Failed to start audio client: 0x{:08X}", static_cast<uint32_t>(hr));
+        spdlog::error("Failed to start audio client: 0x{:08X}", static_cast<uint32_t>(hr));
         return false;
     }
 
     running_ = true;
-    spdlog_info("WasapiCapture started");
+    spdlog::info("WasapiCapture started");
     return true;
 }
 
@@ -90,7 +90,7 @@ void WasapiCapture::stop() {
         audio_client_->Stop();
     }
 
-    spdlog_info("WasapiCapture stopped");
+    spdlog::info("WasapiCapture stopped");
 }
 
 bool WasapiCapture::read(float* buffer, uint32_t frame_count, uint32_t& frames_read) {
@@ -104,7 +104,7 @@ bool WasapiCapture::read(float* buffer, uint32_t frame_count, uint32_t& frames_r
     HRESULT hr = capture_client_->GetNextPacketSize(&packet_length);
 
     if (FAILED(hr)) {
-        spdlog_error("GetNextPacketSize failed: 0x{:08X}", static_cast<uint32_t>(hr));
+        spdlog::error("GetNextPacketSize failed: 0x{:08X}", static_cast<uint32_t>(hr));
         return false;
     }
 
@@ -115,7 +115,7 @@ bool WasapiCapture::read(float* buffer, uint32_t frame_count, uint32_t& frames_r
 
         hr = capture_client_->GetBuffer(&data, &num_frames, &flags, nullptr, nullptr);
         if (FAILED(hr)) {
-            spdlog_error("GetBuffer failed: 0x{:08X}", static_cast<uint32_t>(hr));
+            spdlog::error("GetBuffer failed: 0x{:08X}", static_cast<uint32_t>(hr));
             return false;
         }
 
@@ -149,7 +149,7 @@ bool WasapiCapture::read(float* buffer, uint32_t frame_count, uint32_t& frames_r
 bool WasapiCapture::init_com() {
     HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     if (FAILED(hr) && hr != RPC_E_CHANGED_MODE) {
-        spdlog_error("CoInitializeEx failed: 0x{:08X}", static_cast<uint32_t>(hr));
+        spdlog::error("CoInitializeEx failed: 0x{:08X}", static_cast<uint32_t>(hr));
         return false;
     }
 
@@ -162,7 +162,7 @@ bool WasapiCapture::init_com() {
     );
 
     if (FAILED(hr)) {
-        spdlog_error("Failed to create device enumerator: 0x{:08X}", static_cast<uint32_t>(hr));
+        spdlog::error("Failed to create device enumerator: 0x{:08X}", static_cast<uint32_t>(hr));
         return false;
     }
 
@@ -177,7 +177,7 @@ bool WasapiCapture::find_render_device() {
     );
 
     if (FAILED(hr)) {
-        spdlog_error("Failed to get default audio endpoint: 0x{:08X}", static_cast<uint32_t>(hr));
+        spdlog::error("Failed to get default audio endpoint: 0x{:08X}", static_cast<uint32_t>(hr));
         return false;
     }
 
@@ -193,7 +193,7 @@ bool WasapiCapture::init_audio_client() {
     );
 
     if (FAILED(hr)) {
-        spdlog_error("Failed to activate audio client: 0x{:08X}", static_cast<uint32_t>(hr));
+        spdlog::error("Failed to activate audio client: 0x{:08X}", static_cast<uint32_t>(hr));
         return false;
     }
 
@@ -205,10 +205,13 @@ bool WasapiCapture::init_audio_client() {
     wfx.nBlockAlign = wfx.nChannels * wfx.wBitsPerSample / 8;
     wfx.nAvgByteSec = wfx.nSamplesPerSec * wfx.nBlockAlign;
 
-    // 独占模式：尝�?10ms 缓冲区（100000 * 100ns = 10ms�?    // 共享模式�?0ms 缓冲区（500000 * 100ns = 50ms�?    const REFERENCE_TIME exclusive_duration = 100000;  // 10ms
+    // 独占模式：尝试 10ms 缓冲区（100000 * 100ns = 10ms）
+    // 共享模式：50ms 缓冲区（500000 * 100ns = 50ms）
+    const REFERENCE_TIME exclusive_duration = 100000;  // 10ms
     const REFERENCE_TIME shared_duration = 500000;     // 50ms
 
-    // 阶段 1：尝试独占模�?    if (exclusive_mode_) {
+    // 阶段 1：尝试独占模式
+    if (exclusive_mode_) {
         WAVEFORMATEX* closest = nullptr;
         hr = audio_client_->IsFormatSupported(
             AUDCLNT_SHAREMODE_EXCLUSIVE,
@@ -232,11 +235,11 @@ bool WasapiCapture::init_audio_client() {
             );
 
             if (SUCCEEDED(hr)) {
-                spdlog_info("WasapiCapture: exclusive mode enabled (10ms buffer)");
+                spdlog::info("WasapiCapture: exclusive mode enabled (10ms buffer)");
                 goto success;
             }
 
-            spdlog_warn("WasapiCapture: exclusive mode failed (0x{:08X}), falling back to shared",
+            spdlog::warn("WasapiCapture: exclusive mode failed (0x{:08X}), falling back to shared",
                          static_cast<uint32_t>(hr));
             exclusive_mode_ = false;
 
@@ -249,16 +252,17 @@ bool WasapiCapture::init_audio_client() {
                 reinterpret_cast<void**>(audio_client_.GetAddressOf())
             );
             if (FAILED(hr)) {
-                spdlog_error("Failed to re-activate audio client: 0x{:08X}", static_cast<uint32_t>(hr));
+                spdlog::error("Failed to re-activate audio client: 0x{:08X}", static_cast<uint32_t>(hr));
                 return false;
             }
         } else {
-            spdlog_warn("WasapiCapture: exclusive mode not supported, using shared");
+            spdlog::warn("WasapiCapture: exclusive mode not supported, using shared");
             exclusive_mode_ = false;
         }
     }
 
-    // 阶段 2：共享模�?    {
+    // 阶段 2：共享模式
+    {
         WAVEFORMATEX* closest = nullptr;
         hr = audio_client_->IsFormatSupported(
             AUDCLNT_SHAREMODE_SHARED,
@@ -270,7 +274,7 @@ bool WasapiCapture::init_audio_client() {
             wfx = *closest;
             CoTaskMemFree(closest);
         } else if (FAILED(hr)) {
-            spdlog_error("Format not supported: 0x{:08X}", static_cast<uint32_t>(hr));
+            spdlog::error("Format not supported: 0x{:08X}", static_cast<uint32_t>(hr));
             return false;
         }
 
@@ -284,7 +288,7 @@ bool WasapiCapture::init_audio_client() {
         );
 
         if (FAILED(hr)) {
-            spdlog_error("Failed to initialize audio client: 0x{:08X}", static_cast<uint32_t>(hr));
+            spdlog::error("Failed to initialize audio client: 0x{:08X}", static_cast<uint32_t>(hr));
             return false;
         }
     }
@@ -296,7 +300,7 @@ success:
     );
 
     if (FAILED(hr)) {
-        spdlog_error("Failed to get capture client: 0x{:08X}", static_cast<uint32_t>(hr));
+        spdlog::error("Failed to get capture client: 0x{:08X}", static_cast<uint32_t>(hr));
         return false;
     }
 

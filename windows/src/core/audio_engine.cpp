@@ -15,7 +15,7 @@ AudioEngineImpl::~AudioEngineImpl() {
 
 bool AudioEngineImpl::initialize(const AudioFormat& format, bool exclusive) {
     if (capture_state_ != AudioStreamState::Idle) {
-        spdlog_warn("AudioEngine already initialized");
+        spdlog::warn("AudioEngine already initialized");
         return false;
     }
 
@@ -23,26 +23,26 @@ bool AudioEngineImpl::initialize(const AudioFormat& format, bool exclusive) {
 
     capture_ = std::make_unique<WasapiCapture>();
     if (!capture_->initialize(format, exclusive)) {
-        spdlog_error("Failed to initialize WASAPI capture");
+        spdlog::error("Failed to initialize WASAPI capture");
         return false;
     }
 
     renderer_ = std::make_unique<WasapiRenderer>();
     if (!renderer_->initialize(format, exclusive)) {
-        spdlog_error("Failed to initialize WASAPI renderer");
+        spdlog::error("Failed to initialize WASAPI renderer");
         return false;
     }
 
     apm_ = std::make_unique<WebRtcApm>();
     if (!apm_->initialize(format.sample_rate, format.channels)) {
-        spdlog_warn("Failed to initialize WebRTC APM, echo cancellation disabled");
+        spdlog::warn("Failed to initialize WebRTC APM, echo cancellation disabled");
     }
 
     const size_t buffer_frames = format.sample_rate / 10;
     capture_buffer_ = std::make_unique<AudioRingBuffer>(buffer_frames * format.channels);
     render_buffer_ = std::make_unique<AudioRingBuffer>(buffer_frames * format.channels);
 
-    spdlog_info("AudioEngine initialized: {}Hz, {} channels, {} bit",
+    spdlog::info("AudioEngine initialized: {}Hz, {} channels, {} bit",
         format.sample_rate, format.channels, format.bits_per_sample);
     return true;
 }
@@ -76,7 +76,7 @@ void AudioEngineImpl::shutdown() {
     capture_state_ = AudioStreamState::Idle;
     render_state_ = AudioStreamState::Idle;
 
-    spdlog_info("AudioEngine shutdown");
+    spdlog::info("AudioEngine shutdown");
 }
 
 bool AudioEngineImpl::start_capture() {
@@ -88,7 +88,7 @@ bool AudioEngineImpl::start_capture() {
 
     if (!capture_->start()) {
         capture_state_ = AudioStreamState::Error;
-        spdlog_error("Failed to start WASAPI capture");
+        spdlog::error("Failed to start WASAPI capture");
         return false;
     }
 
@@ -96,7 +96,7 @@ bool AudioEngineImpl::start_capture() {
     capture_thread_ = std::thread(&AudioEngineImpl::capture_thread_func, this);
     capture_state_ = AudioStreamState::Running;
 
-    spdlog_info("Audio capture started");
+    spdlog::info("Audio capture started");
     return true;
 }
 
@@ -117,7 +117,7 @@ void AudioEngineImpl::stop_capture() {
     }
 
     capture_state_ = AudioStreamState::Idle;
-    spdlog_info("Audio capture stopped");
+    spdlog::info("Audio capture stopped");
 }
 
 bool AudioEngineImpl::start_render() {
@@ -129,12 +129,12 @@ bool AudioEngineImpl::start_render() {
 
     if (!renderer_->start()) {
         render_state_ = AudioStreamState::Error;
-        spdlog_error("Failed to start WASAPI renderer");
+        spdlog::error("Failed to start WASAPI renderer");
         return false;
     }
 
     render_state_ = AudioStreamState::Running;
-    spdlog_info("Audio render started");
+    spdlog::info("Audio render started");
     return true;
 }
 
@@ -150,7 +150,7 @@ void AudioEngineImpl::stop_render() {
     }
 
     render_state_ = AudioStreamState::Idle;
-    spdlog_info("Audio render stopped");
+    spdlog::info("Audio render stopped");
 }
 
 void AudioEngineImpl::set_capture_callback(AudioFrameCallback callback) {
@@ -187,7 +187,7 @@ void AudioEngineImpl::capture_thread_func() {
     while (running_) {
         uint32_t captured = 0;
         if (!capture_->read(buffer.data(), frame_size, captured)) {
-            spdlog_error("Capture read failed");
+            spdlog::error("Capture read failed");
             break;
         }
 

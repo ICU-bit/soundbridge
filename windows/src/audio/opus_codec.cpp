@@ -12,7 +12,7 @@ OpusCodec::~OpusCodec() {
 
 bool OpusCodec::initialize(uint32_t sample_rate, uint8_t channels, int bitrate) {
     if (initialized_) {
-        spdlog_warn("OpusCodec already initialized");
+        spdlog::warn("OpusCodec already initialized");
         return false;
     }
 
@@ -29,18 +29,18 @@ bool OpusCodec::initialize(uint32_t sample_rate, uint8_t channels, int bitrate) 
     );
 
     if (error != OPUS_OK || !encoder_) {
-        spdlog_error("Failed to create Opus encoder: {}", opus_strerror(error));
+        spdlog::error("Failed to create Opus encoder: {}", opus_strerror(error));
         return false;
     }
 
     error = opus_encoder_ctl(encoder_, OPUS_SET_BITRATE(bitrate));
     if (error != OPUS_OK) {
-        spdlog_warn("Failed to set Opus bitrate: {}", opus_strerror(error));
+        spdlog::warn("Failed to set Opus bitrate: {}", opus_strerror(error));
     }
 
     error = opus_encoder_ctl(encoder_, OPUS_SET_COMPLEXITY(10));
     if (error != OPUS_OK) {
-        spdlog_warn("Failed to set Opus complexity: {}", opus_strerror(error));
+        spdlog::warn("Failed to set Opus complexity: {}", opus_strerror(error));
     }
 
     decoder_ = opus_decoder_create(
@@ -50,14 +50,14 @@ bool OpusCodec::initialize(uint32_t sample_rate, uint8_t channels, int bitrate) 
     );
 
     if (error != OPUS_OK || !decoder_) {
-        spdlog_error("Failed to create Opus decoder: {}", opus_strerror(error));
+        spdlog::error("Failed to create Opus decoder: {}", opus_strerror(error));
         opus_encoder_destroy(encoder_);
         encoder_ = nullptr;
         return false;
     }
 
     initialized_ = true;
-    spdlog_info("OpusCodec initialized: {}Hz, {} channels, {} bps", sample_rate, channels, bitrate);
+    spdlog::info("OpusCodec initialized: {}Hz, {} channels, {} bps", sample_rate, channels, bitrate);
     return true;
 }
 
@@ -73,7 +73,7 @@ void OpusCodec::shutdown() {
     }
 
     initialized_ = false;
-    spdlog_info("OpusCodec shutdown");
+    spdlog::info("OpusCodec shutdown");
 }
 
 std::vector<uint8_t> OpusCodec::encode(const float* pcm, uint32_t frame_count) {
@@ -93,7 +93,7 @@ std::vector<uint8_t> OpusCodec::encode(const float* pcm, uint32_t frame_count) {
     );
 
     if (encoded_bytes < 0) {
-        spdlog_error("Opus encode error: {}", opus_strerror(encoded_bytes));
+        spdlog::error("Opus encode error: {}", opus_strerror(encoded_bytes));
         return {};
     }
 
@@ -119,7 +119,7 @@ std::vector<float> OpusCodec::decode(const uint8_t* data, size_t size) {
     );
 
     if (decoded_samples < 0) {
-        spdlog_error("Opus decode error: {}", opus_strerror(decoded_samples));
+        spdlog::error("Opus decode error: {}", opus_strerror(decoded_samples));
         return {};
     }
 
@@ -134,7 +134,7 @@ bool OpusCodec::set_bitrate(int bitrate) {
 
     const int error = opus_encoder_ctl(encoder_, OPUS_SET_BITRATE(bitrate));
     if (error != OPUS_OK) {
-        spdlog_error("Failed to set Opus bitrate: {}", opus_strerror(error));
+        spdlog::error("Failed to set Opus bitrate: {}", opus_strerror(error));
         return false;
     }
 
@@ -149,7 +149,7 @@ bool OpusCodec::set_complexity(int complexity) {
 
     const int error = opus_encoder_ctl(encoder_, OPUS_SET_COMPLEXITY(complexity));
     if (error != OPUS_OK) {
-        spdlog_error("Failed to set Opus complexity: {}", opus_strerror(error));
+        spdlog::error("Failed to set Opus complexity: {}", opus_strerror(error));
         return false;
     }
 
