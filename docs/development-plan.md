@@ -186,7 +186,8 @@ private:
 - ✅ 带宽自适应（发送线程根据丢包率动态调整 Opus 码率 64/96/128kbps）
 - ✅ Oracle Bug 修复（channels 2→1, ConnectionType FFI, audio mode hot-switch）
 - ✅ Windows C++ 测试文件（GTest: 27 个测试）
-- [ ] UI 动画和交互优化
+- ✅ Windows UI 动画优化（ProgressRing 加载、设备发现列表、连接状态动画）
+- ✅ Android JNI 连接管理（热点/ADB/蓝牙/独占模式存根实现）
 - [ ] 最终测试和发布准备
 
 ### 3.2 技术实现细节
