@@ -78,6 +78,16 @@ fun HomeScreen(audioService: AudioService? = null) {
             onAddressChange = { serverAddress = it },
             onPortChange = { serverPort = it }
         )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        DeviceDiscoverySection(
+            audioService = audioService,
+            onDeviceSelected = { address, port ->
+                serverAddress = address
+                serverPort = port.toString()
+            }
+        )
     }
 }
 
@@ -267,6 +277,135 @@ fun ServerConfigSection(
                 label = { Text("Port") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
+            )
+        }
+    }
+}
+
+@Composable
+fun DeviceDiscoverySection(
+    audioService: AudioService?,
+    onDeviceSelected: (String, Int) -> Unit
+) {
+    val discoveredDevices by (audioService?.discoveredDevices?.collectAsState()
+        ?: remember { mutableStateOf(emptyList()) })
+    val isScanning by (audioService?.isScanning?.collectAsState()
+        ?: remember { mutableStateOf(false) })
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Discovered Devices",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+
+                Button(
+                    onClick = {
+                        if (isScanning) {
+                            audioService?.stopDeviceDiscovery()
+                        } else {
+                            audioService?.startDeviceDiscovery()
+                        }
+                    },
+                    enabled = audioService != null,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isScanning) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Icon(
+                        imageVector = if (isScanning) Icons.Default.Close else Icons.Default.Search,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(if (isScanning) "Stop" else "Scan")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            if (discoveredDevices.isEmpty()) {
+                Text(
+                    text = if (isScanning) "Scanning..." else "No devices found. Tap Scan to search.",
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    fontSize = 14.sp,
+                    modifier = Modifier.padding(vertical = 8.dp)
+                )
+            } else {
+                discoveredDevices.forEach { device ->
+                    DeviceItem(
+                        name = device.name,
+                        address = device.address,
+                        port = device.port,
+                        onClick = { onDeviceSelected(device.address, device.port) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun DeviceItem(
+    name: String,
+    address: String,
+    port: Int,
+    onClick: () -> Unit
+) {
+    Card(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        ),
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.PhoneAndroid,
+                contentDescription = null,
+                modifier = Modifier.size(24.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = name,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 14.sp
+                )
+                Text(
+                    text = "$address:$port",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                )
+            }
+            Icon(
+                imageVector = Icons.Default.ArrowForward,
+                contentDescription = "Connect",
+                tint = MaterialTheme.colorScheme.primary
             )
         }
     }

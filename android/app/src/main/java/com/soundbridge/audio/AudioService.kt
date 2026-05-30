@@ -20,6 +20,7 @@ class AudioService : Service() {
 
     private val binder = AudioServiceBinder()
     private var engineHandle: Long = 0L
+    private var discoveryManager: DeviceDiscoveryManager? = null
 
     /** Engine handle for JNI calls. Returns 0L if not initialized. */
     val handle: Long get() = engineHandle
@@ -29,6 +30,14 @@ class AudioService : Service() {
 
     private val _audioLevel = MutableStateFlow(0f)
     val audioLevel: StateFlow<Float> = _audioLevel
+
+    /** 已发现的设备列表 */
+    val discoveredDevices: StateFlow<List<DiscoveredDevice>>
+        get() = discoveryManager?.discoveredDevices ?: MutableStateFlow(emptyList())
+
+    /** 是否正在扫描 */
+    val isScanning: StateFlow<Boolean>
+        get() = discoveryManager?.isScanning ?: MutableStateFlow(false)
 
     enum class ConnectionState {
         DISCONNECTED, CONNECTING, CONNECTED
@@ -43,6 +52,7 @@ class AudioService : Service() {
     override fun onCreate() {
         super.onCreate()
         initializeEngine()
+        discoveryManager = DeviceDiscoveryManager(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -135,8 +145,20 @@ class AudioService : Service() {
         _connectionState.value = ConnectionState.DISCONNECTED
     }
 
+    /** 开始扫描设备 */
+    fun startDeviceDiscovery() {
+        discoveryManager?.startDiscovery()
+    }
+
+    /** 停止扫描设备 */
+    fun stopDeviceDiscovery() {
+        discoveryManager?.stopDiscovery()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
+        discoveryManager?.release()
+        discoveryManager = null
         if (engineHandle != 0L) {
             NativeAudioEngine.nativeRelease(engineHandle)
             engineHandle = 0L
