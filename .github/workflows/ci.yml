@@ -60,10 +60,10 @@ jobs:
         with:
           cmake-version: '3.20'
 
-      - name: Install Opus (vcpkg)
+      - name: Install deps (vcpkg)
         run: |
           cd C:\vcpkg
-          .\vcpkg install opus:x64-windows
+          .\vcpkg install opus:x64-windows spdlog:x64-windows
 
       - name: Configure
         run: cmake -B build -S windows -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake
