@@ -8,7 +8,7 @@ pub mod connection;
 
 pub use transport::{UdpTransport, TransportConfig};
 pub use jitter_buffer::{JitterBuffer, JitterBufferConfig, RawJitterBuffer, RawAudioPacket};
-pub use connection::{ConnectionManager, ConnectionState, ConnectionConfig, ConnectionType, HotspotConfig, HotspotState, AdbConfig, AdbState};
+pub use connection::{ConnectionManager, ConnectionState, ConnectionConfig, ConnectionType, HotspotConfig, HotspotState, AdbConfig, AdbState, BluetoothConfig, BluetoothState};
 
 /// 网络错误类型
 #[derive(Debug, thiserror::Error)]

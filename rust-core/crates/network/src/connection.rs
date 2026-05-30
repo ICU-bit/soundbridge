@@ -98,6 +98,47 @@ pub enum AdbState {
     Error,
 }
 
+/// 蓝牙连接配置
+#[derive(Debug, Clone)]
+pub struct BluetoothConfig {
+    /// 蓝牙设备名称
+    pub device_name: String,
+    /// 使用 BLE（低功耗蓝牙）还是经典蓝牙
+    pub use_ble: bool,
+    /// 服务 UUID（BLE 模式）
+    pub service_uuid: String,
+    /// 音频传输特征 UUID（BLE 模式）
+    pub audio_char_uuid: String,
+}
+
+impl Default for BluetoothConfig {
+    fn default() -> Self {
+        Self {
+            device_name: "SoundBridge".to_string(),
+            use_ble: true,
+            service_uuid: "0000ff01-0000-1000-8000-00805f9b34fb".to_string(),
+            audio_char_uuid: "0000ff02-0000-1000-8000-00805f9b34fb".to_string(),
+        }
+    }
+}
+
+/// 蓝牙连接状态
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BluetoothState {
+    /// 未初始化
+    Idle,
+    /// 蓝牙适配器就绪
+    AdapterReady,
+    /// 正在扫描
+    Scanning,
+    /// 已连接设备
+    Connected,
+    /// 正在传输
+    Streaming,
+    /// 错误
+    Error,
+}
+
 impl std::fmt::Display for ConnectionType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
