@@ -10,7 +10,8 @@
 - ✅ 控制数据包格式定义
 - ✅ 序列化和反序列化实现（零拷贝）
 - ✅ 数据包校验（魔术数 0x53424447）
-- ✅ 测试用例通过
+- ✅ 8 个单元测试通过
+- ✅ 29 个集成测试通过（PacketType、PacketHeader、ControlMessageType、ControlMessage、Protocol、Packet、ProtocolError、常量）
 
 ## Architecture
 
