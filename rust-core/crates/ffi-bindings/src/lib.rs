@@ -238,6 +238,9 @@ pub struct SbEngine {
     /// 是否暂停
     paused: bool,
 
+    /// 是否静音
+    muted: bool,
+
     /// 连接方式
     connection_type: ConnectionType,
 
@@ -285,6 +288,7 @@ pub extern "C" fn sb_engine_create() -> *mut c_void {
         pipeline: None,
         volume: 1.0,
         paused: false,
+        muted: false,
         connection_type: ConnectionType::WiFiLan,
         hotspot_state: HotspotState::Idle,
         hotspot_config: HotspotConfig::default(),
@@ -2077,6 +2081,51 @@ pub unsafe extern "C" fn sb_send_resume(engine: *mut c_void) -> c_int {
 }
 
 // ============================================================
+// 静音控制 FFI
+// ============================================================
+
+/// 设置静音状态
+///
+/// 静音时采集的音频数据仍然编码和发送（填充零），
+/// 但本地播放会静音。
+///
+/// # Safety
+/// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_set_mute(engine: *mut c_void, muted: c_int) -> c_int {
+    clear_error();
+
+    if engine.is_null() {
+        set_error("engine is null");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let engine = unsafe { &mut *(engine as *mut SbEngine) };
+    engine.muted = muted != 0;
+    tracing::info!("Mute state set: {}", engine.muted);
+    SbError::Ok as c_int
+}
+
+/// 获取静音状态
+///
+/// 返回 1 表示静音，0 表示非静音，负数表示错误。
+///
+/// # Safety
+/// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_get_mute(engine: *mut c_void) -> c_int {
+    clear_error();
+
+    if engine.is_null() {
+        set_error("engine is null");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let engine = unsafe { &*(engine as *const SbEngine) };
+    if engine.muted { 1 } else { 0 }
+}
+
+// ============================================================
 // 设备存储（DeviceStore）FFI
 // ============================================================
 
@@ -3250,6 +3299,63 @@ mod tests {
             let result = sb_send_volume(engine, 1.0);
             assert_eq!(result, SbError::Ok as c_int);
 
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_set_mute_default() {
+        unsafe {
+            let engine = sb_engine_create();
+            let result = sb_get_mute(engine);
+            assert_eq!(result, 0); // default: not muted
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_set_mute_and_get() {
+        unsafe {
+            let engine = sb_engine_create();
+
+            let result = sb_set_mute(engine, 1);
+            assert_eq!(result, SbError::Ok as c_int);
+            assert_eq!(sb_get_mute(engine), 1);
+
+            let result = sb_set_mute(engine, 0);
+            assert_eq!(result, SbError::Ok as c_int);
+            assert_eq!(sb_get_mute(engine), 0);
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_set_mute_null_engine() {
+        let result = unsafe { sb_set_mute(ptr::null_mut(), 1) };
+        assert_eq!(result, SbError::InvalidArgument as c_int);
+    }
+
+    #[test]
+    fn test_get_mute_null_engine() {
+        let result = unsafe { sb_get_mute(ptr::null_mut()) };
+        assert_eq!(result, SbError::InvalidArgument as c_int);
+    }
+
+    #[test]
+    fn test_set_mute_state_persists() {
+        unsafe {
+            let engine = sb_engine_create();
+            sb_set_mute(engine, 1);
+            {
+                let engine_ref = &*(engine as *const SbEngine);
+                assert!(engine_ref.muted);
+            }
+            sb_set_mute(engine, 0);
+            {
+                let engine_ref = &*(engine as *const SbEngine);
+                assert!(!engine_ref.muted);
+            }
             sb_engine_destroy(engine);
         }
     }

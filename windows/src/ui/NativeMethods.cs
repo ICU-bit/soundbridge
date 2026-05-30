@@ -160,6 +160,14 @@ internal static partial class NativeMethods
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int sb_send_resume(IntPtr engine);
 
+    /// <summary>设置静音状态（1=静音, 0=取消静音）</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int sb_set_mute(IntPtr engine, int muted);
+
+    /// <summary>获取静音状态（1=静音, 0=非静音, 负数=错误）</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int sb_get_mute(IntPtr engine);
+
     // ============================================================
     // 音频处理
     // ============================================================

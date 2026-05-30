@@ -169,8 +169,14 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private void ToggleMute()
     {
         IsMuted = !IsMuted;
-        // 静音通过采集层控制（暂停/恢复采集流）
-        // TODO: 当 Rust FFI 支持 sb_set_mute 时接入
+        if (_engine != IntPtr.Zero)
+        {
+            int rc = NativeMethods.sb_set_mute(_engine, IsMuted ? 1 : 0);
+            if (rc != 0)
+            {
+                _logger.LogWarning("sb_set_mute failed: {Error}", NativeMethods.GetLastError());
+            }
+        }
         _logger.LogInformation("Mute toggled: {IsMuted}", IsMuted);
     }
 
