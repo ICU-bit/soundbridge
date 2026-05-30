@@ -962,6 +962,8 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
         .spawn(move || {
             let mut encoder = encoder;
             let mut frame_buf = vec![0.0f32; frame_size];
+            let mut i16_buf = vec![0i16; frame_size]; // 预分配 i16 缓冲区
+            let mut opus_buf = Vec::with_capacity(1500); // 预分配编码输出缓冲区
             let protocol = Protocol::new();
             let mut packet_buf = Vec::with_capacity(1500); // 预分配序列化缓冲区
             let start_time = Instant::now();
@@ -981,43 +983,42 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                 // 将采集数据写入本地混音 ring buffer，供接收线程混音使用
                 sender_mix_ring.write(&frame_buf[..frame_size]);
 
-                // 编码一帧
-                match encoder.encode_interleaved(&frame_buf[..frame_size]) {
-                    Ok(opus_data) => {
-                        let seq = sender_sequence.fetch_add(1, Ordering::Relaxed);
-                        let timestamp_ms = start_time.elapsed().as_millis() as u32;
+                // 编码一帧（零分配版本）
+                if let Err(e) = encoder.encode_interleaved_into(
+                    &frame_buf[..frame_size],
+                    &mut i16_buf,
+                    &mut opus_buf,
+                ) {
+                    tracing::warn!("Encode error: {}", e);
+                    continue;
+                }
 
-                        // 构造协议包
-                        let header = PacketHeader {
-                            sequence: seq,
-                            timestamp_ms,
-                            flags: 0x01, // 音频数据标志
-                            channels: 1, // mono
-                            opus_length: opus_data.len() as u16,
-                        };
+                let seq = sender_sequence.fetch_add(1, Ordering::Relaxed);
+                let timestamp_ms = start_time.elapsed().as_millis() as u32;
 
-                        // 使用零分配序列化
-                        if let Err(e) = protocol.serialize_into(&protocol::Packet::Audio {
-                            header,
-                            data: opus_data,
-                        }, &mut packet_buf) {
-                            tracing::warn!("Serialize error: {}", e);
-                            continue;
-                        }
+                // 构造协议包
+                let header = PacketHeader {
+                    sequence: seq,
+                    timestamp_ms,
+                    flags: 0x01, // 音频数据标志
+                    channels: 1, // mono
+                    opus_length: opus_buf.len() as u16,
+                };
 
-                        match send_socket.send_to(&packet_buf, target) {
-                            Ok(_) => {
-                                sender_stats.packets_sent.fetch_add(1, Ordering::Relaxed);
-                                sender_stats.frames_encoded.fetch_add(1, Ordering::Relaxed);
-                            }
-                            Err(e) => {
-                                tracing::warn!("Failed to send packet: {}", e);
-                                sender_stats.frames_dropped.fetch_add(1, Ordering::Relaxed);
-                            }
-                        }
+                // 使用零分配序列化
+                if let Err(e) = protocol.serialize_audio_into(&header, &opus_buf, &mut packet_buf) {
+                    tracing::warn!("Serialize error: {}", e);
+                    continue;
+                }
+
+                match send_socket.send_to(&packet_buf, target) {
+                    Ok(_) => {
+                        sender_stats.packets_sent.fetch_add(1, Ordering::Relaxed);
+                        sender_stats.frames_encoded.fetch_add(1, Ordering::Relaxed);
                     }
                     Err(e) => {
-                        tracing::warn!("Encode error: {}", e);
+                        tracing::warn!("Failed to send packet: {}", e);
+                        sender_stats.frames_dropped.fetch_add(1, Ordering::Relaxed);
                     }
                 }
             }

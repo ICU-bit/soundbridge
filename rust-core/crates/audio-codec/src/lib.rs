@@ -214,6 +214,45 @@ impl OpusEncoderCodec {
         self.encode_samples(samples)
     }
 
+    /// 编码音频数据到预分配缓冲区（零分配版本）
+    pub fn encode_interleaved_into(
+        &mut self,
+        samples: &[f32],
+        i16_buf: &mut [i16],
+        output: &mut Vec<u8>,
+    ) -> Result<()> {
+        let expected = self.config.total_samples();
+        if samples.len() != expected {
+            return Err(CodecError::BufferSizeMismatch {
+                expected,
+                actual: samples.len(),
+            });
+        }
+
+        if i16_buf.len() < expected {
+            return Err(CodecError::BufferSizeMismatch {
+                expected,
+                actual: i16_buf.len(),
+            });
+        }
+
+        // 转换 f32 到 i16（使用预分配缓冲区）
+        for (dst, &src) in i16_buf.iter_mut().zip(samples.iter()) {
+            *dst = (src * 32767.0).clamp(-32768.0, 32767.0) as i16;
+        }
+
+        let frame_size = self.config.frame_size_samples();
+        let encoded = self
+            .encoder
+            .encode_vec(&i16_buf[..expected], frame_size)
+            .map_err(|e| CodecError::EncodingFailed(e.to_string()))?;
+
+        output.clear();
+        output.extend_from_slice(&encoded);
+
+        Ok(())
+    }
+
     pub fn config(&self) -> &OpusConfig {
         &self.config
     }

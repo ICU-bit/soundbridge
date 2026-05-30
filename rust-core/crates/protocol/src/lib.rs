@@ -209,6 +209,19 @@ impl Protocol {
         Ok(())
     }
 
+    /// 序列化音频包到预分配缓冲区（零分配版本，直接接受数据引用）
+    pub fn serialize_audio_into(
+        &self,
+        header: &PacketHeader,
+        data: &[u8],
+        buf: &mut Vec<u8>,
+    ) -> Result<()> {
+        buf.clear();
+        header.encode(buf)?;
+        buf.extend_from_slice(data);
+        Ok(())
+    }
+
     /// 反序列化包
     pub fn deserialize(&self, data: &[u8]) -> Result<Packet> {
         let (header, _) = PacketHeader::decode(data)?;
