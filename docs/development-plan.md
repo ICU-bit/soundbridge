@@ -20,7 +20,7 @@
 #### Week 3-4：网络传输层 ✅
 - ✅ UDP 音频流传输实现
 - ✅ TCP 控制信令实现
-- ⚠️ 设备发现（mDNS）- 骨架存在
+- ✅ 设备发现（mDNS）- Rust FFI + Windows C# + Android NsdManager + UI
 - ✅ 连接管理（建立/断开/重连）
 - ✅ 基础丢包恢复
 
