@@ -13,7 +13,8 @@
 - ✅ BluetoothConfig/BluetoothState（蓝牙连接管理）
 - ✅ 零拷贝序列化
 - ✅ 带宽自适应（丢包率检测 + 码率调整）
-- ✅ 测试用例通过
+- ✅ 26 个单元测试通过
+- ✅ 34 个集成测试通过（RawJitterBuffer、JitterBuffer、ConnectionManager、ConnectionType、HotspotConfig/State、AdbConfig/State、BluetoothConfig/State、TransportConfig、NetworkError）
 
 ## Architecture
 
