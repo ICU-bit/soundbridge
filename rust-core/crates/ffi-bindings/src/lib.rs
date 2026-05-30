@@ -1251,8 +1251,8 @@ pub unsafe extern "C" fn sb_device_store_get_address(
 ) -> c_int {
     clear_error();
 
-    if store.is_null() || name.is_null() || buf.is_null() {
-        set_error("null argument");
+    if store.is_null() || name.is_null() || buf.is_null() || buf_len == 0 {
+        set_error("null argument or zero buffer");
         return -1;
     }
 
@@ -1324,8 +1324,8 @@ pub unsafe extern "C" fn sb_device_store_get_name_at(
 ) -> c_int {
     clear_error();
 
-    if store.is_null() || buf.is_null() {
-        set_error("null argument");
+    if store.is_null() || buf.is_null() || buf_len == 0 {
+        set_error("null argument or zero buffer");
         return -1;
     }
 

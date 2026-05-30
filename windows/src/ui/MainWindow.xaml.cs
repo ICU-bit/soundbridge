@@ -7,11 +7,13 @@ namespace SoundBridge.UI;
 public sealed partial class MainWindow : Window
 {
     public MainWindowViewModel ViewModel { get; }
+    private readonly ILogger<MainWindow> _logger;
     private HotkeyManager? _hotkeyManager;
 
     public MainWindow(MainWindowViewModel viewModel, ILoggerFactory loggerFactory)
     {
         ViewModel = viewModel;
+        _logger = loggerFactory.CreateLogger<MainWindow>();
         InitializeComponent();
 
         // 设置窗口标题栏
@@ -31,7 +33,17 @@ public sealed partial class MainWindow : Window
         _hotkeyManager.Register(
             HotkeyManager.MOD_CONTROL | HotkeyManager.MOD_ALT,
             0x54, // 'T'
-            async () => await ViewModel.ToggleConnectionCommand.ExecuteAsync(null));
+            async () =>
+            {
+                try
+                {
+                    await ViewModel.ToggleConnectionCommand.ExecuteAsync(null);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Hotkey connect toggle failed");
+                }
+            });
 
         // Ctrl+Alt+M → 静音切换
         _hotkeyManager.Register(
@@ -55,5 +67,15 @@ public sealed partial class MainWindow : Window
         }
 
         return base.WndProc(hWnd, msg, wParam, lParam, ref handled);
+    }
+
+    protected override void OnClosed(object sender, WindowEventArgs args)
+    {
+        // 释放全局快捷键
+        _hotkeyManager?.Dispose();
+        _hotkeyManager = null;
+        _logger.LogInformation("MainWindow closed, hotkeys unregistered");
+
+        base.OnClosed(sender, args);
     }
 }
