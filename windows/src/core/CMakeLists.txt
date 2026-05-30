@@ -6,6 +6,7 @@ add_library(SoundBridgeCore OBJECT
 
 target_include_directories(SoundBridgeCore PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/..
     ${CMAKE_CURRENT_SOURCE_DIR}/../audio
     ${CMAKE_CURRENT_SOURCE_DIR}/../network
     ${CMAKE_CURRENT_SOURCE_DIR}/../../include
