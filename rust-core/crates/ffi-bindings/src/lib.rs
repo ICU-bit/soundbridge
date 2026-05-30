@@ -871,26 +871,23 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                     Ok((len, _from)) => {
                         match protocol.deserialize(&recv_buf[..len]) {
                             Ok(packet) => {
-                                match packet {
-                                    protocol::Packet::Audio { header: _, data } => {
-                                        match decoder.decode(&data) {
-                                            Ok(audio_buffer) => {
-                                                // 将解码数据写入播放 ring buffer
-                                                let samples = audio_buffer.samples();
-                                                receiver_playback_ring.write(samples);
-                                                receiver_stats
-                                                    .frames_decoded
-                                                    .fetch_add(1, Ordering::Relaxed);
-                                            }
-                                            Err(e) => {
-                                                tracing::warn!("Decode error: {}", e);
-                                                receiver_stats
-                                                    .frames_dropped
-                                                    .fetch_add(1, Ordering::Relaxed);
-                                            }
+                                if let protocol::Packet::Audio { header: _, data } = packet {
+                                    match decoder.decode(&data) {
+                                        Ok(audio_buffer) => {
+                                            // 将解码数据写入播放 ring buffer
+                                            let samples = audio_buffer.samples();
+                                            receiver_playback_ring.write(samples);
+                                            receiver_stats
+                                                .frames_decoded
+                                                .fetch_add(1, Ordering::Relaxed);
+                                        }
+                                        Err(e) => {
+                                            tracing::warn!("Decode error: {}", e);
+                                            receiver_stats
+                                                .frames_dropped
+                                                .fetch_add(1, Ordering::Relaxed);
                                         }
                                     }
-                                    _ => {}
                                 }
                             }
                             Err(e) => {

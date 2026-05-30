@@ -161,6 +161,12 @@ pub struct Protocol {
     _private: (),
 }
 
+impl Default for Protocol {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Protocol {
     /// 创建新的协议处理器
     pub fn new() -> Self {

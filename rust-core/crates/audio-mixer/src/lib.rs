@@ -49,15 +49,16 @@ pub struct AudioMixer {
     config: MixerConfig,
 }
 
+impl Default for AudioMixer {
+    fn default() -> Self {
+        Self::new(MixerConfig::default())
+    }
+}
+
 impl AudioMixer {
     /// 创建新的混音器
     pub fn new(config: MixerConfig) -> Self {
         Self { config }
-    }
-
-    /// 使用默认配置创建混音器
-    pub fn default() -> Self {
-        Self::new(MixerConfig::default())
     }
 
     /// 混音多路音频
@@ -82,7 +83,7 @@ impl AudioMixer {
 
         // 检查所有输入长度一致
         let len = inputs[0].len();
-        for (_i, input) in inputs.iter().enumerate() {
+        for input in inputs.iter() {
             if input.len() != len {
                 return Err(MixerError::LengthMismatch {
                     expected: len,
