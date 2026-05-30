@@ -131,10 +131,16 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private double _mixRatio = 50; // 0=全PC, 100=全手机, 50=均衡
 
     [ObservableProperty]
+    private int _selectedConnectionType; // 0=WiFiLan, 1=WiFiDirect, 2=UsbAdb, 3=Bluetooth
+
+    [ObservableProperty]
     private bool _isScanning;
 
     /// <summary>已发现的设备列表</summary>
     public ObservableCollection<string> DiscoveredDevices { get; } = new();
+
+    /// <summary>连接方式名称列表</summary>
+    public string[] ConnectionTypeNames { get; } = { "WiFi 局域网", "WiFi 直连", "USB/ADB", "蓝牙" };
 
     // ============================================================
     // Commands
