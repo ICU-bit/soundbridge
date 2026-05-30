@@ -252,7 +252,7 @@ void SessionImpl::receive_thread_func() {
     }
 }
 
-void SessionImpl::on_audio_captured(const float* data, uint32_t frame_count, uint8_t channels) {
+void SessionImpl::on_audio_captured(const float* data, uint32_t frame_count, uint8_t /*channels*/) {
     send_audio(data, frame_count);
 }
 
