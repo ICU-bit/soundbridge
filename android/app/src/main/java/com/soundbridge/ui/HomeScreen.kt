@@ -32,6 +32,8 @@ fun HomeScreen(audioService: AudioService? = null) {
     var serverAddress by remember { mutableStateOf("192.168.1.100") }
     var serverPort by remember { mutableStateOf("8080") }
     var mixRatio by remember { mutableFloatStateOf(50f) } // 0=全PC, 100=全手机
+    var selectedConnectionType by remember { mutableIntStateOf(0) } // 0=WiFiLan, 1=WiFiDirect, 2=UsbAdb, 3=Bluetooth
+    val connectionTypeNames = listOf("WiFi 局域网", "WiFi 直连", "USB/ADB", "蓝牙")
 
     val connected = isConnected == AudioService.ConnectionState.CONNECTED
 
@@ -78,6 +80,14 @@ fun HomeScreen(audioService: AudioService? = null) {
             serverPort = serverPort,
             onAddressChange = { serverAddress = it },
             onPortChange = { serverPort = it }
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        ConnectionTypeSection(
+            selectedType = selectedConnectionType,
+            typeNames = connectionTypeNames,
+            onTypeSelected = { selectedConnectionType = it }
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -291,6 +301,67 @@ fun ServerConfigSection(
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
+        }
+    }
+}
+
+@Composable
+fun ConnectionTypeSection(
+    selectedType: Int,
+    typeNames: List<String>,
+    onTypeSelected: (Int) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Connection Type",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+                Icon(
+                    imageVector = Icons.Default.Wifi,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Text(
+                text = "WiFi LAN: auto-discover. WiFi Direct: hotspot. USB/ADB: wired. Bluetooth: BLE.",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // 连接方式选择芯片
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                typeNames.forEachIndexed { index, name ->
+                    FilterChip(
+                        selected = selectedType == index,
+                        onClick = { onTypeSelected(index) },
+                        label = { Text(name, fontSize = 12.sp) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
         }
     }
 }
