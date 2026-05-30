@@ -44,4 +44,11 @@ object NativeAudioEngine {
     external fun nativePipelineStop(engineHandle: Long): Int
     external fun nativePipelineState(engineHandle: Long): Int
     external fun nativeGetVersion(): String
+
+    // === 设备发现（对应 Rust FFI sb_discovery_*）===
+    external fun nativeDiscoveryCreate(): Long
+    external fun nativeDiscoveryClose(discoveryHandle: Long)
+    external fun nativeDiscoveryInit(discoveryHandle: Long): Int
+    external fun nativeDiscoveryRegister(discoveryHandle: Long, name: String, port: Int): Int
+    external fun nativeDiscoveryFindDevices(discoveryHandle: Long): Array<String>?
 }
