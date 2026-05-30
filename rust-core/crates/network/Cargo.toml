@@ -28,3 +28,8 @@ hkdf.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
+rand.workspace = true
+
+[[bench]]
+name = "network_benchmarks"
+harness = false
