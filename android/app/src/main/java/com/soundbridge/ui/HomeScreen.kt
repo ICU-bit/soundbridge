@@ -31,6 +31,7 @@ fun HomeScreen(audioService: AudioService? = null) {
     var isMuted by remember { mutableStateOf(false) }
     var serverAddress by remember { mutableStateOf("192.168.1.100") }
     var serverPort by remember { mutableStateOf("8080") }
+    var mixRatio by remember { mutableFloatStateOf(50f) } // 0=全PC, 100=全手机
 
     val connected = isConnected == AudioService.ConnectionState.CONNECTED
 
@@ -86,6 +87,18 @@ fun HomeScreen(audioService: AudioService? = null) {
             onDeviceSelected = { address, port ->
                 serverAddress = address
                 serverPort = port.toString()
+            }
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        MixRatioSection(
+            mixRatio = mixRatio,
+            onMixRatioChange = { newRatio ->
+                mixRatio = newRatio
+                val pcVol = (100f - newRatio) / 100f
+                val phoneVol = newRatio / 100f
+                audioService?.setMixRatio(pcVol, phoneVol)
             }
         )
     }
@@ -407,6 +420,71 @@ fun DeviceItem(
                 contentDescription = "Connect",
                 tint = MaterialTheme.colorScheme.primary
             )
+        }
+    }
+}
+
+@Composable
+fun MixRatioSection(
+    mixRatio: Float,
+    onMixRatioChange: (Float) -> Unit
+) {
+    val pcPercent = (100f - mixRatio).toInt()
+    val phonePercent = mixRatio.toInt()
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Mix Ratio",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+                Text(
+                    text = "PC $pcPercent% / Phone $phonePercent%",
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "PC",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    modifier = Modifier.width(28.dp)
+                )
+                Slider(
+                    value = mixRatio,
+                    onValueChange = onMixRatioChange,
+                    valueRange = 0f..100f,
+                    steps = 0,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = "Phone",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    modifier = Modifier.width(50.dp)
+                )
+            }
         }
     }
 }

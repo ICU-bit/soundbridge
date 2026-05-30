@@ -155,6 +155,23 @@ class AudioService : Service() {
         discoveryManager?.stopDiscovery()
     }
 
+    /** 设置混音比例（0.0=全PC，1.0=全手机，0.5=均衡） */
+    fun setMixRatio(pcVolume: Float, phoneVolume: Float) {
+        if (engineHandle != 0L) {
+            NativeAudioEngine.nativeSetMixRatio(engineHandle, pcVolume, phoneVolume)
+        }
+    }
+
+    /** 获取混音比例，返回 [pcVolume, phoneVolume]，失败返回 null */
+    fun getMixRatio(): Pair<Float, Float>? {
+        if (engineHandle == 0L) return null
+        val result = NativeAudioEngine.nativeGetMixRatio(engineHandle) ?: return null
+        if (result.size >= 2) {
+            return Pair(result[0], result[1])
+        }
+        return null
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         discoveryManager?.release()
