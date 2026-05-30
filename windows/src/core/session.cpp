@@ -1,7 +1,7 @@
 #include "session.h"
-#include "audio/network/udp_transport.h"
-#include "audio/network/quic_transport.h"
-#include "audio/network/dtls_session.h"
+#include "network/udp_transport.h"
+#include "network/quic_transport.h"
+#include "network/dtls_session.h"
 
 #include "log.h"
 

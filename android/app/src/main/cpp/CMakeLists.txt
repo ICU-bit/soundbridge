@@ -10,13 +10,18 @@ if(NOT opus_FOUND)
     message(WARNING "opus not found - audio codec will not be available")
 endif()
 
-add_library(soundbridge_native SHARED
+set(SOURCES
     jni_bridge.cpp
     audio_engine.cpp
-    opus_codec.cpp
     udp_socket.cpp
     audio_processor.cpp
 )
+
+if(opus_FOUND)
+    list(APPEND SOURCES opus_codec.cpp)
+endif()
+
+add_library(soundbridge_native SHARED ${SOURCES})
 
 target_include_directories(soundbridge_native PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
