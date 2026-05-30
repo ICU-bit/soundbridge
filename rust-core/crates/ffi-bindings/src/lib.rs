@@ -1744,6 +1744,159 @@ pub unsafe extern "C" fn sb_device_store_get_name_at(
 }
 
 // ============================================================
+// 设备发现（DeviceDiscovery）FFI
+// ============================================================
+
+use discovery::{DeviceDiscovery, DiscoveryConfig};
+
+/// 创建设备发现服务
+///
+/// # Safety
+/// 返回的句柄必须通过 `sb_discovery_close` 释放。
+#[no_mangle]
+pub unsafe extern "C" fn sb_discovery_create() -> *mut c_void {
+    clear_error();
+
+    let config = DiscoveryConfig::default();
+    let discovery = DeviceDiscovery::new(config);
+    Box::into_raw(Box::new(discovery)) as *mut c_void
+}
+
+/// 关闭设备发现服务
+///
+/// # Safety
+/// `discovery` 必须是通过 `sb_discovery_create` 创建的有效指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_discovery_close(discovery: *mut c_void) {
+    clear_error();
+
+    if discovery.is_null() {
+        return;
+    }
+
+    unsafe {
+        let _ = Box::from_raw(discovery as *mut DeviceDiscovery);
+    }
+}
+
+/// 初始化 mDNS 守护进程
+///
+/// # Safety
+/// `discovery` 必须是通过 `sb_discovery_create` 创建的有效指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_discovery_init(discovery: *mut c_void) -> c_int {
+    clear_error();
+
+    if discovery.is_null() {
+        set_error("discovery is null");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let discovery = unsafe { &mut *(discovery as *mut DeviceDiscovery) };
+    match discovery.init() {
+        Ok(()) => SbError::Ok as c_int,
+        Err(e) => {
+            set_error(&format!("failed to init discovery: {}", e));
+            SbError::Error as c_int
+        }
+    }
+}
+
+/// 注册本设备到 mDNS 网络
+///
+/// `name` 是设备名称，`port` 是监听端口。
+///
+/// # Safety
+/// `discovery` 和 `name` 必须是有效的指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_discovery_register(
+    discovery: *mut c_void,
+    name: *const c_char,
+    port: u16,
+) -> c_int {
+    clear_error();
+
+    if discovery.is_null() || name.is_null() {
+        set_error("invalid arguments");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let discovery = unsafe { &*(discovery as *const DeviceDiscovery) };
+    let name_str = unsafe { CStr::from_ptr(name) }.to_string_lossy().to_string();
+
+    match discovery.register_service(&name_str, port) {
+        Ok(()) => SbError::Ok as c_int,
+        Err(e) => {
+            set_error(&format!("failed to register service: {}", e));
+            SbError::Error as c_int
+        }
+    }
+}
+
+/// 发现网络上的设备
+///
+/// `devices_buf` 是接收设备地址的缓冲区，`buf_size` 是缓冲区大小。
+/// 返回发现的设备数量。
+///
+/// # Safety
+/// `discovery` 必须是有效的指针。
+/// `devices_buf` 可以为 null（此时仅返回设备数量）。
+#[no_mangle]
+pub unsafe extern "C" fn sb_discovery_find_devices(
+    discovery: *mut c_void,
+    devices_buf: *mut *mut c_void,
+    buf_size: usize,
+) -> c_int {
+    clear_error();
+
+    if discovery.is_null() {
+        set_error("discovery is null");
+        return -1;
+    }
+
+    let discovery = unsafe { &*(discovery as *const DeviceDiscovery) };
+    match discovery.discover() {
+        Ok(devices) => {
+            let count = devices.len();
+            if !devices_buf.is_null() && buf_size > 0 {
+                let copy_count = count.min(buf_size);
+                for i in 0..copy_count {
+                    let device = &devices[i];
+                    // 将 DeviceInfo 序列化为 JSON 字符串存储
+                    let json = format!(
+                        r#"{{"name":"{}","address":"{}","port":{},"hostname":"{}"}}"#,
+                        device.name, device.address, device.port, device.hostname
+                    );
+                    let c_str = CString::new(json).unwrap_or_default();
+                    unsafe {
+                        *devices_buf.add(i) = c_str.into_raw() as *mut c_void;
+                    }
+                }
+            }
+            count as c_int
+        }
+        Err(e) => {
+            set_error(&format!("failed to discover devices: {}", e));
+            -1
+        }
+    }
+}
+
+/// 释放发现的设备信息
+///
+/// # Safety
+/// `device_info` 必须是通过 `sb_discovery_find_devices` 返回的有效指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_discovery_free_device_info(device_info: *mut c_void) {
+    if device_info.is_null() {
+        return;
+    }
+    unsafe {
+        let _ = CString::from_raw(device_info as *mut c_char);
+    }
+}
+
+// ============================================================
 // 音频模式（AudioMode）FFI
 // ============================================================
 
