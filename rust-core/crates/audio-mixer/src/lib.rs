@@ -116,6 +116,46 @@ impl AudioMixer {
         self.mix(&[input1, input2], &[volume1, volume2])
     }
 
+    /// 混音两路音频到预分配缓冲区（零分配版本）
+    pub fn mix_two_into(
+        &self,
+        input1: &[f32],
+        volume1: f32,
+        input2: &[f32],
+        volume2: f32,
+        output: &mut [f32],
+    ) -> Result<()> {
+        if input1.len() != input2.len() {
+            return Err(MixerError::LengthMismatch {
+                expected: input1.len(),
+                actual: input2.len(),
+            });
+        }
+
+        if output.len() < input1.len() {
+            return Err(MixerError::LengthMismatch {
+                expected: input1.len(),
+                actual: output.len(),
+            });
+        }
+
+        let len = input1.len();
+
+        // 混音：加权求和
+        for i in 0..len {
+            output[i] = input1[i] * volume1 + input2[i] * volume2;
+        }
+
+        // 防削波保护
+        if self.config.clipping_protection {
+            for sample in output.iter_mut().take(len) {
+                *sample = self.soft_clip(*sample);
+            }
+        }
+
+        Ok(())
+    }
+
     /// Soft clipping（tanh 软削波）
     ///
     /// 使用双曲正切函数实现平滑软削波。tanh 在全范围内连续可导，

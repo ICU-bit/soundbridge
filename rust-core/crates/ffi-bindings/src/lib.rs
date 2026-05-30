@@ -1048,6 +1048,7 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
             let mut mix_buf = vec![0.0f32; frame_size];
             let mut decode_buf = vec![0.0f32; frame_size]; // 预分配解码缓冲区
             let mut remote_buf = vec![0.0f32; frame_size]; // 预分配远端音频缓冲区
+            let mut mixed_buf = vec![0.0f32; frame_size]; // 预分配混音缓冲区
 
             tracing::info!("Receiver thread started");
 
@@ -1096,20 +1097,18 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                                                 remote_buf[..remote_len].copy_from_slice(&remote_samples[..remote_len]);
                                                 
                                                 // 混音：本地采集 + 远端解码（长度一致）
-                                                match receiver_mixer.mix_two(
+                                                if let Err(e) = receiver_mixer.mix_two_into(
                                                     &mix_buf[..frame_size],
                                                     pc_vol,
                                                     &remote_buf,
                                                     phone_vol,
+                                                    &mut mixed_buf,
                                                 ) {
-                                                    Ok(mixed) => {
-                                                        receiver_playback_ring.write(&mixed);
-                                                    }
-                                                    Err(e) => {
-                                                        // 混音失败，直接写入远端音频
-                                                        tracing::warn!("Mix error: {}", e);
-                                                        receiver_playback_ring.write(remote_samples);
-                                                    }
+                                                    // 混音失败，直接写入远端音频
+                                                    tracing::warn!("Mix error: {}", e);
+                                                    receiver_playback_ring.write(remote_samples);
+                                                } else {
+                                                    receiver_playback_ring.write(&mixed_buf[..frame_size]);
                                                 }
                                             } else {
                                                 // 本地数据不足，直接写入远端音频
