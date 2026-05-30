@@ -479,9 +479,12 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
                         LatencyMs = latency;
                         LossRate = lossRate;
 
-                        // 音频电平：用帧编码速率估算（简化）
-                        // 真实电平需要从采集 ring buffer 读取 RMS
-                        AudioLevel = Math.Clamp(captured % 100 / 100f, 0f, 1f);
+                        // 获取真实音频电平（RMS）
+                        int levelRc = NativeMethods.sb_get_audio_level(_engine, out float level);
+                        if (levelRc == NativeMethods.SB_OK)
+                        {
+                            AudioLevel = Math.Clamp(level, 0f, 1f);
+                        }
                     }
 
                     // 检查管线状态

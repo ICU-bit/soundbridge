@@ -136,6 +136,14 @@ internal static partial class NativeMethods
         out float latencyMs,
         out float lossRate);
 
+    /// <summary>获取真实音频电平（RMS, 0.0-1.0）</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int sb_get_audio_level(IntPtr engine, out float level);
+
+    /// <summary>设置 WASAPI 独占模式标志（影响延迟计算）</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int sb_set_exclusive_mode(IntPtr engine, [MarshalAs(UnmanagedType.U1)] bool exclusive);
+
     // ============================================================
     // 音量控制 / 暂停恢复
     // ============================================================

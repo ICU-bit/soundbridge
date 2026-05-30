@@ -139,6 +139,10 @@ struct SharedPipelineStats {
     loss_rate_bits: AtomicU32,
     /// 帧大小（毫秒），用于动态计算延迟
     frame_size_ms: AtomicU32,
+    /// 真实音频电平（f32 的 bits 表示，0.0-1.0 RMS）
+    captured_level_bits: AtomicU32,
+    /// WASAPI 独占模式标志（影响延迟计算）
+    exclusive_mode: AtomicBool,
 }
 
 impl SharedPipelineStats {
@@ -152,6 +156,8 @@ impl SharedPipelineStats {
             packets_lost: AtomicU64::new(0),
             loss_rate_bits: AtomicU32::new(0),
             frame_size_ms: AtomicU32::new(frame_size_ms),
+            captured_level_bits: AtomicU32::new(0.0f32.to_bits()),
+            exclusive_mode: AtomicBool::new(false),
         }
     }
 }
@@ -1019,6 +1025,14 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                 // 将采集数据写入本地混音 ring buffer，供接收线程混音使用
                 sender_mix_ring.write(&frame_buf[..frame_size]);
 
+                // 计算真实 RMS 电平（0.0-1.0），存储到共享统计
+                {
+                    let sum_sq: f32 = frame_buf[..frame_size].iter().map(|&s| s * s).sum();
+                    let rms = (sum_sq / frame_size as f32).sqrt();
+                    let level = rms.min(1.0);
+                    sender_stats.captured_level_bits.store(level.to_bits(), Ordering::Relaxed);
+                }
+
                 // 编码一帧（零分配版本）
                 let opus_len = match encoder.encode_interleaved_into(
                     &frame_buf[..frame_size],
@@ -1373,10 +1387,11 @@ pub unsafe extern "C" fn sb_pipeline_stats(
         unsafe {
             *frames_captured = stats.frames_encoded.load(Ordering::Relaxed);
             *frames_played = stats.frames_decoded.load(Ordering::Relaxed);
-            // 动态估算管线延迟（基于帧大小）
-            // 公式: WASAPI(50ms) + ring_buf(frame_ms*2) + cpal_buf(frame_ms) + codec(5ms) + network(5ms)
+            // 动态估算管线延迟（基于帧大小和独占模式）
+            // 公式: WASAPI(exclusive=10ms/shared=50ms) + ring_buf(frame_ms*2) + cpal_buf(frame_ms) + codec(5ms) + network(5ms)
             let frame_ms = stats.frame_size_ms.load(Ordering::Relaxed) as f32;
-            *latency_ms = 50.0 + (frame_ms * 3.0) + 10.0;
+            let wasapi_ms = if stats.exclusive_mode.load(Ordering::Relaxed) { 10.0 } else { 50.0 };
+            *latency_ms = wasapi_ms + (frame_ms * 3.0) + 10.0;
             *loss_rate = f32::from_bits(stats.loss_rate_bits.load(Ordering::Relaxed));
         }
     } else {
@@ -1386,6 +1401,64 @@ pub unsafe extern "C" fn sb_pipeline_stats(
             *latency_ms = 0.0;
             *loss_rate = 0.0;
         }
+    }
+
+    SbError::Ok as c_int
+}
+
+/// 获取真实音频电平（RMS, 0.0-1.0）
+///
+/// 从发送线程的采集数据计算真实 RMS 电平。
+/// 管线未运行时返回 0.0。
+///
+/// # Safety
+/// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
+/// `level` 必须是非空指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_get_audio_level(engine: *mut c_void, level: *mut f32) -> c_int {
+    clear_error();
+
+    if engine.is_null() || level.is_null() {
+        set_error("invalid arguments");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let engine = unsafe { &*(engine as *const SbEngine) };
+
+    if let Some(ref pipeline) = engine.pipeline {
+        let bits = pipeline.stats.captured_level_bits.load(Ordering::Relaxed);
+        unsafe {
+            *level = f32::from_bits(bits);
+        }
+    } else {
+        unsafe {
+            *level = 0.0;
+        }
+    }
+
+    SbError::Ok as c_int
+}
+
+/// 设置 WASAPI 独占模式标志（影响延迟计算）
+///
+/// Windows 层初始化音频设备后调用此函数通知 Rust 层当前是否使用独占模式。
+/// 独占模式延迟 ~40ms，共享模式延迟 ~120ms。
+///
+/// # Safety
+/// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_set_exclusive_mode(engine: *mut c_void, exclusive: bool) -> c_int {
+    clear_error();
+
+    if engine.is_null() {
+        set_error("engine is null");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let engine = unsafe { &*(engine as *const SbEngine) };
+
+    if let Some(ref pipeline) = engine.pipeline {
+        pipeline.stats.exclusive_mode.store(exclusive, Ordering::Relaxed);
     }
 
     SbError::Ok as c_int
@@ -2991,6 +3064,52 @@ mod tests {
             );
             assert_eq!(result, SbError::InvalidArgument as c_int);
 
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_audio_level_null_engine() {
+        let mut level = 0.0f32;
+        let result = unsafe { sb_get_audio_level(ptr::null_mut(), &mut level) };
+        assert_eq!(result, SbError::InvalidArgument as c_int);
+    }
+
+    #[test]
+    fn test_audio_level_null_pointer() {
+        unsafe {
+            let engine = sb_engine_create();
+            let result = sb_get_audio_level(engine, ptr::null_mut());
+            assert_eq!(result, SbError::InvalidArgument as c_int);
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_audio_level_no_pipeline() {
+        unsafe {
+            let engine = sb_engine_create();
+            let mut level = 0.5f32;
+            let result = sb_get_audio_level(engine, &mut level);
+            assert_eq!(result, SbError::Ok as c_int);
+            assert_eq!(level, 0.0); // 管线未运行时应返回 0.0
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_exclusive_mode_null_engine() {
+        let result = unsafe { sb_set_exclusive_mode(ptr::null_mut(), true) };
+        assert_eq!(result, SbError::InvalidArgument as c_int);
+    }
+
+    #[test]
+    fn test_exclusive_mode_no_pipeline() {
+        // 管线未运行时调用不应崩溃
+        unsafe {
+            let engine = sb_engine_create();
+            let result = sb_set_exclusive_mode(engine, true);
+            assert_eq!(result, SbError::Ok as c_int);
             sb_engine_destroy(engine);
         }
     }
