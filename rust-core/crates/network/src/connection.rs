@@ -7,25 +7,17 @@ use std::net::SocketAddr;
 use std::time::{Duration, Instant};
 
 /// 连接类型
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ConnectionType {
     /// WiFi 局域网（默认，自动发现）
+    #[default]
     WiFiLan,
-
     /// WiFi 直连（热点模式）
     WiFiDirect,
-
-    /// USB 有线连接（ADB 端口转发）
+    /// USB 有线连接（ADB）
     UsbAdb,
-
     /// 蓝牙连接
     Bluetooth,
-}
-
-impl Default for ConnectionType {
-    fn default() -> Self {
-        Self::WiFiLan
-    }
 }
 
 impl std::fmt::Display for ConnectionType {

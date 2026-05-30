@@ -995,12 +995,11 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                     } else {
                         current_bitrate // 保持不变，避免频繁切换
                     };
-                    if new_bitrate != current_bitrate {
-                        if encoder.set_bitrate(new_bitrate).is_ok() {
-                            tracing::info!("Bandwidth adapt: loss={:.1}% -> bitrate={:?}",
-                                loss_rate * 100.0, new_bitrate);
-                            current_bitrate = new_bitrate;
-                        }
+                    if new_bitrate != current_bitrate
+                        && encoder.set_bitrate(new_bitrate).is_ok() {
+                        tracing::info!("Bandwidth adapt: loss={:.1}% -> bitrate={:?}",
+                            loss_rate * 100.0, new_bitrate);
+                        current_bitrate = new_bitrate;
                     }
                 }
 
@@ -1951,8 +1950,7 @@ pub unsafe extern "C" fn sb_discovery_find_devices(
             let count = devices.len();
             if !devices_buf.is_null() && buf_size > 0 {
                 let copy_count = count.min(buf_size);
-                for i in 0..copy_count {
-                    let device = &devices[i];
+                for (i, device) in devices.iter().enumerate().take(copy_count) {
                     // 转义 JSON 特殊字符（避免注入）
                     let escape_json = |s: &str| -> String {
                         s.replace('\\', "\\\\")
