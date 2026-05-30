@@ -15,7 +15,7 @@ SessionImpl::~SessionImpl() {
 
 bool SessionImpl::connect(const SessionConfig& config) {
     if (state_ != AudioStreamState::Idle) {
-        spdlog::warn("Session already connected");
+        spdlog_warn("Session already connected");
         return false;
     }
 
@@ -31,7 +31,7 @@ bool SessionImpl::connect(const SessionConfig& config) {
 
     pipeline_ = std::make_unique<AudioPipeline>(pipeline_config);
     if (!pipeline_->initialize()) {
-        spdlog::error("Failed to initialize audio pipeline");
+        spdlog_error("Failed to initialize audio pipeline");
         state_ = AudioStreamState::Error;
         return false;
     }
@@ -43,7 +43,7 @@ bool SessionImpl::connect(const SessionConfig& config) {
     }
 
     if (!transport_->connect(config.remote_endpoint)) {
-        spdlog::error("Failed to connect to remote endpoint");
+        spdlog_error("Failed to connect to remote endpoint");
         state_ = AudioStreamState::Error;
         return false;
     }
@@ -57,20 +57,19 @@ bool SessionImpl::connect(const SessionConfig& config) {
         dtls_config.cert_fingerprint = DtlsSession::generate_certificate();
 
         if (!dtls_session_->initialize(dtls_config)) {
-            spdlog::error("Failed to initialize DTLS session");
+            spdlog_error("Failed to initialize DTLS session");
             state_ = AudioStreamState::Error;
             return false;
         }
 
         // 启动握手
         if (!dtls_session_->start_handshake()) {
-            spdlog::error("Failed to start DTLS handshake");
+            spdlog_error("Failed to start DTLS handshake");
             state_ = AudioStreamState::Error;
             return false;
         }
 
-        // 模拟握手完成（实际应通过网络交换消息）
-        std::vector<uint8_t> response;
+        // 模拟握手完成（实际应通过网络交换消息�?        std::vector<uint8_t> response;
         dtls_session_->process_handshake(nullptr, 0, response);
         dtls_session_->complete_handshake();
 
@@ -79,19 +78,19 @@ bool SessionImpl::connect(const SessionConfig& config) {
             auto* udp = dynamic_cast<UdpTransport*>(transport_.get());
             if (udp) {
                 if (!udp->enable_encryption(*dtls_session_->keys(), 0x12345678)) {
-                    spdlog::error("Failed to enable SRTP encryption");
+                    spdlog_error("Failed to enable SRTP encryption");
                     state_ = AudioStreamState::Error;
                     return false;
                 }
                 encryption_enabled_ = true;
-                spdlog::info("DTLS/SRTP encryption enabled");
+                spdlog_info("DTLS/SRTP encryption enabled");
             }
         }
     }
 
     engine_ = create_audio_engine();
     if (!engine_->initialize(config.audio_format)) {
-        spdlog::error("Failed to initialize audio engine");
+        spdlog_error("Failed to initialize audio engine");
         state_ = AudioStreamState::Error;
         return false;
     }
@@ -109,7 +108,7 @@ bool SessionImpl::connect(const SessionConfig& config) {
     engine_->start_render();
 
     state_ = AudioStreamState::Running;
-    spdlog::info("Session connected to {}:{}", config.remote_endpoint.address, config.remote_endpoint.port);
+    spdlog_info("Session connected to {}:{}", config.remote_endpoint.address, config.remote_endpoint.port);
     return true;
 }
 
@@ -146,7 +145,7 @@ void SessionImpl::disconnect() {
     }
 
     state_ = AudioStreamState::Idle;
-    spdlog::info("Session disconnected");
+    spdlog_info("Session disconnected");
 }
 
 bool SessionImpl::send_audio(const float* data, uint32_t frame_count) {

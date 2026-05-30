@@ -19,7 +19,7 @@ WebRtcApm::~WebRtcApm() {
 
 bool WebRtcApm::initialize(uint32_t sample_rate, uint8_t channels) {
     if (initialized_) {
-        spdlog::warn("WebRtcApm already initialized");
+        spdlog_warn("WebRtcApm already initialized");
         return false;
     }
 
@@ -39,7 +39,7 @@ bool WebRtcApm::initialize(uint32_t sample_rate, uint8_t channels) {
     apm_ = webrtc::AudioProcessing::Create(config);
 
     if (!apm_) {
-        spdlog::error("Failed to create AudioProcessing instance");
+        spdlog_error("Failed to create AudioProcessing instance");
         return false;
     }
 
@@ -48,18 +48,18 @@ bool WebRtcApm::initialize(uint32_t sample_rate, uint8_t channels) {
 
     int error = apm_->set_stream_delay_ms(0);
     if (error != webrtc::AudioProcessing::kNoError) {
-        spdlog::warn("Failed to set stream delay: {}", error);
+        spdlog_warn("Failed to set stream delay: {}", error);
     }
 
     initialized_ = true;
-    spdlog::info("WebRtcApm initialized: {}Hz, {} channels", sample_rate, channels);
+    spdlog_info("WebRtcApm initialized: {}Hz, {} channels", sample_rate, channels);
     return true;
 }
 
 void WebRtcApm::shutdown() {
     apm_.reset();
     initialized_ = false;
-    spdlog::info("WebRtcApm shutdown");
+    spdlog_info("WebRtcApm shutdown");
 }
 
 bool WebRtcApm::process_stream(const float* input, float* output, uint32_t frame_count) {
@@ -80,7 +80,7 @@ bool WebRtcApm::process_stream(const float* input, float* output, uint32_t frame
     );
 
     if (error != webrtc::AudioProcessing::kNoError) {
-        spdlog::error("ProcessStream failed: {}", error);
+        spdlog_error("ProcessStream failed: {}", error);
         return false;
     }
 
@@ -105,7 +105,7 @@ bool WebRtcApm::process_reverse_stream(const float* input, float* output, uint32
     );
 
     if (error != webrtc::AudioProcessing::kNoError) {
-        spdlog::error("ProcessReverseStream failed: {}", error);
+        spdlog_error("ProcessReverseStream failed: {}", error);
         return false;
     }
 

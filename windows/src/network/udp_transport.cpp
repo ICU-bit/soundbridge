@@ -15,7 +15,7 @@ UdpTransport::~UdpTransport() {
 
 bool UdpTransport::connect(const NetworkEndpoint& endpoint) {
     if (connected_) {
-        spdlog::warn("UdpTransport already connected");
+        spdlog_warn("UdpTransport already connected");
         return false;
     }
 
@@ -25,7 +25,7 @@ bool UdpTransport::connect(const NetworkEndpoint& endpoint) {
 
     socket_ = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (socket_ == INVALID_SOCKET) {
-        spdlog::error("Failed to create socket: {}", WSAGetLastError());
+        spdlog_error("Failed to create socket: {}", WSAGetLastError());
         return false;
     }
 
@@ -36,14 +36,14 @@ bool UdpTransport::connect(const NetworkEndpoint& endpoint) {
     remote_addr_.sin_port = htons(endpoint.port);
 
     if (inet_pton(AF_INET, endpoint.address.c_str(), &remote_addr_.sin_addr) != 1) {
-        spdlog::error("Invalid address: {}", endpoint.address);
+        spdlog_error("Invalid address: {}", endpoint.address);
         closesocket(socket_);
         socket_ = INVALID_SOCKET;
         return false;
     }
 
     connected_ = true;
-    spdlog::info("UdpTransport connected to {}:{}", endpoint.address, endpoint.port);
+    spdlog_info("UdpTransport connected to {}:{}", endpoint.address, endpoint.port);
     return true;
 }
 
@@ -58,7 +58,7 @@ void UdpTransport::disconnect() {
     srtp_send_.reset();
     srtp_recv_.reset();
 
-    spdlog::info("UdpTransport disconnected");
+    spdlog_info("UdpTransport disconnected");
 }
 
 bool UdpTransport::send(const uint8_t* data, size_t size) {
@@ -71,14 +71,14 @@ bool UdpTransport::send(const uint8_t* data, size_t size) {
     static uint32_t sequence = 0;
     auto packet = PacketBuilder::build(PacketType::Audio, sequence++, data, size);
 
-    // 如果启用加密，对整个数据包进行 SRTP 加密
+    // 如果启用加密，对整个数据包进�?SRTP 加密
     const uint8_t* send_data = packet.data();
     size_t send_size = packet.size();
     std::vector<uint8_t> encrypted;
 
     if (encryption_enabled_ && srtp_send_) {
         if (!srtp_send_->protect(packet.data(), packet.size(), encrypted)) {
-            spdlog::error("SRTP protect failed");
+            spdlog_error("SRTP protect failed");
             return false;
         }
         send_data = encrypted.data();
@@ -95,7 +95,7 @@ bool UdpTransport::send(const uint8_t* data, size_t size) {
     );
 
     if (sent == SOCKET_ERROR) {
-        spdlog::error("sendto failed: {}", WSAGetLastError());
+        spdlog_error("sendto failed: {}", WSAGetLastError());
         return false;
     }
 
@@ -123,7 +123,7 @@ bool UdpTransport::receive(uint8_t* buffer, size_t buffer_size, size_t& received
     if (result == SOCKET_ERROR) {
         const int error = WSAGetLastError();
         if (error != WSAETIMEDOUT) {
-            spdlog::error("recvfrom failed: {}", error);
+            spdlog_error("recvfrom failed: {}", error);
         }
         received = 0;
         return false;
@@ -135,7 +135,7 @@ bool UdpTransport::receive(uint8_t* buffer, size_t buffer_size, size_t& received
     if (encryption_enabled_ && srtp_recv_) {
         std::vector<uint8_t> decrypted;
         if (!srtp_recv_->unprotect(buffer, received, decrypted)) {
-            spdlog::error("SRTP unprotect failed");
+            spdlog_error("SRTP unprotect failed");
             received = 0;
             return false;
         }
@@ -154,21 +154,21 @@ bool UdpTransport::enable_encryption(const CryptoKeys& keys, uint32_t ssrc) {
     srtp_recv_ = std::make_unique<SrtpContext>();
 
     if (!srtp_send_->initialize(keys, ssrc)) {
-        spdlog::error("Failed to initialize SRTP send context");
+        spdlog_error("Failed to initialize SRTP send context");
         srtp_send_.reset();
         srtp_recv_.reset();
         return false;
     }
 
     if (!srtp_recv_->initialize(keys, ssrc)) {
-        spdlog::error("Failed to initialize SRTP recv context");
+        spdlog_error("Failed to initialize SRTP recv context");
         srtp_send_.reset();
         srtp_recv_.reset();
         return false;
     }
 
     encryption_enabled_ = true;
-    spdlog::info("SRTP encryption enabled, SSRC={:#x}", ssrc);
+    spdlog_info("SRTP encryption enabled, SSRC={:#x}", ssrc);
     return true;
 }
 
@@ -176,11 +176,11 @@ void UdpTransport::disable_encryption() {
     encryption_enabled_ = false;
     srtp_send_.reset();
     srtp_recv_.reset();
-    spdlog::info("SRTP encryption disabled");
+    spdlog_info("SRTP encryption disabled");
 }
 
 DtlsState UdpTransport::dtls_state() const {
-    // 当前实现：如果加密已启用则返回 Established
+    // 当前实现：如果加密已启用则返�?Established
     if (encryption_enabled_) {
         return DtlsState::Established;
     }
@@ -191,7 +191,7 @@ bool UdpTransport::init_winsock() {
     WSADATA wsa_data;
     const int result = WSAStartup(MAKEWORD(2, 2), &wsa_data);
     if (result != 0) {
-        spdlog::error("WSAStartup failed: {}", result);
+        spdlog_error("WSAStartup failed: {}", result);
         return false;
     }
     return true;
