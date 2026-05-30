@@ -17,6 +17,10 @@
 - **Sample Trait**: 样本类型抽象
 - **AudioBuffer<T>**: 零拷贝音频缓冲区，支持多种样本类型
 - **RingBuffer<T>**: Lock-free SPSC 环形缓冲区，用于线程间音频数据传递
+- **AudioMode**: 音频模式枚举 (Balanced, HighQuality, LowLatency)
+- **AudioError**: 统一错误类型
+- **Pipeline**: 音频管线 trait
+- **SharedPipelineStats**: 共享管线统计（frames_encoded/decoded, loss_rate, level, exclusive_mode）
 
 ## RingBuffer 使用
 
@@ -40,13 +44,6 @@ rb.read(&mut output);
 - SPSC（单生产者单消费者）
 - 容量自动向上取整到 2 的幂
 - 线程安全（实现了 Send + Sync）
-
-## 未来扩展方向
-
-1. **格式转换**: 实现不同样本格式之间的转换
-2. **音频重采样**: 添加重采样功能
-3. **通道混合/分离**: 支持多通道音频处理
-4. **音频帧**: 引入帧级别的抽象
 
 ## 测试
 

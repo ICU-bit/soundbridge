@@ -9,6 +9,7 @@ Opus 音频编解码，为 SoundBridge 提供低延迟、高质量的音频压�
 - ✅ decode_into 零拷贝解码（无额外堆分配）
 - ✅ ChannelConfig 与 opus::Channels 无命名冲突
 - ✅ 编码逻辑已提取为公共方法 encode_samples
+- ✅ OpusConfig derives Copy（所有字段枚举均为 Copy）
 - ✅ 22 个单元测试通过（含 stereo 全覆盖 + 非静音断言）
 - ✅ Criterion 基准测试完整
 
@@ -32,12 +33,6 @@ let decoded: AudioBuffer<f32> = codec.decode(&encoded)?;
 let mut output = vec![0f32; 960];
 let count = decoder.decode_into(&encoded, &mut output)?;
 ```
-
-## Next Steps
-1. 性能基准测试对比优化
-2. 考虑 SIMD 优化编码/解码路径
-3. 添加重采样支持
-4. 添加更多采样率支持（如 16000 Hz）
 
 ## Dependencies
 - opus = "0.3"

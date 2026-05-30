@@ -89,9 +89,10 @@
 ┌─────────────────────────────────────────────────────────────┐
 │                       网络传输层                              │
 ├─────────────────────────────────────────────────────────────┤
-│  UDP 音频流                   │       QUIC 控制信令           │
-│  • 超低延迟传输               │       • 可靠加密传输          │
-│  • 带宽自适应                 │       • 设备发现              │
+│  UDP 音频流                                                   │
+│  • 超低延迟传输                                               │
+│  • 带宽自适应（64/96/128 kbps 动态码率）                      │
+│  • RawJitterBuffer（乱序容忍）                                │
 └─────────────────────────────────────────────────────────────┘
                               │
 ┌─────────────────────────────────────────────────────────────┐
@@ -119,7 +120,7 @@
 | **UI框架** | WinUI 3 | Jetpack Compose |
 | **音频采集** | WASAPI | AAudio |
 | **编解码** | libopus | libopus |
-| **网络** | 自定义 UDP/QUIC | 自定义 UDP/QUIC |
+| **网络** | 自定义 UDP 传输 | 自定义 UDP 传输 |
 | **回声消除** | WebRTC APM | WebRTC APM |
 | **构建** | CMake + MSBuild | Gradle + NDK |
 
@@ -140,15 +141,18 @@
 - ✅ 全局快捷键（Ctrl+Alt+T/M/S）
 - ✅ 系统托盘 + 连接状态通知（Toast）
 - ✅ 音频模式动态切换（均衡/高音质/超低延迟）
-- ⚠️ 其他连接方式（WiFi直连、USB、蓝牙）- 未实现
+- ✅ 其他连接方式（WiFi直连、USB、蓝牙）- FFI 已实现
 
-### 第三阶段：优化完善 ⏳ 进行中
+### 第三阶段：优化完善 ✅ 已完成
 - ✅ 音频模式动态切换
 - ✅ 性能优化（WASAPI 独占模式 + Jitter Buffer）
-- [ ] WiFi 直连（热点模式）
-- [ ] USB/ADB 连接
-- [ ] 蓝牙连接
-- [ ] 用户体验完善
+- ✅ WiFi 直连（热点模式）- sb_hotspot_* FFI
+- ✅ USB/ADB 连接 - sb_adb_* FFI
+- ✅ 蓝牙连接 - sb_bt_* FFI
+- ✅ 用户体验完善（UI 动画、设备发现、连接状态）
+- ✅ CI/CD 配置（GitHub Actions）
+- ✅ 开发工具（benchmark-runner、test-harness）
+- ✅ 文档同步（AI_GUIDE.md、CONTRIBUTING.md、CHANGELOG.md）
 
 ---
 
@@ -226,6 +230,24 @@
 
 ## 📝 版本历史
 
+- **v0.7.2** - 开发工具与自动化
+  - tools: 新增 benchmark-runner.ps1（基准测试运行器，生成 markdown 报告）
+  - tools: 新增 test-harness.ps1（测试运行器，含 clippy/fmt 检查）
+  - scripts: 新增 build-windows.ps1（本地 CMake 构建）
+  - scripts: 新增 release.ps1（自动化 GitHub Release 创建）
+  - scripts: 新增 verify-release.ps1（发布前验证检查器）
+  - docs: 新增 CONTRIBUTING.md（开发环境、代码规范、提交约定）
+  - docs: 新增 CHANGELOG.md（Keep a Changelog 格式，v0.1.0-v0.7.2）
+  - github: 新增 Issue/PR 模板（bug_report、feature_request、PR template）
+  - ci: GitHub Actions CI/CD（Rust 测试 + Windows C++ 构建 + Android 构建）
+  - config: .editorconfig（UTF-8、CRLF、4 空格缩进）+ rustfmt.toml
+  - fix: opus_benchmark.rs 修复（rand dev-dep + OpusConfig Copy derive）
+  - style: cargo fmt 全量格式化（30 个文件）
+- **v0.7.1** - CI/CD + 项目基础设施
+  - ci: GitHub Actions ci.yml 配置（Rust 测试 + Windows C++ 构建 + Android 构建）
+  - config: .editorconfig + rustfmt.toml 格式化配置
+  - scripts: bench.ps1 + test.ps1 工具脚本
+  - docs: Phase 3 完成文档
 - **v0.7.0** - UI 动画优化 + Android JNI 连接管理 + 最终测试
   - Windows: ProgressRing 加载动画（连接中状态）
   - Windows: 设备发现 UI（扫描按钮 + 设备列表 + ListView 选择）
