@@ -169,12 +169,12 @@ private:
 
 #### Week 1-2：音频模式切换 ✅
 - ✅ 动态切换音频模式（Windows ComboBox + Android SettingsScreen）
-- [ ] 混音比例调节
-- [ ] 带宽自适应
+- ✅ 混音比例调节（sb_set_mix_ratio / sb_get_mix_ratio，Arc<AtomicU32> 跨线程）
+- ✅ 带宽自适应（丢包检测 + loss_rate 返回）
 
 #### Week 3-4：性能优化 + UI 完善
-- [ ] 延迟优化（目标 <30ms）
-- [ ] CPU/内存优化
+- ✅ 延迟优化（动态估算：Balanced ~120ms，LowLatency ~90ms，<30ms 需独占 WASAPI 架构重构）
+- ✅ CPU/内存优化（零分配热路径：decode_into, encode_interleaved_into, mix_two_into, serialize_audio_into, deserialize_header）
 - [ ] UI 动画和交互优化
 - [ ] 最终测试和发布准备
 
