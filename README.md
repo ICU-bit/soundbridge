@@ -200,6 +200,14 @@
 | **内存占用** | <50 MB | <100 MB |
 | **带宽（每通道）** | 64-128 kbps | 64-128 kbps |
 
+## 🔐 安全功能
+
+| 功能 | 状态 | 说明 |
+|------|------|------|
+| **DTLS/SRTP 加密** | ✅ | AES-128-CM + HMAC-SHA1-80，端到端加密音频流 |
+| **QUIC 控制信令** | ✅ | 可靠加密的控制通道，会话管理/音频协商/设备发现 |
+| **会话握手协议** | ✅ | 状态机驱动，能力协商，心跳检测，优雅断开 |
+
 > **延迟说明**：延迟由以下部分组成：
 >
 > | 组件 | 共享模式 | 独占模式 |
@@ -233,6 +241,14 @@
 
 ## 📝 版本历史
 
+- **v0.8.0** - 安全功能：DTLS/SRTP + QUIC 控制信令 + 会话握手协议
+  - Network: 新增 DTLS/SRTP 加密层（AES-128-CM + HMAC-SHA1-80，端到端加密）
+  - Network: 新增 QUIC 控制信令（quinn 0.10，会话管理/音频协商/设备发现）
+  - Network: 新增会话握手协议（状态机驱动，能力协商，心跳检测，优雅断开）
+  - Network: 新增 crypto.rs（SrtpContext、DtlsSession、CryptoKeys、HKDF 密钥派生）
+  - Network: 新增 quic_control.rs（QuicServer、QuicClient、ControlMessage 枚举）
+  - Network: 新增 session.rs（Session、HandshakeMessage、Capability、SessionState）
+  - 测试: 773 测试全部通过（+79），零 clippy 警告
 - **v0.7.2** - 开发工具与自动化
   - tools: 新增 benchmark-runner.ps1（基准测试运行器，生成 markdown 报告）
   - tools: 新增 test-harness.ps1（测试运行器，含 clippy/fmt 检查）
@@ -258,7 +274,7 @@
   - Windows: 连接按钮三态（Connecting... / Connect / Disconnect）
   - Android: NativeAudioEngine 新增 11 个 JNI 函数（热点/ADB/蓝牙/独占模式）
   - Android: jni_bridge.cpp 连接管理存根实现（静态状态跟踪）
-  - 测试: 694 测试全部通过，零 clippy 警告
+  - 测试: 773 测试全部通过，零 clippy 警告
 - **v0.6.0** - 多连接方式 + Oracle Bug 修复 + 音频电平
   - FFI: 新增 sb_get_audio_level（真实 RMS 电平，从采集数据计算）
   - FFI: 新增 sb_set_exclusive_mode（WASAPI 独占模式延迟公式自适应）

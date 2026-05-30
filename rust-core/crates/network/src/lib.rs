@@ -3,13 +3,19 @@
 //! 提供 UDP 音频传输、Jitter Buffer 和连接管理功能。
 
 pub mod connection;
+pub mod crypto;
 pub mod jitter_buffer;
 pub mod net_monitor;
+pub mod quic_control;
+pub mod session;
 pub mod transport;
 
 pub use connection::{
     AdbConfig, AdbState, BluetoothConfig, BluetoothState, ConnectionConfig, ConnectionManager,
     ConnectionState, ConnectionType, HotspotConfig, HotspotState,
+};
+pub use crypto::{
+    CryptoKeys, DtlsConfig, DtlsSession, DtlsState, SrtpContext, SRTP_AUTH_TAG_LEN,
 };
 pub use jitter_buffer::{
     AdaptiveConfig, AudioPacket, JitterBuffer, JitterBufferConfig, JitterStats, NetworkQuality,
@@ -19,6 +25,14 @@ pub use net_monitor::{
     BitrateRecommendation, BurstLossEvent, NetMonitor, NetMonitorConfig, NetworkStats,
 };
 pub use transport::{TransportConfig, UdpTransport};
+pub use quic_control::{
+    AudioConfig, ControlMessage, DeviceInfo, NetworkStatsData, QuicClient, QuicConnection, QuicServer,
+};
+pub use session::{
+    Capability, DisconnectReason, EcdhPublicKey, EncryptionMode, HandshakeMessage, NegotiatedParams,
+    OpusConfig, Session, SessionConfig, SessionRole, SessionState, SessionStats, TransportProtocol,
+    generate_session_id,
+};
 
 /// 网络错误类型
 #[derive(Debug, thiserror::Error)]
@@ -43,6 +57,15 @@ pub enum NetworkError {
 
     #[error("IO 错误: {0}")]
     IoError(#[from] std::io::Error),
+
+    #[error("QUIC 错误: {0}")]
+    QuicError(String),
+
+    #[error("序列化错误: {0}")]
+    SerializationError(String),
+
+    #[error("加密错误: {0}")]
+    CryptoError(String),
 }
 
 /// 网络结果类型

@@ -11,8 +11,20 @@ audio-core = { path = "../audio-core" }
 protocol = { path = "../protocol" }
 tokio.workspace = true
 quinn.workspace = true
+quinn-proto.workspace = true
+rustls.workspace = true
+rcgen.workspace = true
+serde.workspace = true
+bincode.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+rand.workspace = true
+aes.workspace = true
+ctr.workspace = true
+hmac.workspace = true
+sha1.workspace = true
+cipher.workspace = true
+hkdf.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
