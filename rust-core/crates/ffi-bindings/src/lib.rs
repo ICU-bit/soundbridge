@@ -15,7 +15,7 @@ use audio_core::{AudioMode, AudioModeManager, RingBuffer};
 use audio_mixer::AudioMixer;
 use audio_playback::{PlaybackConfig, PlaybackDevice};
 use audio_processor::AudioProcessor;
-use network::RawJitterBuffer;
+use network::{ConnectionType, RawJitterBuffer};
 use protocol::{ControlMessage, ControlMessageType, Packet, PacketHeader, Protocol};
 use std::time::Instant;
 
@@ -228,6 +228,9 @@ pub struct SbEngine {
 
     /// 是否暂停
     paused: bool,
+
+    /// 连接方式
+    connection_type: ConnectionType,
 }
 
 /// 创建引擎
@@ -255,6 +258,7 @@ pub extern "C" fn sb_engine_create() -> *mut c_void {
         pipeline: None,
         volume: 1.0,
         paused: false,
+        connection_type: ConnectionType::WiFiLan,
     };
 
     Box::into_raw(Box::new(engine)) as *mut c_void
@@ -675,7 +679,7 @@ pub unsafe extern "C" fn sb_playback_write(engine: *mut c_void, buf: *const f32,
         let samples = unsafe { std::slice::from_raw_parts(buf, len) };
         let format = audio_core::AudioFormat {
             sample_rate: 48000,
-            channels: 2,
+            channels: 1,
             sample_format: audio_core::SampleFormat::F32,
         };
         match audio_core::AudioBuffer::new(samples.to_vec(), format) {
@@ -2060,6 +2064,61 @@ pub unsafe extern "C" fn sb_get_audio_mode(engine: *mut c_void, mode: *mut SbAud
     SbError::Ok as c_int
 }
 
+/// 设置连接方式
+///
+/// # Safety
+/// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_set_connection_type(engine: *mut c_void, conn_type: i32) -> c_int {
+    clear_error();
+
+    if engine.is_null() {
+        set_error("engine is null");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let engine = unsafe { &mut *(engine as *mut SbEngine) };
+    engine.connection_type = match conn_type {
+        0 => ConnectionType::WiFiLan,
+        1 => ConnectionType::WiFiDirect,
+        2 => ConnectionType::UsbAdb,
+        3 => ConnectionType::Bluetooth,
+        _ => {
+            set_error("invalid connection type (0-3)");
+            return SbError::InvalidArgument as c_int;
+        }
+    };
+    tracing::info!("Connection type set to: {}", engine.connection_type);
+    SbError::Ok as c_int
+}
+
+/// 获取连接方式
+///
+/// # Safety
+/// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
+/// `conn_type` 必须是有效的指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_get_connection_type(engine: *mut c_void, conn_type: *mut i32) -> c_int {
+    clear_error();
+
+    if engine.is_null() || conn_type.is_null() {
+        set_error("engine or conn_type is null");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let engine = unsafe { &*(engine as *const SbEngine) };
+    let val = match engine.connection_type {
+        ConnectionType::WiFiLan => 0,
+        ConnectionType::WiFiDirect => 1,
+        ConnectionType::UsbAdb => 2,
+        ConnectionType::Bluetooth => 3,
+    };
+    unsafe {
+        *conn_type = val;
+    }
+    SbError::Ok as c_int
+}
+
 /// 设置混音比例
 ///
 /// 控制 PC（本地）和手机（远端）的音量平衡。
@@ -2690,6 +2749,63 @@ mod tests {
             let result = sb_get_audio_mode(engine, ptr::null_mut());
             assert_eq!(result, SbError::InvalidArgument as c_int);
 
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_set_and_get_connection_type() {
+        unsafe {
+            let engine = sb_engine_create();
+
+            // 默认值应该是 WiFiLan (0)
+            let mut conn_type = -1i32;
+            let result = sb_get_connection_type(engine, &mut conn_type);
+            assert_eq!(result, SbError::Ok as c_int);
+            assert_eq!(conn_type, 0); // WiFiLan
+
+            // 设置为 USB/ADB (2)
+            let result = sb_set_connection_type(engine, 2);
+            assert_eq!(result, SbError::Ok as c_int);
+
+            let mut conn_type = -1i32;
+            let result = sb_get_connection_type(engine, &mut conn_type);
+            assert_eq!(result, SbError::Ok as c_int);
+            assert_eq!(conn_type, 2); // UsbAdb
+
+            // 设置为蓝牙 (3)
+            let result = sb_set_connection_type(engine, 3);
+            assert_eq!(result, SbError::Ok as c_int);
+
+            let mut conn_type = -1i32;
+            let result = sb_get_connection_type(engine, &mut conn_type);
+            assert_eq!(result, SbError::Ok as c_int);
+            assert_eq!(conn_type, 3); // Bluetooth
+
+            // 无效值应返回错误
+            let result = sb_set_connection_type(engine, 99);
+            assert_eq!(result, SbError::InvalidArgument as c_int);
+
+            sb_engine_destroy(engine);
+        }
+    }
+
+    #[test]
+    fn test_connection_type_null_engine() {
+        let result = unsafe { sb_set_connection_type(ptr::null_mut(), 0) };
+        assert_eq!(result, SbError::InvalidArgument as c_int);
+
+        let mut conn_type = 0i32;
+        let result = unsafe { sb_get_connection_type(ptr::null_mut(), &mut conn_type) };
+        assert_eq!(result, SbError::InvalidArgument as c_int);
+    }
+
+    #[test]
+    fn test_connection_type_null_pointer() {
+        unsafe {
+            let engine = sb_engine_create();
+            let result = sb_get_connection_type(engine, ptr::null_mut());
+            assert_eq!(result, SbError::InvalidArgument as c_int);
             sb_engine_destroy(engine);
         }
     }
