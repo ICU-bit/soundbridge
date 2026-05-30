@@ -955,7 +955,7 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
         opus_config.bitrate.bits_per_second(),
         opus_config.frame_size.milliseconds()
     );
-    let encoder = match OpusEncoderCodec::new(opus_config.clone()) {
+    let encoder = match OpusEncoderCodec::new(opus_config) {
         Ok(e) => e,
         Err(e) => {
             set_error(&format!("failed to create encoder: {}", e));
@@ -963,7 +963,7 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
         }
     };
 
-    let decoder = match OpusDecoderCodec::new(opus_config.clone()) {
+    let decoder = match OpusDecoderCodec::new(opus_config) {
         Ok(d) => d,
         Err(e) => {
             set_error(&format!("failed to create decoder: {}", e));

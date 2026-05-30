@@ -95,7 +95,7 @@ impl FrameSize {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct OpusConfig {
     pub sample_rate: SampleRate,
     pub channels: ChannelConfig,
@@ -336,8 +336,8 @@ pub struct OpusCodec {
 
 impl OpusCodec {
     pub fn new(config: OpusConfig) -> Result<Self> {
-        let encoder = OpusEncoderCodec::new(config.clone())?;
-        let decoder = OpusDecoderCodec::new(config.clone())?;
+        let encoder = OpusEncoderCodec::new(config)?;
+        let decoder = OpusDecoderCodec::new(config)?;
         Ok(Self {
             encoder,
             decoder,
@@ -568,17 +568,16 @@ mod tests {
     #[test]
     fn test_roundtrip_different_sample_rates() {
         // Opus 支持的采样率：8000, 12000, 16000, 24000, 48000
-        for sr in [SampleRate::Hz48000] {
-            let count = FrameSize::Ms20.samples(sr);
-            let config = OpusConfig::new(sr, ChannelConfig::Mono, Bitrate::Kbps128, FrameSize::Ms20);
-            let format = config.to_audio_format();
-            let mut codec = OpusCodec::new(config).unwrap();
-            let samples = create_sine_samples(count, 440.0, sr.value() as f32);
-            let input = AudioBuffer::new(samples, format).unwrap();
-            let encoded = codec.encode(&input).unwrap();
-            let decoded = codec.decode(&encoded).unwrap();
-            assert_eq!(decoded.samples().len(), count);
-        }
+        let sr = SampleRate::Hz48000;
+        let count = FrameSize::Ms20.samples(sr);
+        let config = OpusConfig::new(sr, ChannelConfig::Mono, Bitrate::Kbps128, FrameSize::Ms20);
+        let format = config.to_audio_format();
+        let mut codec = OpusCodec::new(config).unwrap();
+        let samples = create_sine_samples(count, 440.0, sr.value() as f32);
+        let input = AudioBuffer::new(samples, format).unwrap();
+        let encoded = codec.encode(&input).unwrap();
+        let decoded = codec.decode(&encoded).unwrap();
+        assert_eq!(decoded.samples().len(), count);
     }
 
     #[test]
@@ -640,7 +639,7 @@ mod tests {
             FrameSize::Ms20,
         );
         let format = config.to_audio_format();
-        let mut encoder = OpusEncoderCodec::new(config.clone()).unwrap();
+        let mut encoder = OpusEncoderCodec::new(config).unwrap();
         let mut decoder = OpusDecoderCodec::new(config).unwrap();
 
         let samples = create_sine_samples(960, 440.0, 48000.0);
@@ -662,7 +661,7 @@ mod tests {
             FrameSize::Ms20,
         );
         let format = config.to_audio_format();
-        let mut encoder = OpusEncoderCodec::new(config.clone()).unwrap();
+        let mut encoder = OpusEncoderCodec::new(config).unwrap();
         let mut decoder = OpusDecoderCodec::new(config).unwrap();
 
         let samples = create_stereo_samples(1920);
@@ -679,7 +678,7 @@ mod tests {
     fn test_decode_into_buffer_too_small() {
         let config = OpusConfig::default();
         let format = config.to_audio_format();
-        let mut encoder = OpusEncoderCodec::new(config.clone()).unwrap();
+        let mut encoder = OpusEncoderCodec::new(config).unwrap();
         let mut decoder = OpusDecoderCodec::new(config).unwrap();
 
         let samples = create_sine_samples(960, 440.0, 48000.0);
