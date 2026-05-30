@@ -2040,6 +2040,18 @@ pub unsafe extern "C" fn sb_set_audio_mode(engine: *mut c_void, mode: SbAudioMod
         config.frame_size_ms
     );
 
+    // 如果管线正在运行，需要重启管线使新编解码参数生效
+    if engine.pipeline_state == PipelineState::Running {
+        tracing::info!("Pipeline running, restarting with new audio mode...");
+        stop_pipeline_internal(engine);
+
+        // 重新启动管线（复用 sb_pipeline_start 的逻辑）
+        let rc = unsafe { sb_pipeline_start(engine as *mut SbEngine as *mut c_void) };
+        if rc != SbError::Ok as c_int {
+            tracing::warn!("Failed to restart pipeline after mode switch");
+        }
+    }
+
     SbError::Ok as c_int
 }
 
