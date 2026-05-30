@@ -8,6 +8,11 @@
 #endif
 #include "include/udp_socket.h"
 
+// ── Rust FFI integration ──
+#ifdef SOUNDBRIDGE_USE_RUST_FFI
+#include "soundbridge.h"
+#endif
+
 #define LOG_TAG "SoundBridge_JNI"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
@@ -30,11 +35,53 @@ static soundbridge::UdpSocket* getSocket(jlong handle) {
     return reinterpret_cast<soundbridge::UdpSocket*>(handle);
 }
 
+// ── Rust FFI handle helpers ──
+#ifdef SOUNDBRIDGE_USE_RUST_FFI
+static void* getRustEngine(jlong handle) {
+    return reinterpret_cast<void*>(static_cast<uintptr_t>(handle));
+}
+static jlong fromRustHandle(void* ptr) {
+    return static_cast<jlong>(reinterpret_cast<uintptr_t>(ptr));
+}
+#endif
+
 extern "C" {
 
 JNIEXPORT jlong JNICALL
 Java_com_soundbridge_native_NativeAudioEngine_nativeInit(
         JNIEnv* env, jobject thiz, jint sampleRate, jint channels, jint bufferSize) {
+#ifdef SOUNDBRIDGE_USE_RUST_FFI
+    // Rust FFI path: create engine via Rust core library
+    void* engine = sb_engine_create();
+    if (!engine) {
+        const char* err = sb_last_error();
+        LOGE("Failed to create Rust engine: %s", err ? err : "unknown error");
+        return 0;
+    }
+
+    // Bind to an auto-assigned UDP port
+    int rc = sb_bind(engine, 0);
+    if (rc != 0) {
+        const char* err = sb_last_error();
+        LOGE("Failed to bind Rust engine: %s", err ? err : "unknown error");
+        sb_engine_destroy(engine);
+        return 0;
+    }
+
+    // Retrieve the assigned port for logging
+    uint16_t port = 0;
+    rc = sb_local_port(engine, &port);
+    if (rc != 0) {
+        LOGE("Failed to get local port from Rust engine");
+        sb_engine_destroy(engine);
+        return 0;
+    }
+
+    LOGI("Rust engine created, bound to UDP port %d (requested %dHz, %dch, %d samples)",
+         port, sampleRate, channels, bufferSize);
+    return fromRustHandle(engine);
+#else
+    // Legacy C++ path
     auto* engine = new soundbridge::AudioEngine();
 
     soundbridge::AudioConfig config;
@@ -51,6 +98,7 @@ Java_com_soundbridge_native_NativeAudioEngine_nativeInit(
 
     LOGI("Audio engine created: %dHz, %dch, %d samples", sampleRate, channels, bufferSize);
     return reinterpret_cast<jlong>(engine);
+#endif
 }
 
 JNIEXPORT jboolean JNICALL
@@ -73,11 +121,19 @@ Java_com_soundbridge_native_NativeAudioEngine_nativeStop(
 JNIEXPORT void JNICALL
 Java_com_soundbridge_native_NativeAudioEngine_nativeRelease(
         JNIEnv* env, jobject thiz, jlong engineHandle) {
+#ifdef SOUNDBRIDGE_USE_RUST_FFI
+    void* engine = getRustEngine(engineHandle);
+    if (engine) {
+        sb_engine_destroy(engine);
+        LOGI("Rust engine destroyed");
+    }
+#else
     auto* engine = getEngine(engineHandle);
     if (engine) {
         engine->release();
         delete engine;
     }
+#endif
 }
 
 JNIEXPORT jfloat JNICALL
@@ -360,6 +416,19 @@ static uint16_t g_target_port = 0;
 JNIEXPORT jint JNICALL
 Java_com_soundbridge_native_NativeAudioEngine_nativeBind(
         JNIEnv* env, jobject thiz, jlong engineHandle, jint port) {
+#ifdef SOUNDBRIDGE_USE_RUST_FFI
+    void* engine = getRustEngine(engineHandle);
+    if (!engine) return -1;
+
+    int rc = sb_bind(engine, static_cast<uint16_t>(port));
+    if (rc != 0) {
+        const char* err = sb_last_error();
+        LOGE("Rust sb_bind failed: %s", err ? err : "unknown error");
+        return -1;
+    }
+    LOGI("Rust engine bound to UDP port %d", port);
+    return 0;
+#else
     auto* engine = getEngine(engineHandle);
     if (!engine) return -1;
 
@@ -373,16 +442,40 @@ Java_com_soundbridge_native_NativeAudioEngine_nativeBind(
     g_local_port = static_cast<uint16_t>(port);
     LOGI("Pipeline bound to UDP port %d", port);
     return 0;
+#endif
 }
 
 JNIEXPORT jint JNICALL
 Java_com_soundbridge_native_NativeAudioEngine_nativeConnect(
         JNIEnv* env, jobject thiz, jlong engineHandle, jstring address) {
-    auto* engine = getEngine(engineHandle);
-    if (!engine) return -1;
-
     const char* addr = env->GetStringUTFChars(address, nullptr);
     if (!addr) return -1;
+
+#ifdef SOUNDBRIDGE_USE_RUST_FFI
+    void* engine = getRustEngine(engineHandle);
+    if (!engine) {
+        env->ReleaseStringUTFChars(address, addr);
+        return -1;
+    }
+
+    int rc = sb_connect(engine, addr);
+    env->ReleaseStringUTFChars(address, addr);
+
+    if (rc != 0) {
+        const char* err = sb_last_error();
+        LOGE("Rust sb_connect failed: %s", err ? err : "unknown error");
+        return -1;
+    }
+
+    LOGI("Rust engine connected to %s", addr);
+    return 0;
+#else
+    // Legacy C++ path
+    auto* engine = getEngine(engineHandle);
+    if (!engine) {
+        env->ReleaseStringUTFChars(address, addr);
+        return -1;
+    }
 
     // 解析 "ip:port" 格式
     std::string addrStr(addr);
@@ -408,17 +501,39 @@ Java_com_soundbridge_native_NativeAudioEngine_nativeConnect(
 
     LOGI("Pipeline target set to %s:%d", g_target_address.c_str(), g_target_port);
     return 0;
+#endif
 }
 
 JNIEXPORT jint JNICALL
 Java_com_soundbridge_native_NativeAudioEngine_nativeGetLocalPort(
         JNIEnv* env, jobject thiz, jlong engineHandle) {
+#ifdef SOUNDBRIDGE_USE_RUST_FFI
+    void* engine = getRustEngine(engineHandle);
+    if (!engine) return 0;
+    uint16_t port = 0;
+    if (sb_local_port(engine, &port) != 0) return 0;
+    return static_cast<jint>(port);
+#else
     return static_cast<jint>(g_local_port);
+#endif
 }
 
 JNIEXPORT jint JNICALL
 Java_com_soundbridge_native_NativeAudioEngine_nativePipelineStart(
         JNIEnv* env, jobject thiz, jlong engineHandle) {
+#ifdef SOUNDBRIDGE_USE_RUST_FFI
+    void* engine = getRustEngine(engineHandle);
+    if (!engine) return -1;
+
+    int rc = sb_pipeline_start(engine);
+    if (rc != 0) {
+        const char* err = sb_last_error();
+        LOGE("Rust sb_pipeline_start failed: %s", err ? err : "unknown error");
+        return -1;
+    }
+    LOGI("Rust pipeline started");
+    return 0;
+#else
     auto* engine = getEngine(engineHandle);
     if (!engine) return -1;
 
@@ -428,22 +543,46 @@ Java_com_soundbridge_native_NativeAudioEngine_nativePipelineStart(
     }
     LOGE("Failed to start pipeline");
     return -1;
+#endif
 }
 
 JNIEXPORT jint JNICALL
 Java_com_soundbridge_native_NativeAudioEngine_nativePipelineStop(
         JNIEnv* env, jobject thiz, jlong engineHandle) {
+#ifdef SOUNDBRIDGE_USE_RUST_FFI
+    void* engine = getRustEngine(engineHandle);
+    if (!engine) return -1;
+
+    int rc = sb_pipeline_stop(engine);
+    if (rc != 0) {
+        const char* err = sb_last_error();
+        LOGE("Rust sb_pipeline_stop failed: %s", err ? err : "unknown error");
+        return -1;
+    }
+    LOGI("Rust pipeline stopped");
+    return 0;
+#else
     auto* engine = getEngine(engineHandle);
     if (!engine) return -1;
 
     engine->stop();
     LOGI("Pipeline stopped");
     return 0;
+#endif
 }
 
 JNIEXPORT jint JNICALL
 Java_com_soundbridge_native_NativeAudioEngine_nativePipelineState(
         JNIEnv* env, jobject thiz, jlong engineHandle) {
+#ifdef SOUNDBRIDGE_USE_RUST_FFI
+    void* engine = getRustEngine(engineHandle);
+    if (!engine) return -1;
+
+    int state = -1;
+    int rc = sb_pipeline_state(engine, &state);
+    if (rc != 0) return -1;
+    return static_cast<jint>(state);
+#else
     auto* engine = getEngine(engineHandle);
     if (!engine) return -1; // Error
 
@@ -460,6 +599,7 @@ Java_com_soundbridge_native_NativeAudioEngine_nativePipelineState(
         default:
             return 2; // Error
     }
+#endif
 }
 
 JNIEXPORT jstring JNICALL
@@ -613,6 +753,55 @@ JNIEXPORT jint JNICALL
 Java_com_soundbridge_native_NativeAudioEngine_nativeSetEncryptionEnabled(
         JNIEnv* env, jobject thiz, jlong engineHandle, jboolean enabled,
         jbyteArray masterKey, jbyteArray masterSalt) {
+#ifdef SOUNDBRIDGE_USE_RUST_FFI
+    void* engine = getRustEngine(engineHandle);
+    if (!engine) return -1;
+
+    if (enabled) {
+        if (!masterKey || !masterSalt) {
+            LOGE("Encryption enabled but masterKey or masterSalt is null");
+            return -1;
+        }
+        jint keyLen = env->GetArrayLength(masterKey);
+        jint saltLen = env->GetArrayLength(masterSalt);
+        if (keyLen != 16 || saltLen != 14) {
+            LOGE("Invalid key length: %d (expected 16), salt length: %d (expected 14)",
+                 keyLen, saltLen);
+            return -1;
+        }
+
+        jbyte* key = env->GetByteArrayElements(masterKey, nullptr);
+        jbyte* salt = env->GetByteArrayElements(masterSalt, nullptr);
+        if (!key || !salt) {
+            if (key) env->ReleaseByteArrayElements(masterKey, key, JNI_ABORT);
+            if (salt) env->ReleaseByteArrayElements(masterSalt, salt, JNI_ABORT);
+            return -1;
+        }
+
+        int rc = sb_enable_encryption(engine,
+            reinterpret_cast<const uint8_t*>(key),
+            reinterpret_cast<const uint8_t*>(salt));
+        env->ReleaseByteArrayElements(masterKey, key, JNI_ABORT);
+        env->ReleaseByteArrayElements(masterSalt, salt, JNI_ABORT);
+
+        if (rc != 0) {
+            const char* err = sb_last_error();
+            LOGE("Rust sb_enable_encryption failed: %s", err ? err : "unknown error");
+            return -1;
+        }
+        LOGI("Encryption enabled via Rust FFI");
+    } else {
+        int rc = sb_disable_encryption(engine);
+        if (rc != 0) {
+            const char* err = sb_last_error();
+            LOGE("Rust sb_disable_encryption failed: %s", err ? err : "unknown error");
+            return -1;
+        }
+        LOGI("Encryption disabled via Rust FFI");
+    }
+    return 0;
+#else
+    // Legacy C++ stub path
     auto* engine = getEngine(engineHandle);
     if (!engine) return -1;
 
@@ -651,13 +840,20 @@ Java_com_soundbridge_native_NativeAudioEngine_nativeSetEncryptionEnabled(
         LOGI("Encryption disabled (stub)");
     }
     return 0; // OK
+#endif
 }
 
 JNIEXPORT jint JNICALL
 Java_com_soundbridge_native_NativeAudioEngine_nativeIsEncryptionEnabled(
         JNIEnv* env, jobject thiz, jlong engineHandle) {
+#ifdef SOUNDBRIDGE_USE_RUST_FFI
+    void* engine = getRustEngine(engineHandle);
+    if (!engine) return -1;
+    return sb_is_encrypted(engine);
+#else
     if (!getEngine(engineHandle)) return -1; // error
     return g_encryption_enabled ? 1 : 0;
+#endif
 }
 
 } // extern "C"
