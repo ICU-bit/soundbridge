@@ -203,7 +203,7 @@ bool WasapiCapture::init_audio_client() {
     wfx.nSamplesPerSec = format_.sample_rate;
     wfx.wBitsPerSample = 32;
     wfx.nBlockAlign = wfx.nChannels * wfx.wBitsPerSample / 8;
-    wfx.nAvgByteSec = wfx.nSamplesPerSec * wfx.nBlockAlign;
+    wfx.nAvgBytesPerSec = wfx.nSamplesPerSec * wfx.nBlockAlign;
 
     // 独占模式：尝试 10ms 缓冲区（100000 * 100ns = 10ms）
     // 共享模式：50ms 缓冲区（500000 * 100ns = 50ms）
