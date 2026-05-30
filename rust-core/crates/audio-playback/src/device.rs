@@ -1,8 +1,8 @@
 //! 音频播放设备管理
 
-use std::sync::{Arc, Mutex};
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use audio_core::{AudioBuffer, RingBuffer};
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use std::sync::{Arc, Mutex};
 
 use crate::config::PlaybackConfig;
 use crate::{PlaybackError, Result};
@@ -44,7 +44,10 @@ impl PlaybackDevice {
 
         let mut devices = Vec::new();
 
-        for device in host.output_devices().map_err(|e| PlaybackError::StreamError(e.to_string()))? {
+        for device in host
+            .output_devices()
+            .map_err(|e| PlaybackError::StreamError(e.to_string()))?
+        {
             let name = device.name().unwrap_or_else(|_| "未知设备".to_string());
             let is_default = name == default_name;
 
@@ -80,7 +83,8 @@ impl PlaybackDevice {
     /// 获取默认设备信息
     pub fn default_device() -> Result<DeviceInfo> {
         let host = cpal::default_host();
-        let device = host.default_output_device()
+        let device = host
+            .default_output_device()
             .ok_or(PlaybackError::DeviceNotFound("无默认输出设备".to_string()))?;
 
         let name = device.name().unwrap_or_else(|_| "未知设备".to_string());
@@ -230,7 +234,9 @@ impl PlaybackDevice {
 
     /// 获取设备名称
     pub fn device_name(&self) -> String {
-        self.device.name().unwrap_or_else(|_| "未知设备".to_string())
+        self.device
+            .name()
+            .unwrap_or_else(|_| "未知设备".to_string())
     }
 
     /// 获取播放 ring buffer 的共享引用

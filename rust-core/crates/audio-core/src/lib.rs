@@ -7,10 +7,12 @@ pub mod audio_mode;
 pub use audio_mode::{AudioMode, AudioModeConfig, AudioModeManager};
 
 pub mod level_indicator;
-pub use level_indicator::{LevelIndicator, LevelIndicatorConfig, LevelData};
+pub use level_indicator::{LevelData, LevelIndicator, LevelIndicatorConfig};
 
 pub mod pipeline;
-pub use pipeline::{AudioPipeline, PipelineConfig, PipelineState, PipelineStats, PipelineError, MixMode};
+pub use pipeline::{
+    AudioPipeline, MixMode, PipelineConfig, PipelineError, PipelineState, PipelineStats,
+};
 
 pub mod full_pipeline;
 pub use full_pipeline::{FullPipeline, FullPipelineConfig, FullPipelineState, FullPipelineStats};
@@ -22,7 +24,7 @@ pub mod hotkeys;
 pub use hotkeys::{HotkeyAction, HotkeyConfig, HotkeyManager};
 
 pub mod notifications;
-pub use notifications::{NotificationType, NotificationConfig, NotificationManager};
+pub use notifications::{NotificationConfig, NotificationManager, NotificationType};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SampleFormat {
@@ -79,9 +81,7 @@ impl<T: Sample> AudioBuffer<T> {
         let sample_count = data.len();
         let byte_count = sample_count * std::mem::size_of::<T>();
         let mut byte_vec = Vec::with_capacity(byte_count);
-        let src = unsafe {
-            std::slice::from_raw_parts(data.as_ptr() as *const u8, byte_count)
-        };
+        let src = unsafe { std::slice::from_raw_parts(data.as_ptr() as *const u8, byte_count) };
         byte_vec.extend_from_slice(src);
         Ok(Self {
             data: byte_vec,
@@ -107,12 +107,7 @@ impl<T: Sample> AudioBuffer<T> {
             "AudioBuffer data is not properly aligned for type {}",
             std::any::type_name::<T>()
         );
-        unsafe {
-            std::slice::from_raw_parts(
-                self.data.as_ptr() as *const T,
-                self.sample_count,
-            )
-        }
+        unsafe { std::slice::from_raw_parts(self.data.as_ptr() as *const T, self.sample_count) }
     }
 
     pub fn sample_count(&self) -> usize {

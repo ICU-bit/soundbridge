@@ -2,7 +2,7 @@
 //!
 //! 测试完整的音频处理流程。
 
-use audio_core::{AudioBuffer, AudioFormat, SampleFormat, RingBuffer};
+use audio_core::{AudioBuffer, AudioFormat, RingBuffer, SampleFormat};
 
 /// 测试 Ring Buffer 在音频管线中的使用
 #[test]

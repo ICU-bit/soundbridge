@@ -2,10 +2,10 @@
 //!
 //! 提供 UDP 传输、带宽自适应和丢包恢复功能。
 
+use crate::{NetworkError, Result};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use tokio::net::UdpSocket;
-use crate::{NetworkError, Result};
 
 /// 传输配置
 #[derive(Debug, Clone)]
@@ -86,7 +86,8 @@ pub struct UdpTransport {
 impl UdpTransport {
     /// 创建新的 UDP 传输
     pub async fn new(config: TransportConfig) -> Result<Self> {
-        let socket = UdpSocket::bind(config.bind_addr).await
+        let socket = UdpSocket::bind(config.bind_addr)
+            .await
             .map_err(|e| NetworkError::BindFailed(e.to_string()))?;
 
         let initial_bitrate = config.initial_bitrate;
@@ -110,7 +111,10 @@ impl UdpTransport {
 
     /// 发送数据到指定地址
     pub async fn send_to(&self, data: &[u8], addr: SocketAddr) -> Result<usize> {
-        let sent = self.socket.send_to(data, addr).await
+        let sent = self
+            .socket
+            .send_to(data, addr)
+            .await
             .map_err(|e| NetworkError::SendFailed(e.to_string()))?;
         self.bytes_sent.fetch_add(sent as u64, Ordering::Relaxed);
         self.packets_sent.fetch_add(1, Ordering::Relaxed);
@@ -119,9 +123,13 @@ impl UdpTransport {
 
     /// 接收数据
     pub async fn receive_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
-        let (received, addr) = self.socket.recv_from(buf).await
+        let (received, addr) = self
+            .socket
+            .recv_from(buf)
+            .await
             .map_err(|e| NetworkError::ReceiveFailed(e.to_string()))?;
-        self.bytes_received.fetch_add(received as u64, Ordering::Relaxed);
+        self.bytes_received
+            .fetch_add(received as u64, Ordering::Relaxed);
         self.packets_received.fetch_add(1, Ordering::Relaxed);
         Ok((received, addr))
     }
@@ -160,7 +168,9 @@ impl UdpTransport {
         let new_bitrate = if loss_rate > self.config.loss_threshold {
             // 丢包率高，降低比特率
             let reduction = (loss_rate * 100.0) as u32;
-            current.saturating_sub(reduction * 100).max(self.config.min_bitrate)
+            current
+                .saturating_sub(reduction * 100)
+                .max(self.config.min_bitrate)
         } else if loss_rate < 0.01 {
             // 丢包率低，尝试提高比特率
             let increase = current / 10; // 增加 10%
@@ -178,7 +188,8 @@ impl UdpTransport {
 
     /// 获取本地地址
     pub fn local_addr(&self) -> Result<SocketAddr> {
-        self.socket.local_addr()
+        self.socket
+            .local_addr()
             .map_err(|e| NetworkError::BindFailed(e.to_string()))
     }
 
@@ -218,4 +229,3 @@ mod tests {
         assert_eq!(stats.loss_rate, 0.2);
     }
 }
-

@@ -2,19 +2,19 @@
 //!
 //! 提供音频处理功能：增益控制、静音检测、噪声门、回声消除、噪声抑制、自动增益控制。
 
-pub mod gain;
-pub mod silence_detector;
-pub mod noise_gate;
 pub mod aec;
-pub mod ns;
 pub mod agc;
+pub mod gain;
+pub mod noise_gate;
+pub mod ns;
+pub mod silence_detector;
 
-pub use gain::GainProcessor;
-pub use silence_detector::SilenceDetector;
-pub use noise_gate::NoiseGate;
 pub use aec::AecProcessor;
-pub use ns::NsProcessor;
 pub use agc::AgcProcessor;
+pub use gain::GainProcessor;
+pub use noise_gate::NoiseGate;
+pub use ns::NsProcessor;
+pub use silence_detector::SilenceDetector;
 
 /// 处理配置
 #[derive(Debug, Clone)]
@@ -47,9 +47,9 @@ impl Default for ProcessorConfig {
             gain_db: 0.0,
             silence_threshold_db: -60.0,
             noise_gate_threshold_db: -50.0,
-            aec_tail_ms: 50,  // 技术规格 §3.1: 尾部长度 50ms
+            aec_tail_ms: 50, // 技术规格 §3.1: 尾部长度 50ms
             ns_suppression_db: 12.0,
-            agc_target_dbfs: -3.0,  // 技术规格 §3.3: 目标电平 -3 dBFS
+            agc_target_dbfs: -3.0, // 技术规格 §3.3: 目标电平 -3 dBFS
             agc_max_gain_db: 30.0,
         }
     }

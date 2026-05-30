@@ -2,11 +2,11 @@
 //!
 //! 提供跨平台音频采集功能，基于 cpal 库实现。
 
-pub mod device;
 pub mod config;
+pub mod device;
 
-pub use device::{CaptureDevice, DeviceInfo};
 pub use config::CaptureConfig;
+pub use device::{CaptureDevice, DeviceInfo};
 
 /// 音频采集错误类型
 #[derive(Debug, thiserror::Error)]

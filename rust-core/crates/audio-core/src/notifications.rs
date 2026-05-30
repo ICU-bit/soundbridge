@@ -49,8 +49,14 @@ mod tests {
 
     #[test]
     fn test_notification_type() {
-        assert_eq!(NotificationType::ConnectionChanged, NotificationType::ConnectionChanged);
-        assert_ne!(NotificationType::ConnectionChanged, NotificationType::AudioChanged);
+        assert_eq!(
+            NotificationType::ConnectionChanged,
+            NotificationType::ConnectionChanged
+        );
+        assert_ne!(
+            NotificationType::ConnectionChanged,
+            NotificationType::AudioChanged
+        );
     }
 
     #[test]

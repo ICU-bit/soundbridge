@@ -1,7 +1,7 @@
 use audio_core::{AudioBuffer, AudioFormat, SampleFormat};
 use opus::{
-    Application, Bitrate as OpusBitrate, Channels as OpusChannels,
-    Decoder as OpusDecoder, Encoder as OpusEncoder,
+    Application, Bitrate as OpusBitrate, Channels as OpusChannels, Decoder as OpusDecoder,
+    Encoder as OpusEncoder,
 };
 use thiserror::Error;
 
@@ -418,7 +418,8 @@ mod tests {
         assert!(
             max_amp > 0.01,
             "{}: decoded audio must not be silence, max_amplitude={}",
-            label, max_amp
+            label,
+            max_amp
         );
     }
 
@@ -760,7 +761,9 @@ mod tests {
         let samples = create_sine_samples(960, 440.0, 48000.0);
         let mut i16_buf = vec![0i16; 960];
         let mut opus_buf = vec![0u8; 1500];
-        let encoded_len = codec.encode_interleaved_into(&samples, &mut i16_buf, &mut opus_buf).unwrap();
+        let encoded_len = codec
+            .encode_interleaved_into(&samples, &mut i16_buf, &mut opus_buf)
+            .unwrap();
         assert!(encoded_len > 0);
     }
 

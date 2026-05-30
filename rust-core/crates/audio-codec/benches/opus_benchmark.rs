@@ -1,5 +1,6 @@
-﻿use audio_codec::{
-    OpusCodec, OpusConfig, OpusEncoderCodec, OpusDecoderCodec, SampleRate, ChannelConfig, Bitrate, FrameSize,
+use audio_codec::{
+    Bitrate, ChannelConfig, FrameSize, OpusCodec, OpusConfig, OpusDecoderCodec, OpusEncoderCodec,
+    SampleRate,
 };
 use audio_core::AudioBuffer;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
@@ -218,4 +219,3 @@ criterion_group!(
     benchmark_opus_compression_ratio,
 );
 criterion_main!(benches);
-

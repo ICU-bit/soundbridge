@@ -80,16 +80,13 @@ impl<T: Copy + Default> RingBuffer<T> {
 
             if second_chunk > 0 {
                 let dst = self.buffer.as_ptr() as *mut T;
-                std::ptr::copy_nonoverlapping(
-                    data.as_ptr().add(first_chunk),
-                    dst,
-                    second_chunk,
-                );
+                std::ptr::copy_nonoverlapping(data.as_ptr().add(first_chunk), dst, second_chunk);
             }
         }
 
         // 更新写位置
-        self.write_pos.store(write_pos + to_write, Ordering::Release);
+        self.write_pos
+            .store(write_pos + to_write, Ordering::Release);
 
         to_write
     }

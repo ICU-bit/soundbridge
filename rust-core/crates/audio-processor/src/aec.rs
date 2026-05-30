@@ -20,9 +20,9 @@ pub struct AecConfig {
 impl Default for AecConfig {
     fn default() -> Self {
         Self {
-            filter_length: 4800,  // 100ms @ 48kHz
-            step_size: 0.1,       // 保守的步长，防止发散
-            regularization: 0.1,  // 较大的正则化，防止除零
+            filter_length: 4800, // 100ms @ 48kHz
+            step_size: 0.1,      // 保守的步长，防止发散
+            regularization: 0.1, // 较大的正则化，防止除零
         }
     }
 }
@@ -172,7 +172,10 @@ mod tests {
 
         // 输出应该接近输入（无回声需要消除）
         for sample in &mic {
-            assert!((sample - 0.5).abs() < 0.1, "Output should be close to input when no echo");
+            assert!(
+                (sample - 0.5).abs() < 0.1,
+                "Output should be close to input when no echo"
+            );
         }
     }
 
@@ -215,26 +218,33 @@ mod tests {
 
         for frame in 0..10 {
             let base = frame as f32 * 0.01;
-            let speaker: Vec<f32> = (0..100).map(|i| (base + i as f32 * 0.01).sin() * 0.5).collect();
+            let speaker: Vec<f32> = (0..100)
+                .map(|i| (base + i as f32 * 0.01).sin() * 0.5)
+                .collect();
             let mut mic: Vec<f32> = speaker.iter().map(|&s| s * 0.5).collect();
 
             // 记录处理前的 RMS
-            let rms_before: f32 = (mic.iter().map(|&s| s * s).sum::<f32>() / mic.len() as f32).sqrt();
+            let rms_before: f32 =
+                (mic.iter().map(|&s| s * s).sum::<f32>() / mic.len() as f32).sqrt();
             total_error_before += rms_before;
 
             // 处理
             aec.process(&mut mic, &speaker).unwrap();
 
             // 记录处理后的 RMS
-            let rms_after: f32 = (mic.iter().map(|&s| s * s).sum::<f32>() / mic.len() as f32).sqrt();
+            let rms_after: f32 =
+                (mic.iter().map(|&s| s * s).sum::<f32>() / mic.len() as f32).sqrt();
             total_error_after += rms_after;
         }
 
         // 处理后的平均 RMS 应该小于处理前
         let avg_before = total_error_before / 10.0;
         let avg_after = total_error_after / 10.0;
-        assert!(avg_after <= avg_before * 1.5,
+        assert!(
+            avg_after <= avg_before * 1.5,
             "AEC should not significantly increase signal level: before={}, after={}",
-            avg_before, avg_after);
+            avg_before,
+            avg_after
+        );
     }
 }

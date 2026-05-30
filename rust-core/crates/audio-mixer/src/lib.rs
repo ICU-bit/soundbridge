@@ -112,7 +112,13 @@ impl AudioMixer {
     }
 
     /// 混音两路音频（便捷方法）
-    pub fn mix_two(&self, input1: &[f32], volume1: f32, input2: &[f32], volume2: f32) -> Result<Vec<f32>> {
+    pub fn mix_two(
+        &self,
+        input1: &[f32],
+        volume1: f32,
+        input2: &[f32],
+        volume2: f32,
+    ) -> Result<Vec<f32>> {
         self.mix(&[input1, input2], &[volume1, volume2])
     }
 
@@ -191,7 +197,12 @@ mod tests {
         // tanh(0.5) ≈ 0.4621
         let expected = 0.5f32.tanh();
         for out in result.iter() {
-            assert!((out - expected).abs() < 0.001, "out={}, expected={}", out, expected);
+            assert!(
+                (out - expected).abs() < 0.001,
+                "out={}, expected={}",
+                out,
+                expected
+            );
         }
     }
 
@@ -205,7 +216,12 @@ mod tests {
         // 两路 0.5，音量各 0.5，总和 0.5，经过 tanh
         let expected = 0.5f32.tanh();
         for sample in result.iter() {
-            assert!((sample - expected).abs() < 0.001, "sample={}, expected={}", sample, expected);
+            assert!(
+                (sample - expected).abs() < 0.001,
+                "sample={}, expected={}",
+                sample,
+                expected
+            );
         }
     }
 
@@ -232,8 +248,16 @@ mod tests {
         // tanh 软削波将输出限制在 (-1, 1) 范围内
         // tanh(2.0) ≈ 0.964
         for sample in result.iter() {
-            assert!(*sample < 1.0 && *sample > -1.0, "sample={} should be in (-1, 1)", sample);
-            assert!(*sample > 0.9, "sample={} should be close to 1.0 (tanh(2.0)≈0.964)", sample);
+            assert!(
+                *sample < 1.0 && *sample > -1.0,
+                "sample={} should be in (-1, 1)",
+                sample
+            );
+            assert!(
+                *sample > 0.9,
+                "sample={} should be close to 1.0 (tanh(2.0)≈0.964)",
+                sample
+            );
         }
     }
 

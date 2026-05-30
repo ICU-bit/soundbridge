@@ -26,7 +26,7 @@ pub struct AgcConfig {
 impl Default for AgcConfig {
     fn default() -> Self {
         Self {
-            target_dbfs: -3.0,  // 技术规格 §3.3: 目标电平 -3 dBFS
+            target_dbfs: -3.0, // 技术规格 §3.3: 目标电平 -3 dBFS
             max_gain_db: 30.0,
             attack_ms: 10.0,
             release_ms: 100.0,
@@ -100,7 +100,7 @@ impl AgcProcessor {
 
                 // 平滑增益变化（攻击/释放）
                 let coeff = if target_gain < self.current_gain {
-                    self.attack_coeff  // 信号增大，快速响应
+                    self.attack_coeff // 信号增大，快速响应
                 } else {
                     self.release_coeff // 信号减小，慢速响应
                 };
@@ -138,7 +138,7 @@ mod tests {
     #[test]
     fn test_agc_creation() {
         let agc = AgcProcessor::with_default_config();
-        assert_eq!(agc.config().target_dbfs, -3.0);  // 技术规格 §3.3
+        assert_eq!(agc.config().target_dbfs, -3.0); // 技术规格 §3.3
         assert_eq!(agc.config().max_gain_db, 30.0);
     }
 
@@ -187,9 +187,12 @@ mod tests {
         let gain_after_loud = agc.current_gain_db();
 
         // 增益应该平滑变化，而不是突变
-        assert!(gain_after_loud < gain_after_quiet, 
-            "Gain should decrease for loud signal: quiet={}, loud={}", 
-            gain_after_quiet, gain_after_loud);
+        assert!(
+            gain_after_loud < gain_after_quiet,
+            "Gain should decrease for loud signal: quiet={}, loud={}",
+            gain_after_quiet,
+            gain_after_loud
+        );
     }
 
     #[test]
@@ -210,8 +213,12 @@ mod tests {
 
         // 增益变化应该平滑，没有剧烈跳动
         for i in 1..gains.len() {
-            let delta = (gains[i] - gains[i-1]).abs();
-            assert!(delta < 10.0, "Gain change should be smooth: delta={}", delta);
+            let delta = (gains[i] - gains[i - 1]).abs();
+            assert!(
+                delta < 10.0,
+                "Gain change should be smooth: delta={}",
+                delta
+            );
         }
     }
 

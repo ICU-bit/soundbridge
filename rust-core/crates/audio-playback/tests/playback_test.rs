@@ -1,4 +1,4 @@
-use audio_playback::{PlaybackDevice, PlaybackConfig};
+use audio_playback::{PlaybackConfig, PlaybackDevice};
 
 #[cfg(test)]
 mod tests {
@@ -25,6 +25,10 @@ mod tests {
     fn test_config_frame_duration() {
         let config = PlaybackConfig::default();
         let duration_ms = config.frame_duration_ms();
-        assert!((duration_ms - 20.0).abs() < 0.01, "Frame duration should be 20ms, got {}", duration_ms);
+        assert!(
+            (duration_ms - 20.0).abs() < 0.01,
+            "Frame duration should be 20ms, got {}",
+            duration_ms
+        );
     }
 }

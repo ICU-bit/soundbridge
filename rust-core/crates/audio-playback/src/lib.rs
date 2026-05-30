@@ -2,11 +2,11 @@
 //!
 //! 提供跨平台音频播放功能，基于 cpal 库实现。
 
-pub mod device;
 pub mod config;
+pub mod device;
 
-pub use device::{PlaybackDevice, DeviceInfo};
 pub use config::PlaybackConfig;
+pub use device::{DeviceInfo, PlaybackDevice};
 
 /// 音频播放错误类型
 #[derive(Debug, thiserror::Error)]

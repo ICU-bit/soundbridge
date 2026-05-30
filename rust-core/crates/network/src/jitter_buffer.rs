@@ -182,11 +182,14 @@ impl RawJitterBuffer {
             }
         }
 
-        self.buffer.insert(sequence, RawAudioPacket {
+        self.buffer.insert(
             sequence,
-            timestamp,
-            data,
-        });
+            RawAudioPacket {
+                sequence,
+                timestamp,
+                data,
+            },
+        );
     }
 
     /// 弹出数据包（按序列号顺序）

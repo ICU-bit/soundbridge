@@ -3,7 +3,7 @@
 //! 测试 RingBuffer → AudioBuffer 完整链路
 //! 不需要真实音频设备，使用模拟数据
 
-use audio_core::{AudioBuffer, AudioFormat, SampleFormat, RingBuffer};
+use audio_core::{AudioBuffer, AudioFormat, RingBuffer, SampleFormat};
 
 /// 测试 Ring Buffer 管线
 #[test]

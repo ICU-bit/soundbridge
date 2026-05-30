@@ -200,7 +200,11 @@ mod tests {
             indicator.update(&buffer);
         }
         let data = indicator.update(&buffer);
-        assert!(data.db > -6.0, "dB should be reasonable for full-scale signal, got {}", data.db);
+        assert!(
+            data.db > -6.0,
+            "dB should be reasonable for full-scale signal, got {}",
+            data.db
+        );
 
         // -inf dBFS = 0.0
         indicator.reset();

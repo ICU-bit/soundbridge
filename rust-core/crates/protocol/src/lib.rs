@@ -382,7 +382,13 @@ impl ControlMessage {
         let message_type = ControlMessageType::from_u8(buf[4])?;
         let payload = buf[Self::HEADER_SIZE..length].to_vec();
 
-        Ok((Self { message_type, payload }, length))
+        Ok((
+            Self {
+                message_type,
+                payload,
+            },
+            length,
+        ))
     }
 }
 
@@ -390,16 +396,10 @@ impl ControlMessage {
 #[derive(Debug, Clone)]
 pub enum Packet {
     /// 音频数据
-    Audio {
-        header: PacketHeader,
-        data: Vec<u8>,
-    },
+    Audio { header: PacketHeader, data: Vec<u8> },
 
     /// 控制数据
-    Control {
-        header: PacketHeader,
-        data: Vec<u8>,
-    },
+    Control { header: PacketHeader, data: Vec<u8> },
 }
 
 #[cfg(test)]
@@ -408,7 +408,10 @@ mod tests {
 
     #[test]
     fn test_packet_type_from_u8() {
-        assert_eq!(PacketType::from_u8(0x01).unwrap(), PacketType::DiscoverRequest);
+        assert_eq!(
+            PacketType::from_u8(0x01).unwrap(),
+            PacketType::DiscoverRequest
+        );
         assert_eq!(PacketType::from_u8(0x30).unwrap(), PacketType::AudioData);
         assert!(PacketType::from_u8(0xFF).is_err());
     }
@@ -507,9 +510,18 @@ mod tests {
 
     #[test]
     fn test_control_message_type() {
-        assert_eq!(ControlMessageType::from_u8(0x01).unwrap(), ControlMessageType::Hello);
-        assert_eq!(ControlMessageType::from_u8(0x21).unwrap(), ControlMessageType::HelloAck);
-        assert_eq!(ControlMessageType::from_u8(0x08).unwrap(), ControlMessageType::Heartbeat);
+        assert_eq!(
+            ControlMessageType::from_u8(0x01).unwrap(),
+            ControlMessageType::Hello
+        );
+        assert_eq!(
+            ControlMessageType::from_u8(0x21).unwrap(),
+            ControlMessageType::HelloAck
+        );
+        assert_eq!(
+            ControlMessageType::from_u8(0x08).unwrap(),
+            ControlMessageType::Heartbeat
+        );
         assert!(ControlMessageType::from_u8(0xFE).is_err());
     }
 

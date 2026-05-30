@@ -25,9 +25,9 @@ impl Default for NsConfig {
     fn default() -> Self {
         Self {
             suppression_db: 12.0,
-            window_size: 480,  // 10ms @ 48kHz
+            window_size: 480, // 10ms @ 48kHz
             noise_update_factor: 0.98,
-            min_gain: 0.01,  // -40 dB
+            min_gain: 0.01, // -40 dB
         }
     }
 }
@@ -65,7 +65,7 @@ impl NsProcessor {
         Self {
             config,
             noise_state: NoiseState {
-                noise_spectrum: vec![0.0; 256],  // 简化：固定频谱大小
+                noise_spectrum: vec![0.0; 256], // 简化：固定频谱大小
                 initialized: false,
             },
             suppression_factor,
@@ -202,7 +202,11 @@ mod tests {
 
         // 信号帧应该被保留
         let rms: f32 = (signal.iter().map(|&s| s * s).sum::<f32>() / signal.len() as f32).sqrt();
-        assert!(rms > 0.1, "Signal after noise model should be preserved, RMS: {}", rms);
+        assert!(
+            rms > 0.1,
+            "Signal after noise model should be preserved, RMS: {}",
+            rms
+        );
     }
 
     #[test]
@@ -225,4 +229,3 @@ mod tests {
         assert!(ns.process(&mut buffer).is_ok());
     }
 }
-

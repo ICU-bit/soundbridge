@@ -1,4 +1,4 @@
-use protocol::{Protocol, Packet, PacketHeader};
+use protocol::{Packet, PacketHeader, Protocol};
 
 #[cfg(test)]
 mod tests {

@@ -1,4 +1,4 @@
-use discovery::{DeviceDiscovery, DiscoveryConfig, DeviceInfo};
+use discovery::{DeviceDiscovery, DeviceInfo, DiscoveryConfig};
 
 #[cfg(test)]
 mod tests {

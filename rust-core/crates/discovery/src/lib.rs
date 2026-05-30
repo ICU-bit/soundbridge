@@ -6,8 +6,8 @@ pub mod device_store;
 
 pub use device_store::{DeviceStore, StoredDevice};
 
-use std::net::IpAddr;
 use mdns_sd::{ServiceDaemon, ServiceEvent};
+use std::net::IpAddr;
 
 /// 发现配置
 #[derive(Debug, Clone)]
@@ -77,10 +77,7 @@ pub struct DeviceDiscovery {
 impl DeviceDiscovery {
     /// 创建新的发现服务
     pub fn new(config: DiscoveryConfig) -> Self {
-        Self {
-            config,
-            mdns: None,
-        }
+        Self { config, mdns: None }
     }
 
     /// 使用默认配置创建
@@ -91,8 +88,9 @@ impl DeviceDiscovery {
     /// 初始化 mDNS 守护进程
     pub fn init(&mut self) -> Result<()> {
         if self.mdns.is_none() {
-            let mdns = ServiceDaemon::new()
-                .map_err(|e| DiscoveryError::DiscoveryFailed(format!("Failed to create mDNS daemon: {}", e)))?;
+            let mdns = ServiceDaemon::new().map_err(|e| {
+                DiscoveryError::DiscoveryFailed(format!("Failed to create mDNS daemon: {}", e))
+            })?;
             self.mdns = Some(mdns);
         }
         Ok(())
@@ -100,8 +98,9 @@ impl DeviceDiscovery {
 
     /// 注册服务
     pub fn register_service(&self, name: &str, port: u16) -> Result<()> {
-        let mdns = self.mdns.as_ref()
-            .ok_or_else(|| DiscoveryError::RegistrationFailed("mDNS not initialized".to_string()))?;
+        let mdns = self.mdns.as_ref().ok_or_else(|| {
+            DiscoveryError::RegistrationFailed("mDNS not initialized".to_string())
+        })?;
 
         let builder = mdns_sd::ServiceInfo::new(
             &self.config.service_type,
@@ -110,20 +109,27 @@ impl DeviceDiscovery {
             "",
             port,
             None,
-        ).map_err(|e| DiscoveryError::RegistrationFailed(format!("Failed to create service info: {}", e)))?;
+        )
+        .map_err(|e| {
+            DiscoveryError::RegistrationFailed(format!("Failed to create service info: {}", e))
+        })?;
 
-        mdns.register(builder)
-            .map_err(|e| DiscoveryError::RegistrationFailed(format!("Failed to register service: {}", e)))?;
+        mdns.register(builder).map_err(|e| {
+            DiscoveryError::RegistrationFailed(format!("Failed to register service: {}", e))
+        })?;
 
         Ok(())
     }
 
     /// 发现设备
     pub fn discover(&self) -> Result<Vec<DeviceInfo>> {
-        let mdns = self.mdns.as_ref()
+        let mdns = self
+            .mdns
+            .as_ref()
             .ok_or_else(|| DiscoveryError::DiscoveryFailed("mDNS not initialized".to_string()))?;
 
-        let receiver = mdns.browse(&self.config.service_type)
+        let receiver = mdns
+            .browse(&self.config.service_type)
             .map_err(|e| DiscoveryError::DiscoveryFailed(format!("Failed to browse: {}", e)))?;
 
         let mut devices = Vec::new();
@@ -151,8 +157,9 @@ impl DeviceDiscovery {
     /// 停止发现
     pub fn stop(&self) -> Result<()> {
         if let Some(ref mdns) = self.mdns {
-            mdns.shutdown()
-                .map_err(|e| DiscoveryError::DiscoveryFailed(format!("Failed to shutdown: {}", e)))?;
+            mdns.shutdown().map_err(|e| {
+                DiscoveryError::DiscoveryFailed(format!("Failed to shutdown: {}", e))
+            })?;
         }
         Ok(())
     }

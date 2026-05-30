@@ -2,6 +2,17 @@
 //!
 //! 提供 C API，供 Windows C++ 和 Android JNI 调用。
 
+use audio_capture::{CaptureConfig, CaptureDevice};
+use audio_codec::{OpusConfig, OpusDecoderCodec, OpusEncoderCodec};
+use audio_core::{AudioMode, AudioModeManager, RingBuffer};
+use audio_mixer::AudioMixer;
+use audio_playback::{PlaybackConfig, PlaybackDevice};
+use audio_processor::AudioProcessor;
+use network::{
+    AdbConfig, AdbState, BluetoothConfig, BluetoothState, ConnectionType, HotspotConfig,
+    HotspotState, RawJitterBuffer,
+};
+use protocol::{ControlMessage, ControlMessageType, Packet, PacketHeader, Protocol};
 use std::ffi::{CStr, CString};
 use std::net::{SocketAddr, UdpSocket};
 use std::os::raw::{c_char, c_int, c_void};
@@ -9,14 +20,6 @@ use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
-use audio_capture::{CaptureConfig, CaptureDevice};
-use audio_codec::{OpusConfig, OpusDecoderCodec, OpusEncoderCodec};
-use audio_core::{AudioMode, AudioModeManager, RingBuffer};
-use audio_mixer::AudioMixer;
-use audio_playback::{PlaybackConfig, PlaybackDevice};
-use audio_processor::AudioProcessor;
-use network::{ConnectionType, RawJitterBuffer, HotspotConfig, HotspotState, AdbConfig, AdbState, BluetoothConfig, BluetoothState};
-use protocol::{ControlMessage, ControlMessageType, Packet, PacketHeader, Protocol};
 use std::time::Instant;
 
 /// 连接状态（FFI 暴露）
@@ -402,19 +405,17 @@ pub unsafe extern "C" fn sb_bind(engine: *mut c_void, port: u16) -> c_int {
 
     let addr = format!("0.0.0.0:{}", port);
     match UdpSocket::bind(&addr) {
-        Ok(socket) => {
-            match socket.local_addr() {
-                Ok(local_addr) => {
-                    engine.local_port = local_addr.port();
-                    engine.udp_socket = Some(Arc::new(socket));
-                    SbError::Ok as c_int
-                }
-                Err(e) => {
-                    set_error(&format!("failed to get local addr: {}", e));
-                    SbError::NetworkError as c_int
-                }
+        Ok(socket) => match socket.local_addr() {
+            Ok(local_addr) => {
+                engine.local_port = local_addr.port();
+                engine.udp_socket = Some(Arc::new(socket));
+                SbError::Ok as c_int
             }
-        }
+            Err(e) => {
+                set_error(&format!("failed to get local addr: {}", e));
+                SbError::NetworkError as c_int
+            }
+        },
         Err(e) => {
             set_error(&format!("failed to bind UDP socket: {}", e));
             SbError::NetworkError as c_int
@@ -438,7 +439,9 @@ pub unsafe extern "C" fn sb_connect(engine: *mut c_void, addr: *const c_char) ->
 
     let engine = unsafe { &mut *(engine as *mut SbEngine) };
 
-    let addr_str = unsafe { CStr::from_ptr(addr) }.to_string_lossy().to_string();
+    let addr_str = unsafe { CStr::from_ptr(addr) }
+        .to_string_lossy()
+        .to_string();
     match addr_str.parse::<SocketAddr>() {
         Ok(target) => {
             engine.target_addr = Some(target);
@@ -480,7 +483,10 @@ pub unsafe extern "C" fn sb_local_port(engine: *mut c_void, port: *mut u16) -> c
 /// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
 /// `device_name` 必须是有效的 C 字符串，或者为 null（使用默认设备）。
 #[no_mangle]
-pub unsafe extern "C" fn sb_capture_start(engine: *mut c_void, device_name: *const c_char) -> c_int {
+pub unsafe extern "C" fn sb_capture_start(
+    engine: *mut c_void,
+    device_name: *const c_char,
+) -> c_int {
     clear_error();
 
     if engine.is_null() {
@@ -501,7 +507,9 @@ pub unsafe extern "C" fn sb_capture_start(engine: *mut c_void, device_name: *con
             }
         }
     } else {
-        let name = unsafe { CStr::from_ptr(device_name) }.to_string_lossy().to_string();
+        let name = unsafe { CStr::from_ptr(device_name) }
+            .to_string_lossy()
+            .to_string();
         let devices = match CaptureDevice::list_devices() {
             Ok(d) => d,
             Err(e) => {
@@ -606,7 +614,10 @@ pub unsafe extern "C" fn sb_capture_read(engine: *mut c_void, buf: *mut f32, len
 /// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
 /// `device_name` 必须是有效的 C 字符串，或者为 null（使用默认设备）。
 #[no_mangle]
-pub unsafe extern "C" fn sb_playback_start(engine: *mut c_void, device_name: *const c_char) -> c_int {
+pub unsafe extern "C" fn sb_playback_start(
+    engine: *mut c_void,
+    device_name: *const c_char,
+) -> c_int {
     clear_error();
 
     if engine.is_null() {
@@ -627,7 +638,9 @@ pub unsafe extern "C" fn sb_playback_start(engine: *mut c_void, device_name: *co
             }
         }
     } else {
-        let name = unsafe { CStr::from_ptr(device_name) }.to_string_lossy().to_string();
+        let name = unsafe { CStr::from_ptr(device_name) }
+            .to_string_lossy()
+            .to_string();
         let devices = match PlaybackDevice::list_devices() {
             Ok(d) => d,
             Err(e) => {
@@ -695,7 +708,11 @@ pub unsafe extern "C" fn sb_playback_stop(engine: *mut c_void) -> c_int {
 /// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
 /// `buf` 必须是有效的缓冲区，至少 `len` 个 f32 元素。
 #[no_mangle]
-pub unsafe extern "C" fn sb_playback_write(engine: *mut c_void, buf: *const f32, len: usize) -> c_int {
+pub unsafe extern "C" fn sb_playback_write(
+    engine: *mut c_void,
+    buf: *const f32,
+    len: usize,
+) -> c_int {
     clear_error();
 
     if engine.is_null() || buf.is_null() {
@@ -751,7 +768,12 @@ pub unsafe extern "C" fn sb_mixer_mix(
 ) -> c_int {
     clear_error();
 
-    if engine.is_null() || inputs.is_null() || input_lens.is_null() || volumes.is_null() || output.is_null() {
+    if engine.is_null()
+        || inputs.is_null()
+        || input_lens.is_null()
+        || volumes.is_null()
+        || output.is_null()
+    {
         set_error("invalid arguments");
         return SbError::InvalidArgument as c_int;
     }
@@ -797,7 +819,11 @@ pub unsafe extern "C" fn sb_mixer_mix(
 /// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
 /// `buf` 必须是有效的缓冲区，至少 `len` 个 f32 元素。
 #[no_mangle]
-pub unsafe extern "C" fn sb_processor_process(engine: *mut c_void, buf: *mut f32, len: usize) -> c_int {
+pub unsafe extern "C" fn sb_processor_process(
+    engine: *mut c_void,
+    buf: *mut f32,
+    len: usize,
+) -> c_int {
     clear_error();
 
     if engine.is_null() || buf.is_null() {
@@ -1011,7 +1037,11 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
             let mut adapt_counter: u64 = 0;
             let mut current_bitrate = audio_codec::Bitrate::Kbps128;
 
-            tracing::info!("Sender thread started, frame_size={}, adapt_interval={} frames", frame_size, frames_per_sec);
+            tracing::info!(
+                "Sender thread started, frame_size={}, adapt_interval={} frames",
+                frame_size,
+                frames_per_sec
+            );
 
             while sender_running.load(Ordering::Relaxed) {
                 // 带宽自适应：每秒检查一次丢包率，动态调整码率
@@ -1029,10 +1059,12 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                     } else {
                         current_bitrate // 保持不变，避免频繁切换
                     };
-                    if new_bitrate != current_bitrate
-                        && encoder.set_bitrate(new_bitrate).is_ok() {
-                        tracing::info!("Bandwidth adapt: loss={:.1}% -> bitrate={:?}",
-                            loss_rate * 100.0, new_bitrate);
+                    if new_bitrate != current_bitrate && encoder.set_bitrate(new_bitrate).is_ok() {
+                        tracing::info!(
+                            "Bandwidth adapt: loss={:.1}% -> bitrate={:?}",
+                            loss_rate * 100.0,
+                            new_bitrate
+                        );
                         current_bitrate = new_bitrate;
                     }
                 }
@@ -1054,7 +1086,9 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                     let sum_sq: f32 = frame_buf[..frame_size].iter().map(|&s| s * s).sum();
                     let rms = (sum_sq / frame_size as f32).sqrt();
                     let level = rms.min(1.0);
-                    sender_stats.captured_level_bits.store(level.to_bits(), Ordering::Relaxed);
+                    sender_stats
+                        .captured_level_bits
+                        .store(level.to_bits(), Ordering::Relaxed);
                 }
 
                 // 编码一帧（零分配版本）
@@ -1083,7 +1117,9 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                 };
 
                 // 使用零分配序列化
-                if let Err(e) = protocol.serialize_audio_into(&header, &opus_buf[..opus_len], &mut packet_buf) {
+                if let Err(e) =
+                    protocol.serialize_audio_into(&header, &opus_buf[..opus_len], &mut packet_buf)
+                {
                     tracing::warn!("Serialize error: {}", e);
                     continue;
                 }
@@ -1210,19 +1246,29 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
 
                                     // 丢包检测：跟踪序列号间隙
                                     let seq_u64 = seq as u64;
-                                    let last_seq = receiver_stats.last_received_seq.load(Ordering::Relaxed);
+                                    let last_seq =
+                                        receiver_stats.last_received_seq.load(Ordering::Relaxed);
                                     if last_seq > 0 && seq_u64 > last_seq + 1 {
                                         let lost = seq_u64 - last_seq - 1;
-                                        receiver_stats.packets_lost.fetch_add(lost, Ordering::Relaxed);
+                                        receiver_stats
+                                            .packets_lost
+                                            .fetch_add(lost, Ordering::Relaxed);
                                     }
-                                    receiver_stats.last_received_seq.store(seq_u64, Ordering::Relaxed);
+                                    receiver_stats
+                                        .last_received_seq
+                                        .store(seq_u64, Ordering::Relaxed);
 
                                     // 更新丢包率
-                                    let total_received = receiver_stats.frames_decoded.load(Ordering::Relaxed);
-                                    let total_lost = receiver_stats.packets_lost.load(Ordering::Relaxed);
+                                    let total_received =
+                                        receiver_stats.frames_decoded.load(Ordering::Relaxed);
+                                    let total_lost =
+                                        receiver_stats.packets_lost.load(Ordering::Relaxed);
                                     if total_received + total_lost > 0 {
-                                        let loss_rate = total_lost as f32 / (total_received + total_lost) as f32;
-                                        receiver_stats.loss_rate_bits.store(loss_rate.to_bits(), Ordering::Relaxed);
+                                        let loss_rate = total_lost as f32
+                                            / (total_received + total_lost) as f32;
+                                        receiver_stats
+                                            .loss_rate_bits
+                                            .store(loss_rate.to_bits(), Ordering::Relaxed);
                                     }
 
                                     // 推入 jitter buffer（存储原始 Opus 字节）
@@ -1399,7 +1445,12 @@ pub unsafe extern "C" fn sb_pipeline_stats(
 ) -> c_int {
     clear_error();
 
-    if engine.is_null() || frames_captured.is_null() || frames_played.is_null() || latency_ms.is_null() || loss_rate.is_null() {
+    if engine.is_null()
+        || frames_captured.is_null()
+        || frames_played.is_null()
+        || latency_ms.is_null()
+        || loss_rate.is_null()
+    {
         set_error("invalid arguments");
         return SbError::InvalidArgument as c_int;
     }
@@ -1414,7 +1465,11 @@ pub unsafe extern "C" fn sb_pipeline_stats(
             // 动态估算管线延迟（基于帧大小和独占模式）
             // 公式: WASAPI(exclusive=10ms/shared=50ms) + ring_buf(frame_ms*2) + cpal_buf(frame_ms) + codec(5ms) + network(5ms)
             let frame_ms = stats.frame_size_ms.load(Ordering::Relaxed) as f32;
-            let wasapi_ms = if stats.exclusive_mode.load(Ordering::Relaxed) { 10.0 } else { 50.0 };
+            let wasapi_ms = if stats.exclusive_mode.load(Ordering::Relaxed) {
+                10.0
+            } else {
+                50.0
+            };
             *latency_ms = wasapi_ms + (frame_ms * 3.0) + 10.0;
             *loss_rate = f32::from_bits(stats.loss_rate_bits.load(Ordering::Relaxed));
         }
@@ -1482,7 +1537,10 @@ pub unsafe extern "C" fn sb_set_exclusive_mode(engine: *mut c_void, exclusive: b
     let engine = unsafe { &*(engine as *const SbEngine) };
 
     if let Some(ref pipeline) = engine.pipeline {
-        pipeline.stats.exclusive_mode.store(exclusive, Ordering::Relaxed);
+        pipeline
+            .stats
+            .exclusive_mode
+            .store(exclusive, Ordering::Relaxed);
     }
 
     SbError::Ok as c_int
@@ -2040,7 +2098,9 @@ pub unsafe extern "C" fn sb_device_store_open(path: *const c_char) -> *mut c_voi
         return ptr::null_mut();
     }
 
-    let path_str = unsafe { CStr::from_ptr(path) }.to_string_lossy().to_string();
+    let path_str = unsafe { CStr::from_ptr(path) }
+        .to_string_lossy()
+        .to_string();
     let path = std::path::Path::new(&path_str);
 
     let store = DeviceStore::with_file(path);
@@ -2083,8 +2143,12 @@ pub unsafe extern "C" fn sb_device_store_add(
     }
 
     let store = unsafe { &mut *(store as *mut DeviceStore) };
-    let name = unsafe { CStr::from_ptr(name) }.to_string_lossy().to_string();
-    let addr_str = unsafe { CStr::from_ptr(address) }.to_string_lossy().to_string();
+    let name = unsafe { CStr::from_ptr(name) }
+        .to_string_lossy()
+        .to_string();
+    let addr_str = unsafe { CStr::from_ptr(address) }
+        .to_string_lossy()
+        .to_string();
 
     match addr_str.parse::<std::net::IpAddr>() {
         Ok(addr) => {
@@ -2103,10 +2167,7 @@ pub unsafe extern "C" fn sb_device_store_add(
 /// # Safety
 /// `store` 和 `name` 必须是有效的指针。
 #[no_mangle]
-pub unsafe extern "C" fn sb_device_store_remove(
-    store: *mut c_void,
-    name: *const c_char,
-) -> c_int {
+pub unsafe extern "C" fn sb_device_store_remove(store: *mut c_void, name: *const c_char) -> c_int {
     clear_error();
 
     if store.is_null() || name.is_null() {
@@ -2115,7 +2176,9 @@ pub unsafe extern "C" fn sb_device_store_remove(
     }
 
     let store = unsafe { &mut *(store as *mut DeviceStore) };
-    let name = unsafe { CStr::from_ptr(name) }.to_string_lossy().to_string();
+    let name = unsafe { CStr::from_ptr(name) }
+        .to_string_lossy()
+        .to_string();
 
     if store.remove_device(&name) {
         SbError::Ok as c_int
@@ -2143,7 +2206,9 @@ pub unsafe extern "C" fn sb_device_store_set_auto_connect(
     }
 
     let store = unsafe { &mut *(store as *mut DeviceStore) };
-    let name = unsafe { CStr::from_ptr(name) }.to_string_lossy().to_string();
+    let name = unsafe { CStr::from_ptr(name) }
+        .to_string_lossy()
+        .to_string();
 
     store.set_auto_connect(&name, auto_connect);
     SbError::Ok as c_int
@@ -2154,10 +2219,7 @@ pub unsafe extern "C" fn sb_device_store_set_auto_connect(
 /// # Safety
 /// `store` 必须是有效的指针。
 #[no_mangle]
-pub unsafe extern "C" fn sb_device_store_count(
-    store: *mut c_void,
-    count: *mut usize,
-) -> c_int {
+pub unsafe extern "C" fn sb_device_store_count(store: *mut c_void, count: *mut usize) -> c_int {
     clear_error();
 
     if store.is_null() || count.is_null() {
@@ -2178,10 +2240,7 @@ pub unsafe extern "C" fn sb_device_store_count(
 /// # Safety
 /// `store` 和 `name` 必须是有效的指针。
 #[no_mangle]
-pub unsafe extern "C" fn sb_device_store_has(
-    store: *mut c_void,
-    name: *const c_char,
-) -> c_int {
+pub unsafe extern "C" fn sb_device_store_has(store: *mut c_void, name: *const c_char) -> c_int {
     clear_error();
 
     if store.is_null() || name.is_null() {
@@ -2190,9 +2249,15 @@ pub unsafe extern "C" fn sb_device_store_has(
     }
 
     let store = unsafe { &*(store as *const DeviceStore) };
-    let name = unsafe { CStr::from_ptr(name) }.to_string_lossy().to_string();
+    let name = unsafe { CStr::from_ptr(name) }
+        .to_string_lossy()
+        .to_string();
 
-    if store.has_device(&name) { 1 } else { 0 }
+    if store.has_device(&name) {
+        1
+    } else {
+        0
+    }
 }
 
 /// 清除所有设备
@@ -2230,7 +2295,9 @@ pub unsafe extern "C" fn sb_device_store_get_address(
     }
 
     let store = unsafe { &*(store as *const DeviceStore) };
-    let name = unsafe { CStr::from_ptr(name) }.to_string_lossy().to_string();
+    let name = unsafe { CStr::from_ptr(name) }
+        .to_string_lossy()
+        .to_string();
 
     match store.get_device(&name) {
         Some(device) => {
@@ -2268,7 +2335,9 @@ pub unsafe extern "C" fn sb_device_store_get_port(
     }
 
     let store = unsafe { &*(store as *const DeviceStore) };
-    let name = unsafe { CStr::from_ptr(name) }.to_string_lossy().to_string();
+    let name = unsafe { CStr::from_ptr(name) }
+        .to_string_lossy()
+        .to_string();
 
     match store.get_device(&name) {
         Some(device) => {
@@ -2399,7 +2468,9 @@ pub unsafe extern "C" fn sb_discovery_register(
     }
 
     let discovery = unsafe { &*(discovery as *const DeviceDiscovery) };
-    let name_str = unsafe { CStr::from_ptr(name) }.to_string_lossy().to_string();
+    let name_str = unsafe { CStr::from_ptr(name) }
+        .to_string_lossy()
+        .to_string();
 
     match discovery.register_service(&name_str, port) {
         Ok(()) => SbError::Ok as c_int,
@@ -2441,10 +2512,10 @@ pub unsafe extern "C" fn sb_discovery_find_devices(
                     // 转义 JSON 特殊字符（避免注入）
                     let escape_json = |s: &str| -> String {
                         s.replace('\\', "\\\\")
-                         .replace('"', "\\\"")
-                         .replace('\n', "\\n")
-                         .replace('\r', "\\r")
-                         .replace('\t', "\\t")
+                            .replace('"', "\\\"")
+                            .replace('\n', "\\n")
+                            .replace('\r', "\\r")
+                            .replace('\t', "\\t")
                     };
                     let name = escape_json(&device.name);
                     let hostname = escape_json(&device.hostname);
@@ -2641,8 +2712,12 @@ pub unsafe extern "C" fn sb_set_mix_ratio(
     }
 
     let engine = unsafe { &mut *(engine as *mut SbEngine) };
-    engine.mix_pc_volume.store(pc_volume.to_bits(), Ordering::Relaxed);
-    engine.mix_phone_volume.store(phone_volume.to_bits(), Ordering::Relaxed);
+    engine
+        .mix_pc_volume
+        .store(pc_volume.to_bits(), Ordering::Relaxed);
+    engine
+        .mix_phone_volume
+        .store(phone_volume.to_bits(), Ordering::Relaxed);
 
     tracing::info!("Mix ratio set: pc={}, phone={}", pc_volume, phone_volume);
     SbError::Ok as c_int
@@ -2871,7 +2946,10 @@ mod tests {
             let result = sb_connect(engine, addr.as_ptr());
             assert_eq!(result, SbError::Ok as c_int);
 
-            assert_eq!(CALLBACK_STATE.load(Ordering::SeqCst), SbConnectionState::Connecting as i32);
+            assert_eq!(
+                CALLBACK_STATE.load(Ordering::SeqCst),
+                SbConnectionState::Connecting as i32
+            );
             assert_eq!(CALLBACK_COUNT.load(Ordering::SeqCst), 1);
 
             sb_engine_destroy(engine);
@@ -2913,7 +2991,11 @@ mod tests {
         unsafe {
             let engine = sb_engine_create();
             let mut value: i32 = 0;
-            sb_set_state_callback(engine, Some(callback_with_data), &mut value as *mut i32 as *mut c_void);
+            sb_set_state_callback(
+                engine,
+                Some(callback_with_data),
+                &mut value as *mut i32 as *mut c_void,
+            );
 
             let addr = CString::new("127.0.0.1:12345").unwrap();
             sb_connect(engine, addr.as_ptr());
@@ -3180,7 +3262,11 @@ mod tests {
 
             let result = sb_get_audio_mode(engine, &mut mode);
             assert_eq!(result, SbError::Ok as c_int);
-            assert_eq!(mode, SbAudioMode::Balanced, "Default audio mode should be Balanced");
+            assert_eq!(
+                mode,
+                SbAudioMode::Balanced,
+                "Default audio mode should be Balanced"
+            );
 
             sb_engine_destroy(engine);
         }
@@ -3391,7 +3477,8 @@ mod tests {
         let result = unsafe { sb_set_mix_ratio(ptr::null_mut(), 0.5, 0.5) };
         assert_eq!(result, SbError::InvalidArgument as c_int);
 
-        let result = unsafe { sb_get_mix_ratio(ptr::null_mut(), &mut pc_volume, &mut phone_volume) };
+        let result =
+            unsafe { sb_get_mix_ratio(ptr::null_mut(), &mut pc_volume, &mut phone_volume) };
         assert_eq!(result, SbError::InvalidArgument as c_int);
     }
 
@@ -3528,7 +3615,8 @@ mod tests {
     fn test_hotspot_create_null_engine() {
         let ssid = CString::new("TestSSID").unwrap();
         let password = CString::new("test1234").unwrap();
-        let result = unsafe { sb_hotspot_create(ptr::null_mut(), ssid.as_ptr(), password.as_ptr(), 6) };
+        let result =
+            unsafe { sb_hotspot_create(ptr::null_mut(), ssid.as_ptr(), password.as_ptr(), 6) };
         assert_eq!(result, SbError::InvalidArgument as c_int);
     }
 
@@ -3642,7 +3730,8 @@ mod tests {
     #[test]
     fn test_adb_setup_null_engine() {
         let serial = CString::new("").unwrap();
-        let result = unsafe { sb_adb_setup_port_forward(ptr::null_mut(), 12345, 12345, serial.as_ptr()) };
+        let result =
+            unsafe { sb_adb_setup_port_forward(ptr::null_mut(), 12345, 12345, serial.as_ptr()) };
         assert_eq!(result, SbError::InvalidArgument as c_int);
     }
 

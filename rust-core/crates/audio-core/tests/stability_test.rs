@@ -2,7 +2,7 @@
 //!
 //! 测试长时间运行的稳定性。
 
-use audio_core::{AudioBuffer, AudioFormat, SampleFormat, RingBuffer};
+use audio_core::{AudioBuffer, AudioFormat, RingBuffer, SampleFormat};
 use std::time::{Duration, Instant};
 
 /// 测试 Ring Buffer 长时间运行稳定性
@@ -33,7 +33,11 @@ fn test_ring_buffer_stability() {
         iterations += 1;
     }
 
-    println!("Ring buffer stability: {} iterations in {:?}", iterations, start.elapsed());
+    println!(
+        "Ring buffer stability: {} iterations in {:?}",
+        iterations,
+        start.elapsed()
+    );
     assert!(iterations > 1000, "Too few iterations: {}", iterations);
 }
 
@@ -62,7 +66,11 @@ fn test_audio_buffer_stability() {
         iterations += 1;
     }
 
-    println!("Audio buffer stability: {} iterations in {:?}", iterations, start.elapsed());
+    println!(
+        "Audio buffer stability: {} iterations in {:?}",
+        iterations,
+        start.elapsed()
+    );
     assert!(iterations > 1000, "Too few iterations: {}", iterations);
 }
 
@@ -86,7 +94,11 @@ fn test_audio_format_stability() {
         iterations += 1;
     }
 
-    println!("Audio format stability: {} iterations in {:?}", iterations, start.elapsed());
+    println!(
+        "Audio format stability: {} iterations in {:?}",
+        iterations,
+        start.elapsed()
+    );
     assert!(iterations > 1000, "Too few iterations: {}", iterations);
 }
 
@@ -120,6 +132,10 @@ fn test_ring_buffer_edge_cases() {
         iterations += 1;
     }
 
-    println!("Ring buffer edge cases: {} iterations in {:?}", iterations, start.elapsed());
+    println!(
+        "Ring buffer edge cases: {} iterations in {:?}",
+        iterations,
+        start.elapsed()
+    );
     assert!(iterations > 1000, "Too few iterations: {}", iterations);
 }

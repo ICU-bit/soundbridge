@@ -2,13 +2,16 @@
 //!
 //! 提供 UDP 音频传输、Jitter Buffer 和连接管理功能。
 
-pub mod transport;
-pub mod jitter_buffer;
 pub mod connection;
+pub mod jitter_buffer;
+pub mod transport;
 
-pub use transport::{UdpTransport, TransportConfig};
-pub use jitter_buffer::{JitterBuffer, JitterBufferConfig, RawJitterBuffer, RawAudioPacket};
-pub use connection::{ConnectionManager, ConnectionState, ConnectionConfig, ConnectionType, HotspotConfig, HotspotState, AdbConfig, AdbState, BluetoothConfig, BluetoothState};
+pub use connection::{
+    AdbConfig, AdbState, BluetoothConfig, BluetoothState, ConnectionConfig, ConnectionManager,
+    ConnectionState, ConnectionType, HotspotConfig, HotspotState,
+};
+pub use jitter_buffer::{JitterBuffer, JitterBufferConfig, RawAudioPacket, RawJitterBuffer};
+pub use transport::{TransportConfig, UdpTransport};
 
 /// 网络错误类型
 #[derive(Debug, thiserror::Error)]

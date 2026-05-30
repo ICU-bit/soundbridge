@@ -2,12 +2,12 @@
 //!
 //! 提供设备记忆功能，记住已连接过的设备，支持 JSON 文件持久化。
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
-use serde::{Deserialize, Serialize};
 
 /// 已存储的设备信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -76,8 +76,8 @@ impl DeviceStore {
             return Ok(());
         }
 
-        let data = fs::read_to_string(path)
-            .map_err(|e| format!("Failed to read device store: {}", e))?;
+        let data =
+            fs::read_to_string(path).map_err(|e| format!("Failed to read device store: {}", e))?;
 
         let store_data: DeviceStoreData = serde_json::from_str(&data)
             .map_err(|e| format!("Failed to parse device store: {}", e))?;
@@ -105,29 +105,30 @@ impl DeviceStore {
             .map_err(|e| format!("Failed to serialize device store: {}", e))?;
 
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|e| format!("Failed to create directory: {}", e))?;
+            fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory: {}", e))?;
         }
 
-        fs::write(path, data)
-            .map_err(|e| format!("Failed to write device store: {}", e))?;
+        fs::write(path, data).map_err(|e| format!("Failed to write device store: {}", e))?;
 
         Ok(())
     }
 
     /// 添加或更新设备
     pub fn add_device(&mut self, name: &str, address: IpAddr, port: u16) {
-        let entry = self.devices.entry(name.to_string()).or_insert_with(|| StoredDevice {
-            name: name.to_string(),
-            address: address.to_string(),
-            port,
-            last_connected_secs: SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs(),
-            connection_count: 0,
-            auto_connect: false,
-        });
+        let entry = self
+            .devices
+            .entry(name.to_string())
+            .or_insert_with(|| StoredDevice {
+                name: name.to_string(),
+                address: address.to_string(),
+                port,
+                last_connected_secs: SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+                connection_count: 0,
+                auto_connect: false,
+            });
 
         entry.address = address.to_string();
         entry.port = port;
@@ -152,9 +153,7 @@ impl DeviceStore {
 
     /// 获取自动连接的设备
     pub fn get_auto_connect_devices(&self) -> Vec<&StoredDevice> {
-        self.devices.values()
-            .filter(|d| d.auto_connect)
-            .collect()
+        self.devices.values().filter(|d| d.auto_connect).collect()
     }
 
     /// 设置设备自动连接

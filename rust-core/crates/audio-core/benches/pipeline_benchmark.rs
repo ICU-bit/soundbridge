@@ -1,7 +1,7 @@
 //! SoundBridge 音频管线性能基准测试
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
-use audio_core::{AudioBuffer, AudioFormat, SampleFormat, RingBuffer};
+use audio_core::{AudioBuffer, AudioFormat, RingBuffer, SampleFormat};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
 fn bench_ring_buffer_write(c: &mut Criterion) {
     let mut group = c.benchmark_group("ring_buffer");
