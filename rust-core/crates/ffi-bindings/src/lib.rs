@@ -15,6 +15,7 @@ use audio_core::{AudioMode, AudioModeManager, RingBuffer};
 use audio_mixer::AudioMixer;
 use audio_playback::{PlaybackConfig, PlaybackDevice};
 use audio_processor::AudioProcessor;
+use network::RawJitterBuffer;
 use protocol::{ControlMessage, ControlMessageType, Packet, PacketHeader, Protocol};
 use std::time::Instant;
 
@@ -1057,27 +1058,95 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
             let mut remote_buf = vec![0.0f32; frame_size]; // 预分配远端音频缓冲区
             let mut mixed_buf = vec![0.0f32; frame_size]; // 预分配混音缓冲区
 
-            tracing::info!("Receiver thread started");
+            // Jitter Buffer：在解码前缓冲 Opus 包，处理乱序和延迟抖动
+            let mut jitter_buf = RawJitterBuffer::with_default_config();
+
+            tracing::info!("Receiver thread started (with jitter buffer)");
 
             recv_socket
                 .set_nonblocking(true)
                 .expect("Failed to set non-blocking");
 
+            // 闭包：处理一个解码后的音频帧（混音 + 写入播放 ring buffer）
+            let process_decoded = |decoder: &mut OpusDecoderCodec,
+                                   decode_buf: &mut [f32],
+                                   remote_buf: &mut [f32],
+                                   mix_buf: &mut [f32],
+                                   mixed_buf: &mut [f32],
+                                   receiver_mix_ring: &RingBuffer<f32>,
+                                   receiver_playback_ring: &RingBuffer<f32>,
+                                   receiver_mixer: &AudioMixer,
+                                   pc_volume: &AtomicU32,
+                                   phone_volume: &AtomicU32,
+                                   receiver_stats: &SharedPipelineStats,
+                                   frame_size: usize,
+                                   data: &[u8]| {
+                match decoder.decode_into(data, decode_buf) {
+                    Ok(decoded_count) => {
+                        let remote_samples = &decode_buf[..decoded_count];
+
+                        // 从本地混音 ring buffer 读取本地音频（由发送线程写入）
+                        let local_read = receiver_mix_ring.read(mix_buf);
+                        if local_read >= frame_size {
+                            // 读取最新的混音比例（原子读取，支持运行时更新）
+                            let pc_vol = f32::from_bits(pc_volume.load(Ordering::Relaxed));
+                            let phone_vol = f32::from_bits(phone_volume.load(Ordering::Relaxed));
+
+                            // 将远端音频填充到 frame_size（不足部分补零）
+                            let remote_len = remote_samples.len().min(frame_size);
+                            remote_buf.fill(0.0);
+                            remote_buf[..remote_len].copy_from_slice(&remote_samples[..remote_len]);
+
+                            // 混音：本地采集 + 远端解码（长度一致）
+                            if let Err(e) = receiver_mixer.mix_two_into(
+                                &mix_buf[..frame_size],
+                                pc_vol,
+                                remote_buf,
+                                phone_vol,
+                                mixed_buf,
+                            ) {
+                                // 混音失败，直接写入远端音频
+                                tracing::warn!("Mix error: {}", e);
+                                receiver_playback_ring.write(remote_samples);
+                            } else {
+                                receiver_playback_ring.write(&mixed_buf[..frame_size]);
+                            }
+                        } else {
+                            // 本地数据不足，直接写入远端音频
+                            receiver_playback_ring.write(remote_samples);
+                        }
+
+                        receiver_stats
+                            .frames_decoded
+                            .fetch_add(1, Ordering::Relaxed);
+                    }
+                    Err(e) => {
+                        tracing::warn!("Decode error: {}", e);
+                        receiver_stats
+                            .frames_dropped
+                            .fetch_add(1, Ordering::Relaxed);
+                    }
+                }
+            };
+
             while receiver_running.load(Ordering::Relaxed) {
+                // 阶段 1：接收 UDP 包，推入 jitter buffer
                 match recv_socket.recv_from(&mut recv_buf) {
                     Ok((len, _from)) => {
                         match protocol.deserialize_header(&recv_buf[..len]) {
                             Ok((header, data, is_audio)) => {
                                 if is_audio {
+                                    let seq = header.sequence;
+
                                     // 丢包检测：跟踪序列号间隙
-                                    let seq = header.sequence as u64;
+                                    let seq_u64 = seq as u64;
                                     let last_seq = receiver_stats.last_received_seq.load(Ordering::Relaxed);
-                                    if last_seq > 0 && seq > last_seq + 1 {
-                                        let lost = seq - last_seq - 1;
+                                    if last_seq > 0 && seq_u64 > last_seq + 1 {
+                                        let lost = seq_u64 - last_seq - 1;
                                         receiver_stats.packets_lost.fetch_add(lost, Ordering::Relaxed);
                                     }
-                                    receiver_stats.last_received_seq.store(seq, Ordering::Relaxed);
-                                    
+                                    receiver_stats.last_received_seq.store(seq_u64, Ordering::Relaxed);
+
                                     // 更新丢包率
                                     let total_received = receiver_stats.frames_decoded.load(Ordering::Relaxed);
                                     let total_lost = receiver_stats.packets_lost.load(Ordering::Relaxed);
@@ -1085,54 +1154,9 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                                         let loss_rate = total_lost as f32 / (total_received + total_lost) as f32;
                                         receiver_stats.loss_rate_bits.store(loss_rate.to_bits(), Ordering::Relaxed);
                                     }
-                                    
-                                    // 使用零分配解码路径
-                                    match decoder.decode_into(data, &mut decode_buf) {
-                                        Ok(decoded_count) => {
-                                            let remote_samples = &decode_buf[..decoded_count];
 
-                                            // 从本地混音 ring buffer 读取本地音频（由发送线程写入）
-                                            let local_read = receiver_mix_ring.read(&mut mix_buf);
-                                            if local_read >= frame_size {
-                                                // 读取最新的混音比例（原子读取，支持运行时更新）
-                                                let pc_vol = f32::from_bits(pc_volume.load(Ordering::Relaxed));
-                                                let phone_vol = f32::from_bits(phone_volume.load(Ordering::Relaxed));
-                                                
-                                                // 将远端音频填充到 frame_size（不足部分补零）
-                                                let remote_len = remote_samples.len().min(frame_size);
-                                                remote_buf.fill(0.0);
-                                                remote_buf[..remote_len].copy_from_slice(&remote_samples[..remote_len]);
-                                                
-                                                // 混音：本地采集 + 远端解码（长度一致）
-                                                if let Err(e) = receiver_mixer.mix_two_into(
-                                                    &mix_buf[..frame_size],
-                                                    pc_vol,
-                                                    &remote_buf,
-                                                    phone_vol,
-                                                    &mut mixed_buf,
-                                                ) {
-                                                    // 混音失败，直接写入远端音频
-                                                    tracing::warn!("Mix error: {}", e);
-                                                    receiver_playback_ring.write(remote_samples);
-                                                } else {
-                                                    receiver_playback_ring.write(&mixed_buf[..frame_size]);
-                                                }
-                                            } else {
-                                                // 本地数据不足，直接写入远端音频
-                                                receiver_playback_ring.write(remote_samples);
-                                            }
-
-                                            receiver_stats
-                                                .frames_decoded
-                                                .fetch_add(1, Ordering::Relaxed);
-                                        }
-                                        Err(e) => {
-                                            tracing::warn!("Decode error: {}", e);
-                                            receiver_stats
-                                                .frames_dropped
-                                                .fetch_add(1, Ordering::Relaxed);
-                                        }
-                                    }
+                                    // 推入 jitter buffer（存储原始 Opus 字节）
+                                    jitter_buf.push(seq, header.timestamp_ms, data.to_vec());
                                 }
                             }
                             Err(e) => {
@@ -1141,12 +1165,50 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                         }
                     }
                     Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        // 没有新包，从 jitter buffer pop 有序包并处理
+                        while let Some(packet) = jitter_buf.pop() {
+                            process_decoded(
+                                &mut decoder,
+                                &mut decode_buf,
+                                &mut remote_buf,
+                                &mut mix_buf,
+                                &mut mixed_buf,
+                                &receiver_mix_ring,
+                                &receiver_playback_ring,
+                                &receiver_mixer,
+                                &pc_volume,
+                                &phone_volume,
+                                &receiver_stats,
+                                frame_size,
+                                &packet.data,
+                            );
+                        }
                         std::thread::yield_now();
                     }
                     Err(e) => {
                         tracing::warn!("Recv error: {}", e);
                         std::thread::yield_now();
                     }
+                }
+
+                // 阶段 2：每收到一个包，也尝试从 jitter buffer pop 并处理
+                // 这样低抖动场景下不会额外增加延迟
+                while let Some(packet) = jitter_buf.pop() {
+                    process_decoded(
+                        &mut decoder,
+                        &mut decode_buf,
+                        &mut remote_buf,
+                        &mut mix_buf,
+                        &mut mixed_buf,
+                        &receiver_mix_ring,
+                        &receiver_playback_ring,
+                        &receiver_mixer,
+                        &pc_volume,
+                        &phone_volume,
+                        &receiver_stats,
+                        frame_size,
+                        &packet.data,
+                    );
                 }
             }
 
