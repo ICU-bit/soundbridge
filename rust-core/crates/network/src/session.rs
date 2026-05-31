@@ -42,6 +42,7 @@
 use crate::{NetworkError, Result};
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
+use x25519_dalek::{EphemeralSecret, PublicKey as X25519PublicKey};
 
 /// 握手默认超时时间（毫秒）
 pub const HANDSHAKE_TIMEOUT_MS: u64 = 10_000;
@@ -300,28 +301,41 @@ pub struct NegotiatedParams {
 
 /// ECDH 公钥
 ///
-/// 用于密钥交换阶段。当前为模拟实现，使用 32 字节随机数代替真实 ECDH 公钥。
+/// 用于密钥交换阶段。封装 X25519 公钥的 32 字节表示。
 ///
 /// # 示例
 ///
 /// ```rust
 /// use network::session::EcdhPublicKey;
 ///
-/// let key1 = EcdhPublicKey::generate();
-/// let key2 = EcdhPublicKey::generate();
+/// let (secret1, key1) = EcdhPublicKey::generate_keypair();
+/// let (secret2, key2) = EcdhPublicKey::generate_keypair();
 /// assert_ne!(key1, key2); // 每次生成的公钥都不同
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EcdhPublicKey(pub [u8; 32]);
 
 impl EcdhPublicKey {
-    /// 生成随机模拟公钥
+    /// 生成 X25519 密钥对（临时私钥 + 对应公钥）
     ///
     /// # Returns
     ///
-    /// 包含 32 字节随机数据的 ECDH 公钥。
+    /// `(EphemeralSecret, EcdhPublicKey)` 元组，私钥用于后续 DH 计算。
+    pub fn generate_keypair() -> (EphemeralSecret, Self) {
+        let secret = EphemeralSecret::random_from_rng(rand::thread_rng());
+        let public = X25519PublicKey::from(&secret);
+        (secret, Self(public.to_bytes()))
+    }
+
+    /// 仅生成随机公钥（用于测试消息构造，不持有私钥）
     pub fn generate() -> Self {
-        Self(rand::random())
+        let (_secret, public) = Self::generate_keypair();
+        public
+    }
+
+    /// 将公钥字节转换为 x25519_dalek::PublicKey
+    fn to_x25519_public(&self) -> X25519PublicKey {
+        X25519PublicKey::from(self.0)
     }
 }
 
@@ -576,9 +590,11 @@ pub struct Session {
     negotiated: Option<NegotiatedParams>,
     /// 本端 ECDH 公钥
     local_public_key: EcdhPublicKey,
+    /// 本端 ECDH 临时私钥（用于 DH 计算，使用后清空）
+    local_secret: Option<EphemeralSecret>,
     /// 远端 ECDH 公钥
     remote_public_key: Option<EcdhPublicKey>,
-    /// 共享密钥（模拟，由双方公钥派生）
+    /// 共享密钥（由 X25519 ECDH + HKDF 派生）
     shared_secret: Option<Vec<u8>>,
     /// 配置
     config: SessionConfig,
@@ -611,6 +627,7 @@ impl Session {
     ///
     /// 初始状态为 `Idle` 的客户端会话。
     pub fn new_client(session_id: String, capability: Capability, config: SessionConfig) -> Self {
+        let (secret, public_key) = EcdhPublicKey::generate_keypair();
         Self {
             session_id,
             state: SessionState::Idle,
@@ -618,7 +635,8 @@ impl Session {
             local_capability: capability,
             remote_capability: None,
             negotiated: None,
-            local_public_key: EcdhPublicKey::generate(),
+            local_public_key: public_key,
+            local_secret: Some(secret),
             remote_public_key: None,
             shared_secret: None,
             config,
@@ -644,6 +662,7 @@ impl Session {
     ///
     /// 初始状态为 `Idle` 的服务器会话。
     pub fn new_server(session_id: String, capability: Capability, config: SessionConfig) -> Self {
+        let (secret, public_key) = EcdhPublicKey::generate_keypair();
         Self {
             session_id,
             state: SessionState::Idle,
@@ -651,7 +670,8 @@ impl Session {
             local_capability: capability,
             remote_capability: None,
             negotiated: None,
-            local_public_key: EcdhPublicKey::generate(),
+            local_public_key: public_key,
+            local_secret: Some(secret),
             remote_public_key: None,
             shared_secret: None,
             config,
@@ -830,7 +850,7 @@ impl Session {
         self.remote_capability = Some(capabilities.clone());
         self.negotiated = Some(negotiated.clone());
         self.remote_public_key = Some(server_public_key.clone());
-        self.derive_shared_secret();
+        self.derive_shared_secret()?;
         self.state = SessionState::KeyExchangeSent;
         self.last_activity = Instant::now();
 
@@ -947,7 +967,7 @@ impl Session {
         // 协商能力
         let negotiated = self.negotiate(capabilities);
         self.negotiated = Some(negotiated.clone());
-        self.derive_shared_secret();
+        self.derive_shared_secret()?;
 
         self.state = SessionState::ServerHelloSent;
         self.last_activity = Instant::now();
@@ -1021,7 +1041,10 @@ impl Session {
 
         // 更新客户端公钥（如果变更）
         self.remote_public_key = Some(client_public_key.clone());
-        self.derive_shared_secret();
+        // 仅在共享密钥尚未派生时执行 DH（handle_client_hello 已消耗私钥）
+        if self.shared_secret.is_none() {
+            self.derive_shared_secret()?;
+        }
 
         self.state = SessionState::Established;
         self.stats.started_at = Some(Instant::now());
@@ -1401,25 +1424,55 @@ impl Session {
         Ok(())
     }
 
-    /// 派生共享密钥（模拟 ECDH）
-    fn derive_shared_secret(&mut self) {
-        if let Some(ref remote_key) = self.remote_public_key {
-            // 简单模拟：XOR 两个公钥作为共享密钥
-            let mut secret = Vec::with_capacity(32);
-            for i in 0..32 {
-                secret.push(self.local_public_key.0[i] ^ remote_key.0[i]);
-            }
-            self.shared_secret = Some(secret);
+    /// 使用 X25519 ECDH 派生共享密钥
+    ///
+    /// 通过本地临时私钥和远端公钥执行 Diffie-Hellman 计算，
+    /// 再使用 HKDF-SHA1 派生 32 字节共享密钥。
+    fn derive_shared_secret(&mut self) -> Result<()> {
+        let secret = self
+            .local_secret
+            .take()
+            .ok_or_else(|| NetworkError::CryptoError("本地私钥不存在".into()))?;
+        let remote_key = self
+            .remote_public_key
+            .as_ref()
+            .ok_or_else(|| NetworkError::CryptoError("远端公钥不存在".into()))?;
+
+        let shared = secret.diffie_hellman(&remote_key.to_x25519_public());
+
+        if !shared.was_contributory() {
+            return Err(NetworkError::CryptoError(
+                "密钥交换非贡献性（低阶点攻击）".into(),
+            ));
         }
+
+        // 使用 HKDF 从原始共享密钥派生 32 字节会话密钥
+        use hkdf::Hkdf;
+        use sha1::Sha1;
+        let hk = Hkdf::<Sha1>::new(Some(b"SoundBridge-ECDH"), shared.as_bytes());
+        let mut derived = [0u8; 32];
+        hk.expand(b"SoundBridge Session Key", &mut derived)
+            .map_err(|e| NetworkError::CryptoError(format!("HKDF 密钥派生失败: {}", e)))?;
+
+        self.shared_secret = Some(derived.to_vec());
+        Ok(())
     }
 
-    /// 计算握手摘要（模拟 HMAC）
+    /// 计算握手摘要（HMAC-SHA1）
+    ///
+    /// 使用共享密钥对会话 ID 计算 HMAC-SHA1 摘要，
+    /// 用于 Finished 消息的握手完整性验证。
     fn compute_handshake_hash(&self) -> Vec<u8> {
-        // 简单模拟：使用共享密钥的前 32 字节作为握手摘要
+        use hmac::{Hmac, Mac};
+        use sha1::Sha1;
+
         if let Some(ref secret) = self.shared_secret {
-            secret.clone()
+            let mut mac =
+                Hmac::<Sha1>::new_from_slice(secret).expect("HMAC key length is always valid");
+            mac.update(self.session_id.as_bytes());
+            mac.finalize().into_bytes().to_vec()
         } else {
-            vec![0u8; 32]
+            vec![0u8; 20] // SHA1 输出长度
         }
     }
 }
@@ -1650,9 +1703,10 @@ mod tests {
         // 验证协商结果一致
         assert_eq!(client.negotiated(), server.negotiated());
 
-        // 验证共享密钥已派生
+        // 验证共享密钥已派生且双方一致
         assert!(client.shared_secret.is_some());
         assert!(server.shared_secret.is_some());
+        assert_eq!(client.shared_secret, server.shared_secret);
     }
 
     #[test]
@@ -1999,31 +2053,45 @@ mod tests {
 
     #[test]
     fn test_ecdh_public_key_generation() {
-        let key1 = EcdhPublicKey::generate();
-        let key2 = EcdhPublicKey::generate();
+        let (_s1, key1) = EcdhPublicKey::generate_keypair();
+        let (_s2, key2) = EcdhPublicKey::generate_keypair();
         assert_ne!(key1, key2);
     }
 
     #[test]
     fn test_shared_secret_derivation() {
+        // 模拟完整的 ECDH 密钥交换
+        let (alice_secret, alice_public) = EcdhPublicKey::generate_keypair();
+        let (bob_secret, bob_public) = EcdhPublicKey::generate_keypair();
+
+        // Alice 侧
         let mut client = Session::new_client(
             "test".into(),
             default_capability("c1", "Client"),
             SessionConfig::default(),
         );
+        // 替换为已知密钥对
+        client.local_secret = Some(alice_secret);
+        client.local_public_key = alice_public.clone();
+        client.remote_public_key = Some(bob_public.clone());
+        client.derive_shared_secret().unwrap();
 
-        let fake_server_key = EcdhPublicKey([0xAA; 32]);
-        client.remote_public_key = Some(fake_server_key);
-        client.derive_shared_secret();
+        // Bob 侧
+        let mut server = Session::new_server(
+            "test".into(),
+            default_capability("s1", "Server"),
+            SessionConfig::default(),
+        );
+        server.local_secret = Some(bob_secret);
+        server.local_public_key = bob_public;
+        server.remote_public_key = Some(alice_public);
+        server.derive_shared_secret().unwrap();
 
+        // 双方应派生出相同的共享密钥
         assert!(client.shared_secret.is_some());
-        let secret = client.shared_secret.as_ref().unwrap();
-        assert_eq!(secret.len(), 32);
-
-        // XOR 结果验证
-        for (i, &s) in secret.iter().enumerate().take(32) {
-            assert_eq!(s, client.local_public_key.0[i] ^ 0xAA);
-        }
+        assert!(server.shared_secret.is_some());
+        assert_eq!(client.shared_secret, server.shared_secret);
+        assert_eq!(client.shared_secret.as_ref().unwrap().len(), 32);
     }
 
     // ── 边界情况测试 ──────────────────────────────────────────────

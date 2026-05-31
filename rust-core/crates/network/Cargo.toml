@@ -25,6 +25,7 @@ hmac.workspace = true
 sha1.workspace = true
 cipher.workspace = true
 hkdf.workspace = true
+x25519-dalek.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
