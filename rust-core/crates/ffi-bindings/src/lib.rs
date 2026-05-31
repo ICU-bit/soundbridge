@@ -1533,7 +1533,8 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                                                 "Reconnect: new socket bound to {}",
                                                 new_socket
                                                     .local_addr()
-                                                    .unwrap_or_else(|_| "unknown".parse().unwrap())
+                                                    .map(|a| a.to_string())
+                                                    .unwrap_or_else(|_| "unknown".to_string())
                                             );
                                             // 替换接收线程的 socket 引用
                                             recv_socket = Arc::new(new_socket);

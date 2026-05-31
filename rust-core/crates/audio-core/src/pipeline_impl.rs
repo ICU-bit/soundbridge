@@ -40,7 +40,7 @@ pub struct ConcreteAudioPipeline {
 
 impl ConcreteAudioPipeline {
     /// 创建新的音频管线
-    pub fn new(config: PipelineConfig) -> Self {
+    pub fn new(config: PipelineConfig) -> Result<Self, PipelineError> {
         let mixer = AudioMixer::new(MixerConfig {
             sample_rate: config.sample_rate,
             channels: config.channels,
@@ -48,9 +48,9 @@ impl ConcreteAudioPipeline {
         });
         
         let processor = AudioProcessor::new(ProcessorConfig::default())
-            .expect("Failed to create AudioProcessor");
+            .map_err(|e| PipelineError::ConfigError(format!("Failed to create AudioProcessor: {e}")))?;
         
-        Self {
+        Ok(Self {
             config,
             state: PipelineState::Stopped,
             running: Arc::new(AtomicBool::new(false)),
@@ -65,7 +65,7 @@ impl ConcreteAudioPipeline {
             decoder: None,
             mixer,
             processor,
-        }
+        })
     }
     
     /// 初始化组件
@@ -186,15 +186,15 @@ mod tests {
 
     #[test]
     fn test_pipeline_creation() {
-        let pipeline = ConcreteAudioPipeline::new(PipelineConfig::default());
+        let pipeline = ConcreteAudioPipeline::new(PipelineConfig::default()).unwrap();
         assert_eq!(pipeline.state(), PipelineState::Stopped);
         assert_eq!(pipeline.config().sample_rate, 48000);
-        assert_eq!(pipeline.config().channels, 2);
+        assert_eq!(pipeline.config().channels, 1);
     }
 
     #[test]
     fn test_pipeline_stats() {
-        let pipeline = ConcreteAudioPipeline::new(PipelineConfig::default());
+        let pipeline = ConcreteAudioPipeline::new(PipelineConfig::default()).unwrap();
         let stats = pipeline.stats();
         assert_eq!(stats.frames_captured, 0);
         assert_eq!(stats.latency_ms, 0.0);

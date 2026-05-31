@@ -3,7 +3,7 @@
 //! 用于缓冲网络音频包，处理乱序和延迟抖动。
 //! 支持自适应延迟调整、丢包补偿（PLC）和网络质量监控。
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::time::Instant;
 
 // ─── 配置 ────────────────────────────────────────────────────────────────────
@@ -134,7 +134,7 @@ impl JitterStats {
 /// 内部抖动追踪器：滑动窗口统计到达间隔
 struct JitterTracker {
     /// 到达间隔窗口（毫秒）
-    intervals: Vec<f64>,
+    intervals: VecDeque<f64>,
 
     /// 窗口大小
     window_size: usize,
@@ -149,7 +149,7 @@ struct JitterTracker {
 impl JitterTracker {
     fn new(window_size: usize) -> Self {
         Self {
-            intervals: Vec::with_capacity(window_size),
+            intervals: VecDeque::with_capacity(window_size),
             window_size,
             last_arrival: None,
             cached_stats: JitterStats::new(),
@@ -163,9 +163,9 @@ impl JitterTracker {
             // 过滤异常值：正常音频包间隔应在 1ms ~ 500ms
             if interval_ms > 0.5 && interval_ms < 500.0 {
                 if self.intervals.len() >= self.window_size {
-                    self.intervals.remove(0);
+                    self.intervals.pop_front();
                 }
-                self.intervals.push(interval_ms);
+                self.intervals.push_back(interval_ms);
             }
         }
         self.last_arrival = Some(now);
@@ -195,7 +195,7 @@ impl JitterTracker {
         let stddev = variance.sqrt();
 
         // 计算 P95
-        let mut sorted = self.intervals.clone();
+        let mut sorted: Vec<f64> = self.intervals.iter().copied().collect();
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         let p95_idx = ((n as f64 * 0.95) as usize).min(n - 1);
         let p95 = sorted[p95_idx];

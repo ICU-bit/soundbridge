@@ -396,7 +396,7 @@ impl SrtpContext {
         cipher.apply_keystream(&mut output[header_len..]);
 
         // 计算认证标签（HMAC-SHA1 over header + encrypted payload）
-        let auth_tag = self.compute_auth_tag(&output);
+        let auth_tag = self.compute_auth_tag(&output)?;
 
         // 附加认证标签
         output.extend_from_slice(&auth_tag);
@@ -459,7 +459,7 @@ impl SrtpContext {
         let packet_without_tag = &srtp_packet[..auth_tag_start];
 
         // 验证认证标签
-        let computed_tag = self.compute_auth_tag(packet_without_tag);
+        let computed_tag = self.compute_auth_tag(packet_without_tag)?;
         if !constant_time_eq(&computed_tag, received_tag) {
             return Err(NetworkError::CryptoError(
                 "SRTP 认证标签验证失败".to_string(),
@@ -483,6 +483,119 @@ impl SrtpContext {
         }
 
         Ok(output)
+    }
+
+    /// 加密 RTP 数据包到预分配缓冲区（零分配版本）
+    ///
+    /// 与 `protect` 功能相同，但写入调用者提供的缓冲区，避免堆分配。
+    ///
+    /// # Arguments
+    ///
+    /// * `rtp_packet` - RTP 数据包（至少 12 字节头）
+    /// * `output` - 预分配的输出缓冲区，长度至少 `rtp_packet.len() + SRTP_AUTH_TAG_LEN`
+    ///
+    /// # Returns
+    ///
+    /// 写入输出缓冲区的字节数
+    ///
+    /// # Errors
+    ///
+    /// - [`NetworkError::CryptoError`] — RTP 数据包长度不足
+    /// - [`NetworkError::CryptoError`] — 输出缓冲区空间不足
+    pub fn protect_into(&mut self, rtp_packet: &[u8], output: &mut [u8]) -> Result<usize> {
+        if rtp_packet.len() < 12 {
+            return Err(NetworkError::CryptoError(
+                "RTP 数据包至少需要 12 字节头".to_string(),
+            ));
+        }
+
+        let header_len = self.rtp_header_len(rtp_packet);
+        if rtp_packet.len() < header_len {
+            return Err(NetworkError::CryptoError(
+                "RTP 数据包头长度不正确".to_string(),
+            ));
+        }
+
+        let total_len = rtp_packet.len() + SRTP_AUTH_TAG_LEN;
+        if output.len() < total_len {
+            return Err(NetworkError::CryptoError("输出缓冲区空间不足".to_string()));
+        }
+
+        // 复制 RTP 头
+        output[..header_len].copy_from_slice(&rtp_packet[..header_len]);
+
+        // 复制并加密载荷
+        output[header_len..rtp_packet.len()].copy_from_slice(&rtp_packet[header_len..]);
+        let iv = self.build_iv();
+        let mut cipher = Aes128Ctr::new((&self.cipher_key).into(), (&iv).into());
+        cipher.apply_keystream(&mut output[header_len..rtp_packet.len()]);
+
+        // 计算认证标签
+        let auth_tag = self.compute_auth_tag(&output[..rtp_packet.len()])?;
+        output[rtp_packet.len()..total_len].copy_from_slice(&auth_tag);
+
+        self.packet_index = self.packet_index.wrapping_add(1);
+
+        if self.packet_index.is_multiple_of(KEY_ROTATION_THRESHOLD) && self.packet_index > 0 {
+            self.rotate_keys()?;
+        }
+
+        Ok(total_len)
+    }
+
+    /// 解密 SRTP 数据包到预分配缓冲区（零分配版本）
+    ///
+    /// 与 `unprotect` 功能相同，但写入调用者提供的缓冲区，避免堆分配。
+    ///
+    /// # Arguments
+    ///
+    /// * `srtp_packet` - SRTP 数据包（含认证标签）
+    /// * `output` - 预分配的输出缓冲区，长度至少 `srtp_packet.len() - SRTP_AUTH_TAG_LEN`
+    ///
+    /// # Returns
+    ///
+    /// 写入输出缓冲区的字节数
+    ///
+    /// # Errors
+    ///
+    /// - [`NetworkError::CryptoError`] — 数据包长度不足
+    /// - [`NetworkError::CryptoError`] — 认证标签验证失败
+    /// - [`NetworkError::CryptoError`] — 输出缓冲区空间不足
+    pub fn unprotect_into(&mut self, srtp_packet: &[u8], output: &mut [u8]) -> Result<usize> {
+        if srtp_packet.len() < 12 + SRTP_AUTH_TAG_LEN {
+            return Err(NetworkError::CryptoError("SRTP 数据包长度不足".to_string()));
+        }
+
+        let auth_tag_start = srtp_packet.len() - SRTP_AUTH_TAG_LEN;
+        let received_tag = &srtp_packet[auth_tag_start..];
+        let packet_without_tag = &srtp_packet[..auth_tag_start];
+
+        let computed_tag = self.compute_auth_tag(packet_without_tag)?;
+        if !constant_time_eq(&computed_tag, received_tag) {
+            return Err(NetworkError::CryptoError(
+                "SRTP 认证标签验证失败".to_string(),
+            ));
+        }
+
+        let plaintext_len = packet_without_tag.len();
+        if output.len() < plaintext_len {
+            return Err(NetworkError::CryptoError("输出缓冲区空间不足".to_string()));
+        }
+
+        output[..plaintext_len].copy_from_slice(packet_without_tag);
+
+        let header_len = self.rtp_header_len(packet_without_tag);
+        let iv = self.build_iv();
+        let mut cipher = Aes128Ctr::new((&self.cipher_key).into(), (&iv).into());
+        cipher.apply_keystream(&mut output[header_len..plaintext_len]);
+
+        self.packet_index = self.packet_index.wrapping_add(1);
+
+        if self.packet_index.is_multiple_of(KEY_ROTATION_THRESHOLD) && self.packet_index > 0 {
+            self.rotate_keys()?;
+        }
+
+        Ok(plaintext_len)
     }
 
     /// 获取当前包索引
@@ -537,16 +650,16 @@ impl SrtpContext {
     /// 计算认证标签
     ///
     /// HMAC-SHA1 over（RTP 头 + 加密后的载荷），截断为 80 位（10 字节）
-    fn compute_auth_tag(&self, data: &[u8]) -> [u8; SRTP_AUTH_TAG_LEN] {
-        let mut mac =
-            HmacSha1::new_from_slice(&self.auth_key).expect("HMAC-SHA1 密钥长度应始终有效");
+    fn compute_auth_tag(&self, data: &[u8]) -> Result<[u8; SRTP_AUTH_TAG_LEN]> {
+        let mut mac = HmacSha1::new_from_slice(&self.auth_key)
+            .map_err(|e| NetworkError::CryptoError(format!("HMAC key error: {e}")))?;
         mac.update(data);
         let full_tag = mac.finalize().into_bytes();
 
         // 截断为 80 位（10 字节）
         let mut tag = [0u8; SRTP_AUTH_TAG_LEN];
         tag.copy_from_slice(&full_tag[..SRTP_AUTH_TAG_LEN]);
-        tag
+        Ok(tag)
     }
 
     /// 计算 RTP 头长度（含 CSRC 和扩展头）

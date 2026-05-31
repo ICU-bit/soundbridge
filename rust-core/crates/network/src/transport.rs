@@ -78,7 +78,7 @@ pub struct TransportConfig {
 impl Default for TransportConfig {
     fn default() -> Self {
         Self {
-            bind_addr: "0.0.0.0:0".parse().unwrap(),
+            bind_addr: SocketAddr::new(std::net::Ipv4Addr::UNSPECIFIED.into(), 0),
             send_buffer_size: 65536,
             recv_buffer_size: 65536,
             initial_bitrate: 128000,

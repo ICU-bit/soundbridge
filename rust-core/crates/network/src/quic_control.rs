@@ -601,8 +601,11 @@ impl QuicClient {
     pub async fn new(server_cert: rustls::Certificate) -> Result<Self> {
         let client_config = make_client_config(server_cert)?;
 
-        let mut endpoint = quinn::Endpoint::client("0.0.0.0:0".parse().unwrap())
-            .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
+        let mut endpoint = quinn::Endpoint::client(std::net::SocketAddr::new(
+            std::net::Ipv4Addr::UNSPECIFIED.into(),
+            0,
+        ))
+        .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
 
         endpoint.set_default_client_config(client_config);
 

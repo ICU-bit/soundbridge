@@ -1054,7 +1054,7 @@ impl Session {
         self.last_activity = Instant::now();
 
         // 计算握手摘要
-        let hash = self.compute_handshake_hash();
+        let hash = self.compute_handshake_hash()?;
 
         Ok(HandshakeMessage::Finished {
             session_id: self.session_id.clone(),
@@ -1462,17 +1462,17 @@ impl Session {
     ///
     /// 使用共享密钥对会话 ID 计算 HMAC-SHA1 摘要，
     /// 用于 Finished 消息的握手完整性验证。
-    fn compute_handshake_hash(&self) -> Vec<u8> {
+    fn compute_handshake_hash(&self) -> Result<Vec<u8>> {
         use hmac::{Hmac, Mac};
         use sha1::Sha1;
 
         if let Some(ref secret) = self.shared_secret {
-            let mut mac =
-                Hmac::<Sha1>::new_from_slice(secret).expect("HMAC key length is always valid");
+            let mut mac = Hmac::<Sha1>::new_from_slice(secret)
+                .map_err(|e| NetworkError::CryptoError(format!("HMAC key error: {e}")))?;
             mac.update(self.session_id.as_bytes());
-            mac.finalize().into_bytes().to_vec()
+            Ok(mac.finalize().into_bytes().to_vec())
         } else {
-            vec![0u8; 20] // SHA1 输出长度
+            Ok(vec![0u8; 20]) // SHA1 输出长度
         }
     }
 }

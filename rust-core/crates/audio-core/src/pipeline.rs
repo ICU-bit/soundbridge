@@ -26,7 +26,7 @@ impl Default for PipelineConfig {
     fn default() -> Self {
         Self {
             sample_rate: 48000,
-            channels: 2,
+            channels: 1,
             frame_size: 960,
             bitrate: 128000,
             mix_mode: MixMode::Mix,
@@ -129,7 +129,7 @@ mod tests {
     fn test_pipeline_config_default() {
         let config = PipelineConfig::default();
         assert_eq!(config.sample_rate, 48000);
-        assert_eq!(config.channels, 2);
+        assert_eq!(config.channels, 1);
         assert_eq!(config.frame_size, 960);
         assert_eq!(config.bitrate, 128000);
         assert_eq!(config.mix_mode, MixMode::Mix);
