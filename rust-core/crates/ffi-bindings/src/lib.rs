@@ -3354,6 +3354,245 @@ pub unsafe extern "C" fn sb_get_mix_ratio(
     SbError::Ok as c_int
 }
 
+// ============================================================
+// 音质档位 / 均衡器 / 声道 FFI
+// ============================================================
+
+use audio_core::audio_profile::{AudioConfig, AudioProfile};
+use audio_processor::eq::{EqPreset, ParametricEq};
+
+/// 音频配置（FFI 暴露）
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct SbAudioConfig {
+    pub sample_rate: u32,
+    pub channels: u32,
+    pub bitrate: u32,
+    pub frame_size: u32,
+    pub complexity: u32,
+}
+
+/// 音质档位（FFI 暴露）
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SbAudioProfile {
+    BandwidthSaving = 0,
+    Standard = 1,
+    HighQuality = 2,
+    Lossless = 3,
+    HighResolution = 4,
+    StudioMaster = 5,
+    Auto = 6,
+    Custom = 7,
+}
+
+/// 均衡器预设（FFI 暴露）
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SbEqPreset {
+    Flat = 0,
+    Gaming = 1,
+    Music = 2,
+    Voice = 3,
+    Bass = 4,
+    Treble = 5,
+}
+
+/// 全局音频配置状态
+static AUDIO_PROFILE: AtomicU32 = AtomicU32::new(SbAudioProfile::Standard as u32);
+static CHANNELS: AtomicU32 = AtomicU32::new(1);
+static EQ_ENABLED: AtomicBool = AtomicBool::new(false);
+static EQ_PRESET: AtomicU32 = AtomicU32::new(SbEqPreset::Flat as u32);
+
+/// 均衡器状态（Mutex 保护，因为 ParametricEq 不是线程安全的）
+static EQ_STATE: std::sync::OnceLock<Mutex<ParametricEq>> = std::sync::OnceLock::new();
+
+/// 自动挡管理器状态
+static AUTO_PROFILE_ENABLED: AtomicBool = AtomicBool::new(false);
+
+/// 获取全局均衡器实例
+fn get_eq() -> &'static Mutex<ParametricEq> {
+    EQ_STATE.get_or_init(|| Mutex::new(ParametricEq::new(48000)))
+}
+
+/// 转换 FFI 枚举到内部枚举
+fn sb_profile_to_audio_profile(profile: SbAudioProfile) -> AudioProfile {
+    match profile {
+        SbAudioProfile::BandwidthSaving => AudioProfile::BandwidthSaving,
+        SbAudioProfile::Standard => AudioProfile::Standard,
+        SbAudioProfile::HighQuality => AudioProfile::HighQuality,
+        SbAudioProfile::Lossless => AudioProfile::Lossless,
+        SbAudioProfile::HighResolution => AudioProfile::HighResolution,
+        SbAudioProfile::StudioMaster => AudioProfile::StudioMaster,
+        SbAudioProfile::Auto => AudioProfile::Auto,
+        SbAudioProfile::Custom => AudioProfile::Custom,
+    }
+}
+
+/// 转换 FFI 枚举到内部枚举
+fn sb_preset_to_eq_preset(preset: SbEqPreset) -> EqPreset {
+    match preset {
+        SbEqPreset::Flat => EqPreset::Flat,
+        SbEqPreset::Gaming => EqPreset::Gaming,
+        SbEqPreset::Music => EqPreset::Music,
+        SbEqPreset::Voice => EqPreset::Voice,
+        SbEqPreset::Bass => EqPreset::Bass,
+        SbEqPreset::Treble => EqPreset::Treble,
+    }
+}
+
+/// 设置音质档位
+///
+/// 切换音质档位，会影响采样率、声道数、码率等参数。
+/// `Auto` 档位会启用自动挡管理器，根据网络状况自动选择。
+///
+/// 返回 0 表示成功，负数表示错误。
+#[no_mangle]
+pub extern "C" fn sb_set_audio_profile(profile: SbAudioProfile) -> c_int {
+    clear_error();
+
+    let audio_profile = sb_profile_to_audio_profile(profile);
+    AUDIO_PROFILE.store(profile as u32, Ordering::Relaxed);
+
+    // 如果是自动挡，启用自动挡管理器
+    if profile == SbAudioProfile::Auto {
+        AUTO_PROFILE_ENABLED.store(true, Ordering::Relaxed);
+        tracing::info!("Audio profile set to Auto (auto-profile enabled)");
+    } else {
+        AUTO_PROFILE_ENABLED.store(false, Ordering::Relaxed);
+
+        // 更新声道数
+        if let Some(config) = AudioConfig::for_profile(audio_profile) {
+            CHANNELS.store(config.channels, Ordering::Relaxed);
+        }
+
+        tracing::info!("Audio profile set to {:?} ({})", profile as u32, audio_profile.name());
+    }
+
+    SbError::Ok as c_int
+}
+
+/// 获取当前音质档位
+#[no_mangle]
+pub extern "C" fn sb_get_audio_profile() -> u32 {
+    AUDIO_PROFILE.load(Ordering::Relaxed)
+}
+
+/// 设置声道数
+///
+/// 1 = Mono, 2 = Stereo。设置后会影响编码器配置。
+///
+/// 返回 0 表示成功，负数表示错误。
+#[no_mangle]
+pub extern "C" fn sb_set_channels(channels: u32) -> c_int {
+    clear_error();
+
+    if channels == 0 || channels > 2 {
+        set_error("channels must be 1 (mono) or 2 (stereo)");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    CHANNELS.store(channels, Ordering::Relaxed);
+    tracing::info!("Channels set to {}", channels);
+    SbError::Ok as c_int
+}
+
+/// 获取当前声道数
+#[no_mangle]
+pub extern "C" fn sb_get_channels() -> u32 {
+    CHANNELS.load(Ordering::Relaxed)
+}
+
+/// 设置均衡器单个频段
+///
+/// `band` 频段索引 (0-9)，对应中心频率: 31, 62, 125, 250, 500, 1k, 2k, 4k, 8k, 16k Hz。
+/// `gain_db` 增益 (-12.0 ~ +12.0 dB)。
+/// `q` 品质因数 (0.1 ~ 10.0)。
+///
+/// 返回 0 表示成功，负数表示错误。
+#[no_mangle]
+pub extern "C" fn sb_set_eq_band(band: u32, gain_db: f32, q: f32) -> c_int {
+    clear_error();
+
+    if band >= 10 {
+        set_error("band must be 0-9");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    if !(-12.0..=12.0).contains(&gain_db) {
+        set_error("gain_db must be between -12.0 and 12.0");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    if !(0.1..=10.0).contains(&q) {
+        set_error("q must be between 0.1 and 10.0");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    if let Ok(mut eq) = get_eq().lock() {
+        eq.set_band(band as usize, gain_db, q);
+    }
+
+    tracing::info!("EQ band {} set: gain={:.1}dB, q={:.2}", band, gain_db, q);
+    SbError::Ok as c_int
+}
+
+/// 应用均衡器预设
+///
+/// 返回 0 表示成功，负数表示错误。
+#[no_mangle]
+pub extern "C" fn sb_set_eq_preset(preset: SbEqPreset) -> c_int {
+    clear_error();
+
+    let eq_preset = sb_preset_to_eq_preset(preset);
+    if let Ok(mut eq) = get_eq().lock() {
+        eq.set_preset(eq_preset);
+    }
+
+    EQ_PRESET.store(preset as u32, Ordering::Relaxed);
+    tracing::info!("EQ preset applied: {:?}", preset as u32);
+    SbError::Ok as c_int
+}
+
+/// 启用/禁用均衡器
+///
+/// `enabled` 为 1 启用，0 禁用。
+///
+/// 返回 0 表示成功，负数表示错误。
+#[no_mangle]
+pub extern "C" fn sb_set_eq_enabled(enabled: c_int) -> c_int {
+    clear_error();
+
+    let is_enabled = enabled != 0;
+    if let Ok(mut eq) = get_eq().lock() {
+        eq.set_enabled(is_enabled);
+    }
+
+    EQ_ENABLED.store(is_enabled, Ordering::Relaxed);
+    tracing::info!("EQ enabled: {}", is_enabled);
+    SbError::Ok as c_int
+}
+
+/// 启用/禁用自动挡模式
+///
+/// `enabled` 为 1 启用，0 禁用。启用后根据网络状况自动选择音质档位。
+///
+/// 返回 0 表示成功，负数表示错误。
+#[no_mangle]
+pub extern "C" fn sb_set_auto_profile_enabled(enabled: c_int) -> c_int {
+    clear_error();
+
+    let is_enabled = enabled != 0;
+    AUTO_PROFILE_ENABLED.store(is_enabled, Ordering::Relaxed);
+
+    if is_enabled {
+        AUDIO_PROFILE.store(SbAudioProfile::Auto as u32, Ordering::Relaxed);
+    }
+
+    tracing::info!("Auto profile enabled: {}", is_enabled);
+    SbError::Ok as c_int
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

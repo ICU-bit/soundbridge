@@ -177,6 +177,65 @@ int sb_set_audio_mode(void* engine, SbAudioMode mode);
 int sb_get_audio_mode(void* engine, SbAudioMode* mode);
 
 /* ============================================================
+ * Audio profile & EQ
+ * ============================================================ */
+
+/** Audio quality profile (matches Rust SbAudioProfile) */
+typedef enum SbAudioProfile {
+    SB_PROFILE_BANDWIDTH_SAVING = 0,
+    SB_PROFILE_STANDARD         = 1,
+    SB_PROFILE_HIGH_QUALITY     = 2,
+    SB_PROFILE_LOSSLESS         = 3,
+    SB_PROFILE_HIGH_RESOLUTION  = 4,
+    SB_PROFILE_STUDIO_MASTER    = 5,
+    SB_PROFILE_AUTO             = 6,
+    SB_PROFILE_CUSTOM           = 7,
+} SbAudioProfile;
+
+/** EQ preset (matches Rust SbEqPreset) */
+typedef enum SbEqPreset {
+    SB_EQ_PRESET_FLAT    = 0,
+    SB_EQ_PRESET_GAMING  = 1,
+    SB_EQ_PRESET_MUSIC   = 2,
+    SB_EQ_PRESET_VOICE   = 3,
+    SB_EQ_PRESET_BASS    = 4,
+    SB_EQ_PRESET_TREBLE  = 5,
+} SbEqPreset;
+
+/** Audio configuration (matches Rust SbAudioConfig) */
+typedef struct SbAudioConfig {
+    uint32_t sample_rate;
+    uint32_t channels;
+    uint32_t bitrate;
+    uint32_t frame_size;
+    uint32_t complexity;
+} SbAudioConfig;
+
+/** Set audio quality profile. Returns 0 on success. */
+int sb_set_audio_profile(SbAudioProfile profile);
+
+/** Get current audio quality profile. */
+uint32_t sb_get_audio_profile(void);
+
+/** Set channel count (1=Mono, 2=Stereo). Returns 0 on success. */
+int sb_set_channels(uint32_t channels);
+
+/** Get current channel count. */
+uint32_t sb_get_channels(void);
+
+/** Set single EQ band. band=0-9, gain_db=-12..+12, q=0.1..10. Returns 0 on success. */
+int sb_set_eq_band(uint32_t band, float gain_db, float q);
+
+/** Apply EQ preset. Returns 0 on success. */
+int sb_set_eq_preset(SbEqPreset preset);
+
+/** Enable/disable EQ (1=enabled, 0=disabled). Returns 0 on success. */
+int sb_set_eq_enabled(int enabled);
+
+/** Enable/disable auto profile mode (1=enabled, 0=disabled). Returns 0 on success. */
+int sb_set_auto_profile_enabled(int enabled);
+
+/* ============================================================
  * Mix ratio
  * ============================================================ */
 
