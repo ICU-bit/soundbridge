@@ -31,7 +31,7 @@ import com.soundbridge.ui.theme.*
 fun HomeScreen(audioService: AudioService? = null) {
     val isConnected by (audioService?.connectionState?.collectAsState() ?: remember { mutableStateOf(AudioService.ConnectionState.DISCONNECTED) })
     val audioLevel by (audioService?.audioLevel?.collectAsState() ?: remember { mutableFloatStateOf(0f) })
-    var isMuted by remember { mutableStateOf(false) }
+    var isMuted by remember { mutableStateOf(audioService?.isMuted() ?: false) }
     var serverAddress by remember { mutableStateOf("192.168.1.100") }
     var serverPort by remember { mutableStateOf("8080") }
     var mixRatio by remember { mutableFloatStateOf(50f) } // 0=全PC, 100=全手机
@@ -73,7 +73,11 @@ fun HomeScreen(audioService: AudioService? = null) {
                     audioService?.connectToServer(serverAddress, port)
                 }
             },
-            onMuteClick = { isMuted = !isMuted }
+            onMuteClick = {
+                val newMuted = !isMuted
+                isMuted = newMuted
+                audioService?.setMute(newMuted)
+            }
         )
 
         Spacer(modifier = Modifier.height(24.dp))

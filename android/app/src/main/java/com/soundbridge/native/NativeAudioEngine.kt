@@ -68,4 +68,8 @@ object NativeAudioEngine {
     // === 安全/加密（DTLS/SRTP）===
     external fun nativeSetEncryptionEnabled(engineHandle: Long, enabled: Boolean, masterKey: ByteArray?, masterSalt: ByteArray?): Int
     external fun nativeIsEncryptionEnabled(engineHandle: Long): Int
+
+    // === 静音控制 ===
+    external fun nativeSetMute(engineHandle: Long, muted: Int): Int
+    external fun nativeGetMute(engineHandle: Long): Int
 }

@@ -59,6 +59,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             _logger.LogInformation("Device store opened: {Path}", storePath);
             // 恢复上次的服务器地址
             LoadLastServer();
+            // 自动连接上次使用的设备（后台执行，不阻塞 UI）
+            _ = TryAutoConnectAsync();
         }
 
         // 创建设备发现服务
@@ -569,12 +571,33 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             if (ushort.TryParse(ServerPort, out ushort port))
             {
                 NativeMethods.sb_device_store_add(_deviceStore, LastServerName, ServerAddress, port);
+                NativeMethods.sb_device_store_set_auto_connect(_deviceStore, LastServerName, true);
                 _logger.LogInformation("Saved last server: {Addr}:{Port}", ServerAddress, port);
             }
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to save last server");
+        }
+    }
+
+    /// <summary>应用启动时自动连接上次使用的设备</summary>
+    private async Task TryAutoConnectAsync()
+    {
+        if (_engine == IntPtr.Zero) return;
+        if (IsConnected || IsConnecting) return;
+        if (string.IsNullOrEmpty(ServerAddress) || ServerAddress == "192.168.1.100") return;
+
+        try
+        {
+            _logger.LogInformation("Auto-connecting to last device: {Addr}:{Port}", ServerAddress, ServerPort);
+            StatusText = $"Auto-connecting to {ServerAddress}:{ServerPort}...";
+            await ConnectAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Auto-connect failed");
+            StatusText = "Auto-connect failed";
         }
     }
 
