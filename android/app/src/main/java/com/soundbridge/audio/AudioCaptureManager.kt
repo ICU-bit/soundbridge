@@ -27,6 +27,9 @@ class AudioCaptureManager {
     private val _audioLevel = MutableStateFlow(0f)
     val audioLevel: StateFlow<Float> = _audioLevel
 
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error
+
     var onAudioDataCaptured: ((ByteArray, Int) -> Unit)? = null
 
     private val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
@@ -63,6 +66,7 @@ class AudioCaptureManager {
                 }
             }
         } catch (e: Exception) {
+            _error.value = "Capture start failed: ${e.message}"
             e.printStackTrace()
         }
     }
@@ -76,6 +80,7 @@ class AudioCaptureManager {
             audioRecord?.stop()
             audioRecord?.release()
         } catch (e: Exception) {
+            _error.value = "Capture stop failed: ${e.message}"
             e.printStackTrace()
         }
         audioRecord = null

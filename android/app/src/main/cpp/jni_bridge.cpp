@@ -1,5 +1,7 @@
 #include <jni.h>
 #include <android/log.h>
+#include <atomic>
+#include <mutex>
 #include <string>
 
 #include "include/audio_engine.h"
@@ -409,9 +411,9 @@ Java_com_soundbridge_native_NativeAudioEngine_nativeCloseSocket(
 
 // 管线网络状态（静态变量，单引擎场景）
 static std::unique_ptr<soundbridge::UdpSocket> g_pipeline_socket;
-static uint16_t g_local_port = 0;
+static std::atomic<int> g_local_port{0};
+static std::atomic<int> g_target_port{0};
 static std::string g_target_address;
-static uint16_t g_target_port = 0;
 
 JNIEXPORT jint JNICALL
 Java_com_soundbridge_native_NativeAudioEngine_nativeBind(
@@ -662,11 +664,11 @@ Java_com_soundbridge_native_NativeAudioEngine_nativeDiscoveryFindDevices(
 //   AudioService 同时调用 JNI stub + Kotlin 管理器，保持状态同步。
 // ============================================================
 
-// 热点/ADB/蓝牙状态（静态变量，薄触发器模式）
+// 热点/ADB/蓝牙状态（原子变量，薄触发器模式）
 // 真实状态由 Kotlin HotspotManager/AdbManager/BluetoothManager 的 StateFlow 管理
-static int g_hotspot_state = 0; // 0=Idle, 1=Creating, 2=Active, 3=Error
-static int g_adb_state = 0;     // 0=Idle, 1=Connecting, 2=Connected, 3=Error
-static int g_bt_state = 0;      // 0=Idle, 1=Listening, 2=Connected, 3=Error
+static std::atomic<int> g_hotspot_state{0}; // 0=Idle, 1=Creating, 2=Active, 3=Error
+static std::atomic<int> g_adb_state{0};     // 0=Idle, 1=Connecting, 2=Connected, 3=Error
+static std::atomic<int> g_bt_state{0};      // 0=Idle, 1=Listening, 2=Connected, 3=Error
 
 JNIEXPORT jint JNICALL
 Java_com_soundbridge_native_NativeAudioEngine_nativeHotspotCreate(
@@ -754,7 +756,8 @@ Java_com_soundbridge_native_NativeAudioEngine_nativeSetExclusiveMode(
 // 安全/加密（DTLS/SRTP 存根实现）
 // ============================================================
 
-static bool g_encryption_enabled = false;
+static std::atomic<bool> g_encryption_enabled{false};
+static std::mutex g_srtp_mutex;
 static uint8_t g_srtp_master_key[16] = {0};
 static uint8_t g_srtp_master_salt[14] = {0};
 
@@ -835,17 +838,23 @@ Java_com_soundbridge_native_NativeAudioEngine_nativeSetEncryptionEnabled(
             return -1;
         }
 
-        memcpy(g_srtp_master_key, key, 16);
-        memcpy(g_srtp_master_salt, salt, 14);
+        {
+            std::lock_guard<std::mutex> lock(g_srtp_mutex);
+            memcpy(g_srtp_master_key, key, 16);
+            memcpy(g_srtp_master_salt, salt, 14);
+        }
         env->ReleaseByteArrayElements(masterKey, key, JNI_ABORT);
         env->ReleaseByteArrayElements(masterSalt, salt, JNI_ABORT);
 
-        g_encryption_enabled = true;
+        g_encryption_enabled.store(true);
         LOGI("Encryption enabled with SRTP keys (stub)");
     } else {
-        g_encryption_enabled = false;
-        memset(g_srtp_master_key, 0, sizeof(g_srtp_master_key));
-        memset(g_srtp_master_salt, 0, sizeof(g_srtp_master_salt));
+        g_encryption_enabled.store(false);
+        {
+            std::lock_guard<std::mutex> lock(g_srtp_mutex);
+            memset(g_srtp_master_key, 0, sizeof(g_srtp_master_key));
+            memset(g_srtp_master_salt, 0, sizeof(g_srtp_master_salt));
+        }
         LOGI("Encryption disabled (stub)");
     }
     return 0; // OK
@@ -861,7 +870,7 @@ Java_com_soundbridge_native_NativeAudioEngine_nativeIsEncryptionEnabled(
     return sb_is_encrypted(engine);
 #else
     if (!getEngine(engineHandle)) return -1; // error
-    return g_encryption_enabled ? 1 : 0;
+    return g_encryption_enabled.load() ? 1 : 0;
 #endif
 }
 

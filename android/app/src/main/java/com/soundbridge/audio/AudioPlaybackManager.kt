@@ -6,6 +6,7 @@ import android.media.AudioTrack
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.Dispatchers
 
 class AudioPlaybackManager {
 
@@ -17,6 +18,7 @@ class AudioPlaybackManager {
 
     private var audioTrack: AudioTrack? = null
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val audioDispatcher = Dispatchers.IO.limitedParallelism(1)
 
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying: StateFlow<Boolean> = _isPlaying
@@ -52,7 +54,7 @@ class AudioPlaybackManager {
 
     fun writeAudioData(data: ByteArray) {
         if (_isPlaying.value) {
-            scope.launch {
+            scope.launch(audioDispatcher) {
                 audioTrack?.write(data, 0, data.size)
             }
         }
