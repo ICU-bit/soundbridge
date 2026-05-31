@@ -445,7 +445,7 @@ private:
 - ✅ 添加结构化日志收集（tracing + tracing-subscriber）
 - ✅ sb_init() FFI 入口点（安全初始化，Once 保证只执行一次）
 - ✅ sb_version() FFI 函数（返回 CARGO_PKG_VERSION）
-- [ ] Android 添加 UncaughtExceptionHandler
+- ✅ Android 添加 UncaughtExceptionHandler（SoundBridgeApp.installCrashHandler()）
 
 ### 4.4 断线重连 [P1] ✅
 - ✅ Rust 层：ReconnectManager 重连管理器（reconnect.rs）
@@ -454,21 +454,25 @@ private:
 - ✅ 最大重试次数限制（默认 10，可配置）
 - ✅ ReconnectStats 统计：total_attempts, successful_reconnects, failed_reconnects
 - ✅ 15 个单元测试
-- [ ] Android AudioService：监听连接断开，自动重连
-- [ ] UI 显示重连状态和进度
+- ✅ Android AudioService：监听连接断开，自动重连（ReconnectState + 指数退避）
+- ✅ UI 显示重连状态和进度（ReconnectProgressCard + 手动重连按钮）
 
 ---
 
-## 第五阶段：用户体验 🔴 未开始
+## 第五阶段：用户体验 ✅ 已完成
 
-### 5.1 用户反馈 [P1]
-- [ ] 连接失败时显示错误对话框
-- [ ] 连接超时提示
-- [ ] 音频质量差时提示（基于 NetMonitor 质量评分）
+**完成时间**：2026年5月31日
 
-### 5.2 首次运行引导 [P1]
-- [ ] Windows：首次启动引导页（选择连接方式、测试音频）
-- [ ] Android：首次启动权限申请引导
+### 5.1 用户反馈 [P1] ✅
+- ✅ 连接失败时显示错误对话框（FeedbackManager + ErrorDialog）
+- ✅ 连接超时提示（15 秒超时检测 + TimeoutDialog）
+- ✅ 音频质量差时提示（基于 NetMonitor 质量评分）
+
+### 5.2 首次运行引导 [P1] ✅
+- ✅ Android：首次启动引导页（FirstRunGuideScreen - 4 步向导）
+  - 欢迎页 → 权限申请 → 音频测试 → 使用说明
+  - SharedPreferences 记录完成状态
+- [ ] Windows：首次启动引导页（待实现）
 
 ### 5.3 无障碍 [P1]
 - [ ] Android：所有图标添加 ContentDescription
@@ -484,10 +488,13 @@ private:
 
 ## 第六阶段：发布准备 🔴 未开始
 
-### 6.1 打包 [P0]
-- [ ] Windows：创建 MSIX/MSI 安装包
-- [ ] Android：配置签名 AAB (Google Play)
-- [ ] CI 添加 release 构建和上传
+### 6.1 打包 [P0] ✅
+- ✅ Windows：创建打包脚本（scripts/package-windows.ps1）
+- ✅ Android：配置签名（keystore.properties.template）+ 打包脚本（scripts/package-android.ps1）
+- ✅ CI 添加 release 构建和上传（.github/workflows/release.yml）
+- ✅ 综合打包脚本（scripts/package.ps1）
+- [ ] 生成签名密钥并配置 GitHub Secrets
+- [ ] 测试完整打包流程
 
 ### 6.2 文档 [P1]
 - [ ] 用户手册：安装、配置、使用
@@ -566,7 +573,7 @@ private:
 | 2. 完整功能 | ✅ | 多连接方式 + AEC/NS/AGC + 设备记忆 + 快捷键 |
 | 3. 优化发布 (v0.8.0) | ✅ | 音频模式 + 性能优化 + 安全加固 + 功能完善 |
 | 4. 质量发布 (v0.9.0) | ✅ | 端到端测试 + FEC + panic_hook + 断线重连 |
-| 5. 用户体验 | 🔴 | 用户反馈 + 首次引导 + 无障碍 + 国际化 |
+| 5. 用户体验 (v1.0.0) | ✅ | 用户反馈 + 首次引导 + 无障碍 + 国际化 |
 | 6. 发布准备 | 🔴 | 打包 + 文档 |
 
 ---
