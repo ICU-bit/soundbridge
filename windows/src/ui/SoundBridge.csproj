@@ -32,6 +32,10 @@
 
   <ItemGroup>
     <None Include="$(RustTargetDir)\ffi_bindings.dll" CopyToOutputDirectory="PreserveNewest" Link="ffi_bindings.dll" />
+  </ItemGroup>
+
+  <!-- C++ DLL: copy only if exists (Debug build may not have been done) -->
+  <ItemGroup Condition="Exists('$(CppBuildDir)\SoundBridge.dll')">
     <None Include="$(CppBuildDir)\SoundBridge.dll" CopyToOutputDirectory="PreserveNewest" Link="SoundBridge.dll" />
   </ItemGroup>
 
