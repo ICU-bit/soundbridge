@@ -336,8 +336,8 @@ pub struct SbEngine {
     /// 管线句柄
     pipeline: Option<PipelineHandle>,
 
-    /// 音量 (0.0 ~ 1.0)
-    volume: f32,
+    /// 音量 (0.0 ~ 1.0) — Arc<AtomicU32> 供管线线程跨线程读取
+    volume: Arc<AtomicU32>,
 
     /// 是否暂停
     paused: bool,
@@ -419,7 +419,7 @@ pub extern "C" fn sb_engine_create() -> *mut c_void {
         local_port: 0,
         sequence: Arc::new(AtomicU32::new(0)),
         pipeline: None,
-        volume: 1.0,
+        volume: Arc::new(AtomicU32::new(1.0f32.to_bits())),
         paused: false,
         muted: Arc::new(AtomicBool::new(false)),
         connection_type: ConnectionType::WiFiLan,
@@ -1339,6 +1339,7 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
     let sender_capture_ring = capture_ring.clone();
     let sender_mix_ring = local_mix_ring.clone();
     let sender_muted = engine.muted.clone();
+    let sender_volume = engine.volume.clone();
     let sender_handle = match std::thread::Builder::new()
         .name("sb-sender".to_string())
         .spawn(move || {
@@ -1406,6 +1407,14 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                         .captured_level_bits
                         .store(0.0f32.to_bits(), Ordering::Relaxed);
                     continue;
+                }
+
+                // 音量缩放：将采集音频乘以音量系数
+                let vol = f32::from_bits(sender_volume.load(Ordering::Relaxed));
+                if vol < 1.0 {
+                    for sample in frame_buf[..frame_size].iter_mut() {
+                        *sample *= vol;
+                    }
                 }
 
                 // 将采集数据写入本地混音 ring buffer，供接收线程混音使用
@@ -2663,7 +2672,7 @@ pub unsafe extern "C" fn sb_send_volume(engine: *mut c_void, volume: f32) -> c_i
 
     let result = send_control_packet(engine, ControlMessageType::Volume, &volume.to_be_bytes());
     if result == SbError::Ok as c_int {
-        engine.volume = volume;
+        engine.volume.store(volume.to_bits(), Ordering::Relaxed);
     }
     result
 }
@@ -4076,7 +4085,7 @@ mod tests {
 
             // 验证引擎内部状态
             let engine_ref = &*(engine as *const SbEngine);
-            assert_eq!(engine_ref.volume, 0.75);
+            assert_eq!(f32::from_bits(engine_ref.volume.load(Ordering::Relaxed)), 0.75);
 
             // 验证接收端收到了数据
             let mut recv_buf = vec![0u8; 4096];
