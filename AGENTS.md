@@ -10,7 +10,7 @@
 - `android/` — Kotlin + Jetpack Compose + JNI C++. Gradle build.
 - `scripts/` — PowerShell helper scripts (`test.ps1`, `bench.ps1`, `build-windows.ps1`, `release.ps1`, `verify-release.ps1`)
 - `tools/` — `test-harness.ps1` (full check), `benchmark-runner.ps1`
-- `docs/` — `design.md`, `development-plan.md`, `technical-spec.md`
+- `docs/` — `development-plan.md`（唯一开发文档，含设计/规格/进度/计划）
 
 Sub-platform guidance: `rust-core/AGENTS.md`, `windows/AGENTS.md`, `android/AGENTS.md`.
 Each Rust crate has its own `AI_GUIDE.md` — **read it before modifying that crate**.
