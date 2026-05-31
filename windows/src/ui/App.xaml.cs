@@ -29,12 +29,6 @@ public partial class App : Application
                 .WriteTo.File(logPath, rollingInterval: RollingInterval.Day))
             .ConfigureServices((_, services) =>
             {
-                services.AddSingleton<ConnectionNotificationService>(sp =>
-                {
-                    var logger = sp.GetRequiredService<ILogger<ConnectionNotificationService>>();
-                    var dq = System.Windows.Threading.Dispatcher.CurrentDispatcher;
-                    return new ConnectionNotificationService(logger, dq, _trayIcon);
-                });
                 services.AddSingleton<MainWindowViewModel>();
                 services.AddSingleton<MainWindow>();
             })
@@ -44,13 +38,31 @@ public partial class App : Application
         _window = _host.Services.GetRequiredService<MainWindow>();
         _window.Show();
         InitializeTrayIcon();
-        _notificationService = _host.Services.GetService<ConnectionNotificationService>();
+
+        // Create notification service after tray icon exists
+        var logger = _host.Services.GetRequiredService<ILogger<ConnectionNotificationService>>();
+        var dq = System.Windows.Threading.Dispatcher.CurrentDispatcher;
+        _notificationService = new ConnectionNotificationService(logger, dq, _trayIcon);
+    }
+
+    private IntPtr WndProc(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (_trayIcon != null && _trayIcon.HandleWindowMessage(hWnd, (uint)msg, wParam, lParam))
+        {
+            handled = true;
+        }
+        return IntPtr.Zero;
     }
 
     private void InitializeTrayIcon()
     {
         if (_window == null) return;
         var hWnd = new WindowInteropHelper(_window).Handle;
+
+        // Hook WndProc so TrayIcon receives mouse messages
+        var source = HwndSource.FromHwnd(hWnd);
+        source?.AddHook(WndProc);
+
         _trayIcon = new TrayIcon(hWnd, "SoundBridge - Cross-platform Audio Bridge");
         _trayIcon.DoubleClick += () => _window?.Dispatcher.Invoke(() => { _window.Show(); _window.Activate(); });
         _trayIcon.RightClick += ShowTrayContextMenu;

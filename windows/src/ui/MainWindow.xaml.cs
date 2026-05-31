@@ -46,7 +46,15 @@ public partial class MainWindow : Window
         _hotkeyManager.Register(HotkeyManager.MOD_CONTROL | HotkeyManager.MOD_ALT, 0x4D,
             () => ViewModel.ToggleMuteCommand.Execute(null));
         _hotkeyManager.Register(HotkeyManager.MOD_CONTROL | HotkeyManager.MOD_ALT, 0x53,
-            () => this.Activate());
+            () => this.Dispatcher.Invoke(() => { Show(); Activate(); }));
+    }
+
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        // Hide to tray instead of closing
+        e.Cancel = true;
+        Hide();
+        _logger.LogDebug("Window hidden to tray");
     }
 
     private void DeviceList_SelectionChanged(object sender, SelectionChangedEventArgs e)
