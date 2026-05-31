@@ -20,9 +20,108 @@ use std::net::{SocketAddr, UdpSocket};
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::Once;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Instant;
+
+/// 一次性初始化标志
+static INIT: Once = Once::new();
+
+/// 安装 panic hook，将 panic 信息输出到 stderr
+///
+/// 这确保 FFI 调用者（C++/JNI）能在 panic 发生时看到错误信息，
+/// 而不是得到一个无提示的 abort。
+fn setup_panic_hook() {
+    std::panic::set_hook(Box::new(|info| {
+        let thread = std::thread::current();
+        let thread_name = thread.name().unwrap_or("<unnamed>");
+
+        let payload = if let Some(s) = info.payload().downcast_ref::<&str>() {
+            s.to_string()
+        } else if let Some(s) = info.payload().downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "Box<dyn Any>".to_string()
+        };
+
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "<unknown>".to_string());
+
+        let backtrace = std::backtrace::Backtrace::force_capture();
+
+        // 输出到 stderr（FFI 消费者可以看到）
+        eprintln!("\n=== SoundBridge PANIC ===");
+        eprintln!("thread '{}' panicked at '{}'", thread_name, payload);
+        eprintln!("  at {}", location);
+        eprintln!("backtrace:\n{}", backtrace);
+        eprintln!("========================\n");
+
+        // 同时通过 tracing 记录（如果 subscriber 已初始化）
+        tracing::error!(
+            thread = thread_name,
+            location = %location,
+            "SoundBridge panic: {}",
+            payload
+        );
+    }));
+}
+
+/// 初始化 tracing 日志系统
+///
+/// 使用 RUST_LOG 环境变量控制日志级别，默认 info。
+/// 格式：`[时间 级别 模块] 消息`
+fn init_logging() {
+    use tracing_subscriber::EnvFilter;
+
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_target(true)
+        .with_thread_ids(true)
+        .with_file(true)
+        .with_line_number(true)
+        .init();
+}
+
+/// SoundBridge 全局初始化
+///
+/// **必须在调用任何其他 sb_* 函数之前调用一次。**
+///
+/// 功能：
+/// - 安装 panic hook（panic 信息输出到 stderr）
+/// - 初始化 tracing 日志系统（通过 RUST_LOG 控制级别）
+///
+/// 重复调用是安全的（仅首次生效）。
+///
+/// 返回：
+/// - `0` (SbError::Ok) 成功
+/// - 其他值 失败
+#[no_mangle]
+pub extern "C" fn sb_init() -> c_int {
+    INIT.call_once(|| {
+        setup_panic_hook();
+        init_logging();
+        tracing::info!("SoundBridge initialized (panic hook + logging)");
+    });
+    SbError::Ok as c_int
+}
+
+/// SoundBridge 版本信息
+#[no_mangle]
+pub extern "C" fn sb_version() -> *const c_char {
+    // 使用 static 确保指针在进程生命周期内有效
+    static VERSION: std::sync::OnceLock<CString> = std::sync::OnceLock::new();
+    VERSION
+        .get_or_init(|| {
+            CString::new(env!("CARGO_PKG_VERSION"))
+                .unwrap_or_else(|_| CString::new("unknown").unwrap())
+        })
+        .as_ptr()
+}
 
 /// 连接状态（FFI 暴露）
 #[repr(C)]

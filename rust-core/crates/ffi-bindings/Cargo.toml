@@ -21,6 +21,7 @@ discovery = { path = "../discovery" }
 protocol = { path = "../protocol" }
 thiserror.workspace = true
 tracing.workspace = true
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 [dev-dependencies]
 criterion.workspace = true
