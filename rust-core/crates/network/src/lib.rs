@@ -49,6 +49,7 @@ pub mod crypto;
 pub mod jitter_buffer;
 pub mod net_monitor;
 pub mod quic_control;
+pub mod reconnect;
 pub mod session;
 pub mod transport;
 
@@ -68,6 +69,7 @@ pub use quic_control::{
     AudioConfig, ControlMessage, DeviceInfo, NetworkStatsData, QuicClient, QuicConnection,
     QuicServer,
 };
+pub use reconnect::{ReconnectConfig, ReconnectManager, ReconnectState, ReconnectStats};
 pub use session::{
     generate_session_id, Capability, DisconnectReason, EcdhPublicKey, EncryptionMode,
     HandshakeMessage, NegotiatedParams, OpusConfig, Session, SessionConfig, SessionRole,
