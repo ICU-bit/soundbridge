@@ -475,12 +475,13 @@ private:
 - [ ] Windows：首次启动引导页（待实现）
 
 ### 5.3 无障碍 [P1] ✅
-- ✅ Android：所有图标添加 ContentDescription（HomeScreen 8/8, SettingsScreen 6/6, FirstRunGuide 4/4）
-- [ ] Windows：添加 AutomationProperties
+- ✅ Android：所有图标添加 ContentDescription
+- ✅ Windows：26 个控件添加 AutomationProperties
 - [ ] 支持高对比度模式
 
 ### 5.4 国际化 [P1] ✅
-- ✅ Android：提取硬编码字符串到 strings.xml（30+ 字符串，支持中/英双语）
+- ✅ Android：提取硬编码字符串到 strings.xml（30+ 字符串）
+- ✅ Android：英文 locale (values-en/strings.xml)
 - [ ] Windows：创建 .resx 资源文件
 - [ ] 支持中/英双语切换
 
@@ -587,7 +588,7 @@ private:
 | 5. 用户体验 (v1.0.0) | ✅ | 用户反馈 + 首次引导 + 自动重连 |
 | 6. 发布准备 (v1.1.0) | ✅ | 打包脚本 + 文档（用户手册/故障排除/API） |
 | 7. 进阶功能 (v0.10.0) | ✅ | PID 带宽控制 + 音频 Profile + 立体声 + 均衡器 + 自动 Profile |
-| 8. 发布打磨 (v1.0.0-rc) | 🔴 | 无障碍 + 国际化 + 发布流程验证 |
+| 8. 发布打磨 (v0.10.0) | ✅ | 版本号 + CHANGELOG + 无障碍 + 国际化 + 打包验证 |
 
 ---
 
