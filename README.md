@@ -118,7 +118,7 @@
 | 组件 | Windows | Android |
 |------|---------|---------|
 | **语言** | C++ (核心) + C# (UI) | Kotlin + C++ (JNI) |
-| **UI框架** | WinUI 3 | Jetpack Compose |
+| **UI框架** | WPF | Jetpack Compose |
 | **音频采集** | WASAPI | AAudio |
 | **编解码** | libopus | libopus |
 | **网络** | 自定义 UDP 传输 | 自定义 UDP 传输 |
