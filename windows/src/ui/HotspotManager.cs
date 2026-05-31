@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace SoundBridge;
+namespace SoundBridge.UI;
 
 public static class HotspotManager
 {
