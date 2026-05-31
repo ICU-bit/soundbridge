@@ -43,6 +43,7 @@ private:
     AudioFormat format_;
     bool initialized_ = false;
     bool exclusive_mode_ = false;
+    bool com_initialized_ = false;
     std::atomic<bool> running_{false};
 
     Microsoft::WRL::ComPtr<IMMDeviceEnumerator> enumerator_;

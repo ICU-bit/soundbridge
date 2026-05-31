@@ -1,7 +1,10 @@
 #include "dtls_session.h"
 
+#include <bcrypt.h>
 #include <cstring>
 #include <random>
+
+#pragma comment(lib, "bcrypt.lib")
 
 namespace soundbridge {
 
@@ -27,8 +30,15 @@ bool DtlsSession::start_handshake() {
 
 bool DtlsSession::process_handshake(const uint8_t* data, size_t len,
                                      std::vector<uint8_t>& response) {
-    (void)data;
-    (void)len;
+    if (!data || len < 8) {
+        return false;
+    }
+
+    // Validate DTLS handshake header: must start with "DTLS-SB" marker
+    static constexpr uint8_t kDtlsMagic[] = {'D', 'T', 'L', 'S', '-', 'S', 'B'};
+    if (std::memcmp(data, kDtlsMagic, sizeof(kDtlsMagic)) != 0) {
+        return false;
+    }
 
     switch (state_) {
         case DtlsState::WaitingClientHello:
@@ -106,25 +116,85 @@ std::vector<uint8_t> DtlsSession::build_server_hello() const {
     return msg;
 }
 
+namespace {
+
+constexpr size_t SHA1_HASH_LEN = 20;
+
+bool bcrypt_hmac_sha1(const uint8_t* key, size_t key_len,
+                      const uint8_t* data, size_t data_len,
+                      uint8_t out[SHA1_HASH_LEN]) {
+    BCRYPT_ALG_HANDLE hAlg = nullptr;
+    BCRYPT_HASH_HANDLE hHash = nullptr;
+    bool ok = false;
+
+    if (FAILED(BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_SHA1_ALGORITHM,
+                                           nullptr, BCRYPT_ALG_HANDLE_HMAC_FLAG))) {
+        return false;
+    }
+    if (FAILED(BCryptCreateHash(hAlg, &hHash, nullptr, 0,
+                                const_cast<PUCHAR>(key),
+                                static_cast<ULONG>(key_len), 0))) {
+        BCryptCloseAlgorithmProvider(hAlg, 0);
+        return false;
+    }
+    if (FAILED(BCryptHashData(hHash, const_cast<PUCHAR>(data),
+                              static_cast<ULONG>(data_len), 0))) {
+        goto cleanup;
+    }
+    if (FAILED(BCryptFinishHash(hHash, out, SHA1_HASH_LEN, 0))) {
+        goto cleanup;
+    }
+    ok = true;
+cleanup:
+    if (hHash) BCryptDestroyHash(hHash);
+    BCryptCloseAlgorithmProvider(hAlg, 0);
+    return ok;
+}
+
+} // anonymous namespace
+
 CryptoKeys derive_session_keys(const uint8_t* master_secret, size_t secret_len,
                                 const uint8_t* salt, size_t salt_len) {
-    // 简化的 HKDF：使用 master_secret 和 salt 派生密钥
-    // 实际应使用 HKDF-SHA1 (RFC 5869)
     CryptoKeys keys;
-
-    // 简单的密钥派生：XOR 折叠
     std::memset(keys.master_key.data(), 0, SRTP_MASTER_KEY_LEN);
     std::memset(keys.master_salt.data(), 0, SRTP_MASTER_SALT_LEN);
 
-    // 从 master_secret 派生 master_key
-    for (size_t i = 0; i < secret_len; ++i) {
-        keys.master_key[i % SRTP_MASTER_KEY_LEN] ^= master_secret[i];
+    // HKDF-SHA1 (RFC 5869)
+    // Step 1: Extract — PRK = HMAC-SHA1(salt, IKM)
+    uint8_t prk[SHA1_HASH_LEN];
+    const uint8_t* extract_salt = salt;
+    size_t extract_salt_len = salt_len;
+    uint8_t default_salt[SHA1_HASH_LEN]{};
+
+    if (salt_len == 0 || salt == nullptr) {
+        std::memset(default_salt, 0, SHA1_HASH_LEN);
+        extract_salt = default_salt;
+        extract_salt_len = SHA1_HASH_LEN;
     }
 
-    // 从 salt 派生 master_salt
-    for (size_t i = 0; i < salt_len; ++i) {
-        keys.master_salt[i % SRTP_MASTER_SALT_LEN] ^= salt[i];
+    if (!bcrypt_hmac_sha1(extract_salt, extract_salt_len,
+                          master_secret, secret_len, prk)) {
+        return keys;
     }
+
+    // Step 2: Expand — derive key and salt using info labels
+    // info = "SRTP key" || 0x01 for master_key (16 bytes)
+    const uint8_t key_info[] = {'S', 'R', 'T', 'P', ' ', 'k', 'e', 'y', 0x01};
+    uint8_t okm_key[SHA1_HASH_LEN];
+    if (!bcrypt_hmac_sha1(prk, SHA1_HASH_LEN,
+                          key_info, sizeof(key_info), okm_key)) {
+        return keys;
+    }
+    std::memcpy(keys.master_key.data(), okm_key, SRTP_MASTER_KEY_LEN);
+
+    // info = "SRTP salt" || 0x02 for master_salt (14 bytes)
+    const uint8_t salt_info[] = {'S', 'R', 'T', 'P', ' ', 's', 'a', 'l', 't', 0x02};
+    uint8_t okm_salt[SHA1_HASH_LEN];
+    if (!bcrypt_hmac_sha1(prk, SHA1_HASH_LEN,
+                          salt_info, sizeof(salt_info), okm_salt)) {
+        return keys;
+    }
+    std::memcpy(keys.master_salt.data(), okm_salt, SRTP_MASTER_SALT_LEN);
 
     return keys;
 }

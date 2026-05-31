@@ -51,9 +51,11 @@ private:
     std::mutex send_mutex_;
 
     // SRTP 加密
-    bool encryption_enabled_ = false;
+    std::atomic<bool> encryption_enabled_{false};
     std::unique_ptr<SrtpContext> srtp_send_;
     std::unique_ptr<SrtpContext> srtp_recv_;
+
+    uint32_t send_sequence_ = 0;
 };
 
 } // namespace soundbridge
