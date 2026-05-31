@@ -209,6 +209,19 @@ class AudioService : Service() {
         return null
     }
 
+    /** 设置静音状态 */
+    fun setMute(muted: Boolean) {
+        if (engineHandle != 0L) {
+            NativeAudioEngine.nativeSetMute(engineHandle, if (muted) 1 else 0)
+        }
+    }
+
+    /** 获取静音状态。引擎未初始化时返回 false。 */
+    fun isMuted(): Boolean {
+        if (engineHandle == 0L) return false
+        return NativeAudioEngine.nativeGetMute(engineHandle) == 1
+    }
+
     /** 启用 DTLS/SRTP 加密传输。管线运行中不允许修改。 */
     fun enableEncryption() {
         if (engineHandle == 0L) return

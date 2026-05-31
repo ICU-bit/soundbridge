@@ -874,4 +874,45 @@ Java_com_soundbridge_native_NativeAudioEngine_nativeIsEncryptionEnabled(
 #endif
 }
 
+// ============================================================
+// 静音控制（Mute Control）
+// ============================================================
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeSetMute(
+        JNIEnv* env, jobject thiz, jlong engineHandle, jint muted) {
+#ifdef SOUNDBRIDGE_USE_RUST_FFI
+    void* engine = getRustEngine(engineHandle);
+    if (!engine) return -1;
+
+    int rc = sb_set_mute(engine, muted);
+    if (rc != 0) {
+        const char* err = sb_last_error();
+        LOGE("Rust sb_set_mute failed: %s", err ? err : "unknown error");
+        return -1;
+    }
+    LOGI("Mute state set: %d", muted);
+    return 0;
+#else
+    auto* engine = getEngine(engineHandle);
+    if (!engine) return -1;
+    LOGI("Mute state set (stub): %d", muted);
+    return 0;
+#endif
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeGetMute(
+        JNIEnv* env, jobject thiz, jlong engineHandle) {
+#ifdef SOUNDBRIDGE_USE_RUST_FFI
+    void* engine = getRustEngine(engineHandle);
+    if (!engine) return -1;
+    return sb_get_mute(engine);
+#else
+    auto* engine = getEngine(engineHandle);
+    if (!engine) return -1;
+    return 0;
+#endif
+}
+
 } // extern "C"
