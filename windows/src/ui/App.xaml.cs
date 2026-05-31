@@ -19,8 +19,14 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        var logPath = System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "SoundBridge", "logs", "soundbridge-.log");
+
         _host = Host.CreateDefaultBuilder()
-            .UseSerilog((_, lc) => lc.MinimumLevel.Debug().WriteTo.Debug())
+            .UseSerilog((_, lc) => lc.MinimumLevel.Debug()
+                .WriteTo.Debug()
+                .WriteTo.File(logPath, rollingInterval: RollingInterval.Day))
             .ConfigureServices((_, services) =>
             {
                 services.AddSingleton<ConnectionNotificationService>(sp =>
