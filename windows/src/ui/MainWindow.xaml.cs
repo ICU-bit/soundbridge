@@ -86,7 +86,7 @@ public partial class MainWindow : Window
     {
         if (EqPresetComboBox.SelectedIndex < 0) return;
         var preset = (NativeMethods.SbEqPreset)EqPresetComboBox.SelectedIndex;
-        NativeMethods.sb_set_eq_preset(preset);
+        NativeMethods.sb_set_eq_preset(ViewModel.Engine, preset);
     }
 
     private void EqBand_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -95,7 +95,7 @@ public partial class MainWindow : Window
         var name = slider.Name;
         if (!name.StartsWith("EqBand")) return;
         if (!int.TryParse(name.Substring("EqBand".Length), out var band)) return;
-        NativeMethods.sb_set_eq_band((uint)band, (float)slider.Value, 1.0f);
+        NativeMethods.sb_set_eq_band(ViewModel.Engine, (uint)band, (float)slider.Value, 1.0f);
     }
 
     /// <summary>应用退出时调用，释放热键等非托管资源</summary>

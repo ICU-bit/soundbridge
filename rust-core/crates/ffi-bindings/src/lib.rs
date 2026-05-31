@@ -295,8 +295,8 @@ pub struct SbEngine {
     /// 混音器
     mixer: AudioMixer,
 
-    /// 音频处理器
-    processor: AudioProcessor,
+    /// 音频处理器（Arc<Mutex> 以便跨线程共享给发送线程）
+    processor: Arc<Mutex<AudioProcessor>>,
 
     /// 管线状态
     pipeline_state: PipelineState,
@@ -394,7 +394,7 @@ pub extern "C" fn sb_engine_create() -> *mut c_void {
     clear_error();
 
     let processor = match AudioProcessor::with_default_config() {
-        Ok(p) => p,
+        Ok(p) => Arc::new(Mutex::new(p)),
         Err(e) => {
             set_error(&format!("failed to create AudioProcessor: {}", e));
             return ptr::null_mut();
@@ -978,9 +978,17 @@ pub unsafe extern "C" fn sb_processor_process(
     let engine = unsafe { &mut *(engine as *mut SbEngine) };
     let buffer = unsafe { std::slice::from_raw_parts_mut(buf, len) };
 
-    if let Err(e) = engine.processor.process(buffer) {
-        set_error(&format!("process failed: {}", e));
-        return SbError::Error as c_int;
+    match engine.processor.lock() {
+        Ok(mut p) => {
+            if let Err(e) = p.process(buffer) {
+                set_error(&format!("process failed: {}", e));
+                return SbError::Error as c_int;
+            }
+        }
+        Err(e) => {
+            set_error(&format!("processor lock failed: {}", e));
+            return SbError::Error as c_int;
+        }
     }
 
     SbError::Ok as c_int
@@ -1003,7 +1011,9 @@ pub unsafe extern "C" fn sb_set_echo_cancellation_enabled(
     }
 
     let engine = unsafe { &mut *(engine as *mut SbEngine) };
-    engine.processor.set_aec_enabled(enabled != 0);
+    if let Ok(mut p) = engine.processor.lock() {
+        p.set_aec_enabled(enabled != 0);
+    }
     tracing::info!("Echo cancellation: {}", if enabled != 0 { "enabled" } else { "disabled" });
     SbError::Ok as c_int
 }
@@ -1025,7 +1035,9 @@ pub unsafe extern "C" fn sb_set_noise_suppression_enabled(
     }
 
     let engine = unsafe { &mut *(engine as *mut SbEngine) };
-    engine.processor.set_ns_enabled(enabled != 0);
+    if let Ok(mut p) = engine.processor.lock() {
+        p.set_ns_enabled(enabled != 0);
+    }
     tracing::info!("Noise suppression: {}", if enabled != 0 { "enabled" } else { "disabled" });
     SbError::Ok as c_int
 }
@@ -1047,7 +1059,9 @@ pub unsafe extern "C" fn sb_set_agc_enabled(
     }
 
     let engine = unsafe { &mut *(engine as *mut SbEngine) };
-    engine.processor.set_agc_enabled(enabled != 0);
+    if let Ok(mut p) = engine.processor.lock() {
+        p.set_agc_enabled(enabled != 0);
+    }
     tracing::info!("AGC: {}", if enabled != 0 { "enabled" } else { "disabled" });
     SbError::Ok as c_int
 }
@@ -1340,6 +1354,7 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
     let sender_mix_ring = local_mix_ring.clone();
     let sender_muted = engine.muted.clone();
     let sender_volume = engine.volume.clone();
+    let sender_processor = engine.processor.clone();
     let sender_handle = match std::thread::Builder::new()
         .name("sb-sender".to_string())
         .spawn(move || {
@@ -1415,6 +1430,11 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                     for sample in frame_buf[..frame_size].iter_mut() {
                         *sample *= vol;
                     }
+                }
+
+                // 音频处理：增益 → 噪声门 → NS → AGC → EQ
+                if let Ok(mut proc) = sender_processor.lock() {
+                    let _ = proc.process(&mut frame_buf[..frame_size]);
                 }
 
                 // 将采集数据写入本地混音 ring buffer，供接收线程混音使用
@@ -3448,7 +3468,7 @@ pub unsafe extern "C" fn sb_get_mix_ratio(
 // ============================================================
 
 use audio_core::audio_profile::{AudioConfig, AudioProfile};
-use audio_processor::eq::{EqPreset, ParametricEq};
+use audio_processor::eq::EqPreset;
 
 /// 音频配置（FFI 暴露）
 #[repr(C)]
@@ -3495,16 +3515,8 @@ static BITRATE: AtomicU32 = AtomicU32::new(128000);
 static EQ_ENABLED: AtomicBool = AtomicBool::new(false);
 static EQ_PRESET: AtomicU32 = AtomicU32::new(SbEqPreset::Flat as u32);
 
-/// 均衡器状态（Mutex 保护，因为 ParametricEq 不是线程安全的）
-static EQ_STATE: std::sync::OnceLock<Mutex<ParametricEq>> = std::sync::OnceLock::new();
-
 /// 自动挡管理器状态
 static AUTO_PROFILE_ENABLED: AtomicBool = AtomicBool::new(false);
-
-/// 获取全局均衡器实例
-fn get_eq() -> &'static Mutex<ParametricEq> {
-    EQ_STATE.get_or_init(|| Mutex::new(ParametricEq::new(48000)))
-}
 
 /// 转换 FFI 枚举到内部枚举
 fn sb_profile_to_audio_profile(profile: SbAudioProfile) -> AudioProfile {
@@ -3658,14 +3670,28 @@ pub extern "C" fn sb_get_bitrate() -> u32 {
 
 /// 设置均衡器单个频段
 ///
+/// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
 /// `band` 频段索引 (0-9)，对应中心频率: 31, 62, 125, 250, 500, 1k, 2k, 4k, 8k, 16k Hz。
 /// `gain_db` 增益 (-12.0 ~ +12.0 dB)。
 /// `q` 品质因数 (0.1 ~ 10.0)。
 ///
+/// # Safety
+/// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
+///
 /// 返回 0 表示成功，负数表示错误。
 #[no_mangle]
-pub extern "C" fn sb_set_eq_band(band: u32, gain_db: f32, q: f32) -> c_int {
+pub unsafe extern "C" fn sb_set_eq_band(
+    engine: *mut c_void,
+    band: u32,
+    gain_db: f32,
+    q: f32,
+) -> c_int {
     clear_error();
+
+    if engine.is_null() {
+        set_error("engine is null");
+        return SbError::InvalidArgument as c_int;
+    }
 
     if band >= 10 {
         set_error("band must be 0-9");
@@ -3682,8 +3708,9 @@ pub extern "C" fn sb_set_eq_band(band: u32, gain_db: f32, q: f32) -> c_int {
         return SbError::InvalidArgument as c_int;
     }
 
-    if let Ok(mut eq) = get_eq().lock() {
-        eq.set_band(band as usize, gain_db, q);
+    let engine = unsafe { &*(engine as *const SbEngine) };
+    if let Ok(mut proc) = engine.processor.lock() {
+        proc.set_eq_band(band as usize, gain_db, q);
     }
 
     tracing::info!("EQ band {} set: gain={:.1}dB, q={:.2}", band, gain_db, q);
@@ -3692,14 +3719,23 @@ pub extern "C" fn sb_set_eq_band(band: u32, gain_db: f32, q: f32) -> c_int {
 
 /// 应用均衡器预设
 ///
+/// # Safety
+/// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
+///
 /// 返回 0 表示成功，负数表示错误。
 #[no_mangle]
-pub extern "C" fn sb_set_eq_preset(preset: SbEqPreset) -> c_int {
+pub unsafe extern "C" fn sb_set_eq_preset(engine: *mut c_void, preset: SbEqPreset) -> c_int {
     clear_error();
 
+    if engine.is_null() {
+        set_error("engine is null");
+        return SbError::InvalidArgument as c_int;
+    }
+
     let eq_preset = sb_preset_to_eq_preset(preset);
-    if let Ok(mut eq) = get_eq().lock() {
-        eq.set_preset(eq_preset);
+    let engine = unsafe { &*(engine as *const SbEngine) };
+    if let Ok(mut proc) = engine.processor.lock() {
+        proc.set_eq_preset(eq_preset);
     }
 
     EQ_PRESET.store(preset as u32, Ordering::Relaxed);
@@ -3709,16 +3745,25 @@ pub extern "C" fn sb_set_eq_preset(preset: SbEqPreset) -> c_int {
 
 /// 启用/禁用均衡器
 ///
+/// # Safety
+/// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
+///
 /// `enabled` 为 1 启用，0 禁用。
 ///
 /// 返回 0 表示成功，负数表示错误。
 #[no_mangle]
-pub extern "C" fn sb_set_eq_enabled(enabled: c_int) -> c_int {
+pub unsafe extern "C" fn sb_set_eq_enabled(engine: *mut c_void, enabled: c_int) -> c_int {
     clear_error();
 
+    if engine.is_null() {
+        set_error("engine is null");
+        return SbError::InvalidArgument as c_int;
+    }
+
     let is_enabled = enabled != 0;
-    if let Ok(mut eq) = get_eq().lock() {
-        eq.set_enabled(is_enabled);
+    let engine = unsafe { &*(engine as *const SbEngine) };
+    if let Ok(mut proc) = engine.processor.lock() {
+        proc.set_eq_enabled(is_enabled);
     }
 
     EQ_ENABLED.store(is_enabled, Ordering::Relaxed);

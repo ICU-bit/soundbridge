@@ -15,6 +15,9 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     private IntPtr _engine;
     private IntPtr _deviceStore;
     private IntPtr _discovery;
+
+    /// <summary>引擎句柄，供 UI 层传递给需要 engine 参数的 FFI 函数</summary>
+    public IntPtr Engine => _engine;
     private CancellationTokenSource? _statsCts;
     private bool _disposed;
 

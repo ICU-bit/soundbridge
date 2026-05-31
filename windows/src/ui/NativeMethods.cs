@@ -253,15 +253,15 @@ internal static partial class NativeMethods
 
     /// <summary>设置均衡器频段增益</summary>
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int sb_set_eq_band(uint band, float gainDb, float q);
+    internal static extern int sb_set_eq_band(IntPtr engine, uint band, float gainDb, float q);
 
     /// <summary>设置均衡器预设</summary>
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int sb_set_eq_preset(SbEqPreset preset);
+    internal static extern int sb_set_eq_preset(IntPtr engine, SbEqPreset preset);
 
     /// <summary>启用/禁用均衡器</summary>
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int sb_set_eq_enabled(int enabled);
+    internal static extern int sb_set_eq_enabled(IntPtr engine, int enabled);
 
     // ============================================================
     // 混音比例

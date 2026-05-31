@@ -223,14 +223,14 @@ int sb_set_channels(uint32_t channels);
 /** Get current channel count. */
 uint32_t sb_get_channels(void);
 
-/** Set single EQ band. band=0-9, gain_db=-12..+12, q=0.1..10. Returns 0 on success. */
-int sb_set_eq_band(uint32_t band, float gain_db, float q);
+/** Set single EQ band. engine=sb_engine_create result. band=0-9, gain_db=-12..+12, q=0.1..10. Returns 0 on success. */
+int sb_set_eq_band(void* engine, uint32_t band, float gain_db, float q);
 
-/** Apply EQ preset. Returns 0 on success. */
-int sb_set_eq_preset(SbEqPreset preset);
+/** Apply EQ preset. engine=sb_engine_create result. Returns 0 on success. */
+int sb_set_eq_preset(void* engine, SbEqPreset preset);
 
-/** Enable/disable EQ (1=enabled, 0=disabled). Returns 0 on success. */
-int sb_set_eq_enabled(int enabled);
+/** Enable/disable EQ (1=enabled, 0=disabled). engine=sb_engine_create result. Returns 0 on success. */
+int sb_set_eq_enabled(void* engine, int enabled);
 
 /** Enable/disable auto profile mode (1=enabled, 0=disabled). Returns 0 on success. */
 int sb_set_auto_profile_enabled(int enabled);
