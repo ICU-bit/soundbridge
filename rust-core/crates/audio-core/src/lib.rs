@@ -26,6 +26,9 @@ pub use hotkeys::{HotkeyAction, HotkeyConfig, HotkeyManager};
 pub mod notifications;
 pub use notifications::{NotificationConfig, NotificationManager, NotificationType};
 
+pub mod audio_profile;
+pub use audio_profile::{AudioConfig, AudioProfile};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SampleFormat {
     I16,
