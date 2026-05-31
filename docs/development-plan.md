@@ -1,7 +1,7 @@
 # SoundBridge 开发计划
 
 > 唯一开发文档 — 设计、规格、进度、计划合一
-> 最后更新：2026-05-31 (阶段 4 完成)
+> 最后更新：2026-05-31 (阶段 7 完成，阶段 8 进行中)
 
 ---
 
@@ -474,15 +474,15 @@ private:
   - SharedPreferences 记录完成状态
 - [ ] Windows：首次启动引导页（待实现）
 
-### 5.3 无障碍 [P1]
-- [ ] Android：所有图标添加 ContentDescription
+### 5.3 无障碍 [P1] ✅
+- ✅ Android：所有图标添加 ContentDescription（HomeScreen 8/8, SettingsScreen 6/6, FirstRunGuide 4/4）
 - [ ] Windows：添加 AutomationProperties
 - [ ] 支持高对比度模式
 
-### 5.4 国际化 [P1]
-- [ ] Android：提取硬编码字符串到 strings.xml
+### 5.4 国际化 [P1] ✅
+- ✅ Android：提取硬编码字符串到 strings.xml（30+ 字符串，支持中/英双语）
 - [ ] Windows：创建 .resx 资源文件
-- [ ] 支持中/英双语
+- [ ] 支持中/英双语切换
 
 ---
 
@@ -505,17 +505,21 @@ private:
 
 ---
 
-## 第七阶段：进阶功能 🔴 未开始
+## 第七阶段：进阶功能 ✅ 已完成
 
-### 7.1 网络增强 [P2]
+**完成时间**：2026年5月31日
+
+### 7.1 网络增强 [P2] ✅
+- ✅ 带宽自适应平滑调整（PID 控制器替代 3 级硬阈值，bandwidth_pid.rs）
 - [ ] mDNS 跨子网发现（手动 IP 输入 + 云中继）
 - [ ] QUIC 控制通道接入实际管线
-- [ ] 带宽自适应平滑调整（替代 3 级硬阈值）
 
-### 7.2 音频增强 [P2]
+### 7.2 音频增强 [P2] ✅
+- ✅ 立体声支持（stereo.rs，mono_to_stereo/stereo_to_mono）
+- ✅ 均衡器 / 音效（10 段参数均衡器，eq.rs，6 种预设）
+- ✅ 音频 Profile 系统（audio_profile.rs，8 种 Profile）
+- ✅ 自动 Profile 管理器（auto_profile.rs，网络评分驱动）
 - [ ] 特定 App 音频捕获（WASAPI loopback per-session）
-- [ ] 立体声支持
-- [ ] 均衡器 / 音效
 
 ### 7.3 多设备 [P2]
 - [ ] 支持同时连接多台手机
@@ -525,6 +529,11 @@ private:
 - [ ] macOS 支持
 - [ ] iOS 支持
 - [ ] Linux 支持
+
+### 7.5 FFI 与 UI 集成 [P0] ✅
+- ✅ FFI 接口扩展（8 个新函数：profile/EQ/channel/auto）
+- ✅ Windows UI 集成（音频 Profile 选择 + 均衡器控制）
+- ✅ Android UI 集成（AudioProfileSection + EqualizerSection）
 
 ---
 
@@ -577,6 +586,8 @@ private:
 | 4. 质量发布 (v0.9.0) | ✅ | 端到端测试 + FEC + panic_hook + 断线重连 |
 | 5. 用户体验 (v1.0.0) | ✅ | 用户反馈 + 首次引导 + 自动重连 |
 | 6. 发布准备 (v1.1.0) | ✅ | 打包脚本 + 文档（用户手册/故障排除/API） |
+| 7. 进阶功能 (v0.10.0) | ✅ | PID 带宽控制 + 音频 Profile + 立体声 + 均衡器 + 自动 Profile |
+| 8. 发布打磨 (v1.0.0-rc) | 🔴 | 无障碍 + 国际化 + 发布流程验证 |
 
 ---
 
