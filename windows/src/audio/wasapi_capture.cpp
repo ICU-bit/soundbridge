@@ -60,6 +60,12 @@ void WasapiCapture::shutdown() {
     enumerator_.Reset();
 
     initialized_ = false;
+
+    if (com_initialized_) {
+        CoUninitialize();
+        com_initialized_ = false;
+    }
+
     spdlog::info("WasapiCapture shutdown");
 }
 
@@ -152,6 +158,7 @@ bool WasapiCapture::init_com() {
         spdlog::error("CoInitializeEx failed: 0x{:08X}", static_cast<uint32_t>(hr));
         return false;
     }
+    com_initialized_ = (hr == S_OK);
 
     hr = CoCreateInstance(
         __uuidof(MMDeviceEnumerator),

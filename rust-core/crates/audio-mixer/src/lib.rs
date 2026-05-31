@@ -19,7 +19,7 @@ impl Default for MixerConfig {
     fn default() -> Self {
         Self {
             sample_rate: 48000,
-            channels: 2,
+            channels: 1,
             clipping_protection: true,
         }
     }

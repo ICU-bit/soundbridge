@@ -7,6 +7,8 @@
 
 namespace soundbridge {
 
+static std::atomic<int> winsock_refcount{0};
+
 UdpTransport::UdpTransport() = default;
 
 UdpTransport::~UdpTransport() {
@@ -58,6 +60,10 @@ void UdpTransport::disconnect() {
     srtp_send_.reset();
     srtp_recv_.reset();
 
+    if (winsock_refcount.fetch_sub(1) == 1) {
+        WSACleanup();
+    }
+
     spdlog::info("UdpTransport disconnected");
 }
 
@@ -68,8 +74,7 @@ bool UdpTransport::send(const uint8_t* data, size_t size) {
 
     std::lock_guard<std::mutex> lock(send_mutex_);
 
-    static uint32_t sequence = 0;
-    auto packet = PacketBuilder::build(PacketType::Audio, sequence++, data, size);
+    auto packet = PacketBuilder::build(PacketType::Audio, send_sequence_++, data, size);
 
     // 如果启用加密，对整个数据包进行 SRTP 加密
     const uint8_t* send_data = packet.data();
@@ -188,11 +193,14 @@ DtlsState UdpTransport::dtls_state() const {
 }
 
 bool UdpTransport::init_winsock() {
-    WSADATA wsa_data;
-    const int result = WSAStartup(MAKEWORD(2, 2), &wsa_data);
-    if (result != 0) {
-        spdlog::error("WSAStartup failed: {}", result);
-        return false;
+    if (winsock_refcount.fetch_add(1) == 0) {
+        WSADATA wsa_data;
+        const int result = WSAStartup(MAKEWORD(2, 2), &wsa_data);
+        if (result != 0) {
+            spdlog::error("WSAStartup failed: {}", result);
+            winsock_refcount.fetch_sub(1);
+            return false;
+        }
     }
     return true;
 }

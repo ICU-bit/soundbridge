@@ -63,7 +63,7 @@ private:
 
     // DTLS/SRTP 加密
     std::unique_ptr<DtlsSession> dtls_session_;
-    bool encryption_enabled_ = false;
+    std::atomic<bool> encryption_enabled_{false};
 };
 
 } // namespace soundbridge

@@ -13,7 +13,7 @@ use audio_mixer::*;
 fn test_mixer_config_default() {
     let config = MixerConfig::default();
     assert_eq!(config.sample_rate, 48000);
-    assert_eq!(config.channels, 2);
+    assert_eq!(config.channels, 1);
     assert!(config.clipping_protection);
 }
 

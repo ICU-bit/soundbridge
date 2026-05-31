@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import androidx.activity.ComponentActivity
@@ -39,11 +40,24 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private val requiredPermissions = arrayOf(
-        Manifest.permission.RECORD_AUDIO,
-        Manifest.permission.INTERNET,
-        Manifest.permission.ACCESS_NETWORK_STATE
-    )
+    private val requiredPermissions: Array<String>
+        get() {
+            val perms = mutableListOf(
+                Manifest.permission.RECORD_AUDIO,
+                Manifest.permission.INTERNET,
+                Manifest.permission.ACCESS_NETWORK_STATE,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            )
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                perms.add(Manifest.permission.NEARBY_WIFI_DEVICES)
+                perms.add(Manifest.permission.POST_NOTIFICATIONS)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                perms.add(Manifest.permission.BLUETOOTH_CONNECT)
+                perms.add(Manifest.permission.BLUETOOTH_ADVERTISE)
+            }
+            return perms.toTypedArray()
+        }
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -90,7 +104,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun initializeAudioEngine() {
-        System.loadLibrary("soundbridge_native")
+        // Native library is loaded in NativeAudioEngine.init
     }
 
     override fun onDestroy() {
