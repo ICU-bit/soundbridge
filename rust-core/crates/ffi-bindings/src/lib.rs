@@ -243,8 +243,8 @@ pub struct SbEngine {
     /// 是否暂停
     paused: bool,
 
-    /// 是否静音
-    muted: bool,
+    /// 是否静音（Arc<AtomicBool> 供管线线程跨线程读取）
+    muted: Arc<AtomicBool>,
 
     /// 连接方式
     connection_type: ConnectionType,
@@ -322,7 +322,7 @@ pub extern "C" fn sb_engine_create() -> *mut c_void {
         pipeline: None,
         volume: 1.0,
         paused: false,
-        muted: false,
+        muted: Arc::new(AtomicBool::new(false)),
         connection_type: ConnectionType::WiFiLan,
         hotspot_state: HotspotState::Idle,
         hotspot_config: HotspotConfig::default(),
@@ -1159,6 +1159,7 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
     let sender_sequence = sequence.clone();
     let sender_capture_ring = capture_ring.clone();
     let sender_mix_ring = local_mix_ring.clone();
+    let sender_muted = engine.muted.clone();
     let sender_handle = match std::thread::Builder::new()
         .name("sb-sender".to_string())
         .spawn(move || {
@@ -1215,6 +1216,16 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                 if read < frame_size {
                     // 数据不足一帧，让出 CPU 时间片
                     std::thread::yield_now();
+                    continue;
+                }
+
+                // 静音检查：如果 muted，用零填充代替采集音频，跳过编码发送
+                if sender_muted.load(Ordering::Relaxed) {
+                    frame_buf[..frame_size].fill(0.0);
+                    sender_mix_ring.write(&frame_buf[..frame_size]);
+                    sender_stats
+                        .captured_level_bits
+                        .store(0.0f32.to_bits(), Ordering::Relaxed);
                     continue;
                 }
 
@@ -1316,6 +1327,7 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
     let receiver_mixer = engine.mixer.clone();
     let pc_volume = engine.mix_pc_volume.clone();
     let phone_volume = engine.mix_phone_volume.clone();
+    let receiver_muted = engine.muted.clone();
     // 重连配置（从 engine 读取，闭包内使用本地副本）
     let reconnect_enabled = engine.reconnect_enabled;
     let reconnect_timeout_ms = engine.reconnect_timeout_ms;
@@ -1359,6 +1371,7 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                                    pc_volume: &AtomicU32,
                                    phone_volume: &AtomicU32,
                                    receiver_stats: &SharedPipelineStats,
+                                   receiver_muted: &AtomicBool,
                                    frame_size: usize,
                                    data: &[u8]| {
                 match decoder.decode_into(data, decode_buf) {
@@ -1394,6 +1407,13 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                         } else {
                             // 本地数据不足，直接写入远端音频
                             receiver_playback_ring.write(remote_samples);
+                        }
+
+                        // 静音检查：如果 muted，用静音覆盖播放输出
+                        if receiver_muted.load(Ordering::Relaxed) {
+                            // 写入一帧静音，覆盖之前写入的音频
+                            let silence = vec![0.0f32; frame_size];
+                            receiver_playback_ring.write(&silence);
                         }
 
                         receiver_stats
@@ -1499,6 +1519,7 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                                 &pc_volume,
                                 &phone_volume,
                                 &receiver_stats,
+                                &receiver_muted,
                                 frame_size,
                                 &packet.data,
                             );
@@ -1589,6 +1610,7 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                         &pc_volume,
                         &phone_volume,
                         &receiver_stats,
+                        &receiver_muted,
                         frame_size,
                         &packet.data,
                     );
@@ -2531,9 +2553,9 @@ pub unsafe extern "C" fn sb_set_mute(engine: *mut c_void, muted: c_int) -> c_int
         return SbError::InvalidArgument as c_int;
     }
 
-    let engine = unsafe { &mut *(engine as *mut SbEngine) };
-    engine.muted = muted != 0;
-    tracing::info!("Mute state set: {}", engine.muted);
+    let engine = unsafe { &*(engine as *const SbEngine) };
+    engine.muted.store(muted != 0, Ordering::Relaxed);
+    tracing::info!("Mute state set: {}", muted != 0);
     SbError::Ok as c_int
 }
 
@@ -2553,7 +2575,7 @@ pub unsafe extern "C" fn sb_get_mute(engine: *mut c_void) -> c_int {
     }
 
     let engine = unsafe { &*(engine as *const SbEngine) };
-    if engine.muted {
+    if engine.muted.load(Ordering::Relaxed) {
         1
     } else {
         0
@@ -3784,12 +3806,12 @@ mod tests {
             sb_set_mute(engine, 1);
             {
                 let engine_ref = &*(engine as *const SbEngine);
-                assert!(engine_ref.muted);
+                assert!(engine_ref.muted.load(Ordering::Relaxed));
             }
             sb_set_mute(engine, 0);
             {
                 let engine_ref = &*(engine as *const SbEngine);
-                assert!(!engine_ref.muted);
+                assert!(!engine_ref.muted.load(Ordering::Relaxed));
             }
             sb_engine_destroy(engine);
         }
