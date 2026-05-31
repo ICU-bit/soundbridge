@@ -41,7 +41,7 @@ public partial class MainWindow : Window
         var logger = _loggerFactory.CreateLogger<HotkeyManager>();
         _hotkeyManager = new HotkeyManager(hWnd, logger);
 
-        _hotkeyManager.Register(HotkeyManager.MOD_CONTROL | HotkeyManager.MOD_ALT, 0x54,
+        _hotkeyManager.Register(HotkeyManager.MOD_CONTROL | HotkeyManager.MOD_ALT, 0x50, // Ctrl+Alt+P
             async () => { try { await ViewModel.ToggleConnectionCommand.ExecuteAsync(null); } catch (Exception ex) { _logger.LogError(ex, "Hotkey failed"); } });
         _hotkeyManager.Register(HotkeyManager.MOD_CONTROL | HotkeyManager.MOD_ALT, 0x4D,
             () => ViewModel.ToggleMuteCommand.Execute(null));
