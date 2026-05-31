@@ -22,15 +22,19 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.soundbridge.audio.AudioService
+import com.soundbridge.audio.FeedbackManager
 import com.soundbridge.ui.theme.*
 
 @Composable
 fun HomeScreen(audioService: AudioService? = null) {
     val isConnected by (audioService?.connectionState?.collectAsState() ?: remember { mutableStateOf(AudioService.ConnectionState.DISCONNECTED) })
     val audioLevel by (audioService?.audioLevel?.collectAsState() ?: remember { mutableFloatStateOf(0f) })
+    val feedbackState by (audioService?.feedbackState?.collectAsState() ?: remember { mutableStateOf(FeedbackManager.FeedbackState.Idle) })
+    val errorMessage by (audioService?.errorMessage?.collectAsState() ?: remember { mutableStateOf(null) })
     var isMuted by remember { mutableStateOf(audioService?.isMuted() ?: false) }
     var serverAddress by remember { mutableStateOf("192.168.1.100") }
     var serverPort by remember { mutableStateOf("8080") }
@@ -39,6 +43,28 @@ fun HomeScreen(audioService: AudioService? = null) {
     val connectionTypeNames = listOf("WiFi 局域网", "WiFi 直连", "USB/ADB", "蓝牙")
 
     val connected = isConnected == AudioService.ConnectionState.CONNECTED
+
+    // 错误对话框
+    when (val state = feedbackState) {
+        is FeedbackManager.FeedbackState.Error -> {
+            ErrorDialog(
+                message = state.message,
+                onDismiss = { audioService?.clearError() }
+            )
+        }
+        is FeedbackManager.FeedbackState.Timeout -> {
+            TimeoutDialog(
+                elapsedMs = state.elapsedMs,
+                onRetry = {
+                    audioService?.clearTimeout()
+                    val port = serverPort.toIntOrNull() ?: 8080
+                    audioService?.connectToServer(serverAddress, port)
+                },
+                onDismiss = { audioService?.clearTimeout() }
+            )
+        }
+        else -> {}
+    }
 
     Column(
         modifier = Modifier
@@ -565,4 +591,109 @@ fun MixRatioSection(
             }
         }
     }
+}
+
+@Composable
+fun ErrorDialog(
+    message: String,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = Icons.Default.Error,
+                contentDescription = null,
+                tint = SoundBridgeError
+            )
+        },
+        title = {
+            Text(
+                text = "连接失败",
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+        },
+        text = {
+            Text(
+                text = message,
+                textAlign = TextAlign.Center
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = SoundBridgePrimary
+                )
+            ) {
+                Text("确定")
+            }
+        },
+        containerColor = MaterialTheme.colorScheme.surface,
+        titleContentColor = MaterialTheme.colorScheme.onSurface,
+        textContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+    )
+}
+
+@Composable
+fun TimeoutDialog(
+    elapsedMs: Long,
+    onRetry: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val elapsedSeconds = elapsedMs / 1000
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = Icons.Default.Timer,
+                contentDescription = null,
+                tint = ConnectionConnecting
+            )
+        },
+        title = {
+            Text(
+                text = "连接超时",
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+        },
+        text = {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "已等待 ${elapsedSeconds}秒",
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "请检查：\n• 网络连接是否正常\n• 服务器地址是否正确\n• 防火墙是否允许连接",
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    textAlign = TextAlign.Start
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onRetry,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = SoundBridgePrimary
+                )
+            ) {
+                Text("重试")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        },
+        containerColor = MaterialTheme.colorScheme.surface,
+        titleContentColor = MaterialTheme.colorScheme.onSurface,
+        textContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+    )
 }

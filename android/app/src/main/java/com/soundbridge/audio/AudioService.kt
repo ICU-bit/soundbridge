@@ -24,6 +24,7 @@ class AudioService : Service() {
     private val binder = AudioServiceBinder()
     private var engineHandle: Long = 0L
     private var discoveryManager: DeviceDiscoveryManager? = null
+    private var feedbackManager: FeedbackManager? = null
 
     private val prefs: SharedPreferences by lazy {
         getSharedPreferences("soundbridge_prefs", MODE_PRIVATE)
@@ -65,6 +66,14 @@ class AudioService : Service() {
 
     private var btUdpBridge: BluetoothUdpBridge? = null
 
+    /** 用户反馈状态 */
+    val feedbackState: StateFlow<FeedbackManager.FeedbackState>
+        get() = feedbackManager?.feedbackState ?: MutableStateFlow(FeedbackManager.FeedbackState.Idle)
+
+    /** 错误消息 */
+    val errorMessage: StateFlow<String?>
+        get() = feedbackManager?.errorMessage ?: MutableStateFlow(null)
+
     /** 加密状态 */
     enum class EncryptionState {
         DISABLED, ENABLED
@@ -91,6 +100,7 @@ class AudioService : Service() {
     override fun onCreate() {
         super.onCreate()
         initializeEngine()
+        feedbackManager = FeedbackManager(this)
         discoveryManager = DeviceDiscoveryManager(this)
         hotspotManager = HotspotManager(this)
         adbManager = AdbManager()
@@ -158,14 +168,17 @@ class AudioService : Service() {
     fun connectToServer(address: String, port: Int) {
         if (engineHandle == 0L) {
             _connectionState.value = ConnectionState.DISCONNECTED
+            feedbackManager?.onConnectionFailed(FeedbackManager.ErrorCode.ENGINE_NOT_INITIALIZED)
             return
         }
         _connectionState.value = ConnectionState.CONNECTING
+        feedbackManager?.onConnectionStarted()
 
         // 绑定本地 UDP 端口（0 = 自动分配）
         val bindResult = NativeAudioEngine.nativeBind(engineHandle, 0)
         if (bindResult != 0) {
             _connectionState.value = ConnectionState.DISCONNECTED
+            feedbackManager?.onConnectionFailed(FeedbackManager.ErrorCode.BIND_FAILED)
             return
         }
 
@@ -173,6 +186,7 @@ class AudioService : Service() {
         val connectResult = NativeAudioEngine.nativeConnect(engineHandle, "$address:$port")
         if (connectResult != 0) {
             _connectionState.value = ConnectionState.DISCONNECTED
+            feedbackManager?.onConnectionFailed(FeedbackManager.ErrorCode.CONNECT_FAILED)
             return
         }
 
@@ -183,8 +197,10 @@ class AudioService : Service() {
         val pipelineResult = NativeAudioEngine.nativePipelineStart(engineHandle)
         if (pipelineResult == 0) {
             _connectionState.value = ConnectionState.CONNECTED
+            feedbackManager?.onConnectionSuccess()
         } else {
             _connectionState.value = ConnectionState.DISCONNECTED
+            feedbackManager?.onConnectionFailed(FeedbackManager.ErrorCode.PIPELINE_FAILED)
         }
     }
 
@@ -196,6 +212,7 @@ class AudioService : Service() {
             NativeAudioEngine.nativeStop(engineHandle)
         }
         _connectionState.value = ConnectionState.DISCONNECTED
+        feedbackManager?.onDisconnected()
     }
 
     /** 开始扫描设备 */
@@ -369,13 +386,16 @@ class AudioService : Service() {
     fun connectViaBluetooth(deviceAddress: String) {
         if (engineHandle == 0L) {
             _connectionState.value = ConnectionState.DISCONNECTED
+            feedbackManager?.onConnectionFailed(FeedbackManager.ErrorCode.ENGINE_NOT_INITIALIZED)
             return
         }
         _connectionState.value = ConnectionState.CONNECTING
+        feedbackManager?.onConnectionStarted()
 
         val bindResult = NativeAudioEngine.nativeBind(engineHandle, 0)
         if (bindResult != 0) {
             _connectionState.value = ConnectionState.DISCONNECTED
+            feedbackManager?.onConnectionFailed(FeedbackManager.ErrorCode.BIND_FAILED)
             return
         }
 
@@ -383,6 +403,7 @@ class AudioService : Service() {
         if (socket == null) {
             Log.e(TAG, "No Bluetooth socket available for bridge")
             _connectionState.value = ConnectionState.DISCONNECTED
+            feedbackManager?.onConnectionFailed(FeedbackManager.ErrorCode.CONNECT_FAILED, "蓝牙连接不可用")
             return
         }
 
@@ -402,11 +423,13 @@ class AudioService : Service() {
         val pipelineResult = NativeAudioEngine.nativePipelineStart(engineHandle)
         if (pipelineResult == 0) {
             _connectionState.value = ConnectionState.CONNECTED
+            feedbackManager?.onConnectionSuccess()
             Log.i(TAG, "Audio pipeline started via Bluetooth from $deviceAddress")
         } else {
             bridge.stop()
             btUdpBridge = null
             _connectionState.value = ConnectionState.DISCONNECTED
+            feedbackManager?.onConnectionFailed(FeedbackManager.ErrorCode.PIPELINE_FAILED)
         }
     }
 
@@ -433,6 +456,20 @@ class AudioService : Service() {
      */
     fun getBluetoothStateCode(): Int = bluetoothManager?.getStateCode() ?: 0
 
+    /**
+     * 清除错误消息
+     */
+    fun clearError() {
+        feedbackManager?.clearError()
+    }
+
+    /**
+     * 清除超时状态
+     */
+    fun clearTimeout() {
+        feedbackManager?.clearTimeout()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         btUdpBridge?.stop()
@@ -446,6 +483,8 @@ class AudioService : Service() {
         hotspotManager = null
         discoveryManager?.release()
         discoveryManager = null
+        feedbackManager?.release()
+        feedbackManager = null
         if (engineHandle != 0L) {
             NativeAudioEngine.nativeRelease(engineHandle)
             engineHandle = 0L
