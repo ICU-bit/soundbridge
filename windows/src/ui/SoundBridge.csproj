@@ -23,4 +23,15 @@
     <PackageReference Include="Serilog.Sinks.Debug" Version="2.0.0" />
   </ItemGroup>
 
+  <!-- Auto-copy native DLLs to output directory -->
+  <PropertyGroup>
+    <RustTargetDir>$(MSBuildThisFileDirectory)..\..\..\rust-core\target\release</RustTargetDir>
+    <CppBuildDir>$(MSBuildThisFileDirectory)..\..\build\bin\$(Configuration)</CppBuildDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="$(RustTargetDir)\ffi_bindings.dll" CopyToOutputDirectory="PreserveNewest" Link="ffi_bindings.dll" />
+    <None Include="$(CppBuildDir)\SoundBridge.dll" CopyToOutputDirectory="PreserveNewest" Link="SoundBridge.dll" />
+  </ItemGroup>
+
 </Project>
