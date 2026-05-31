@@ -13,7 +13,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.soundbridge.native.NativeAudioEngine
 import com.soundbridge.audio.AudioService
 
 enum class AudioMode(val label: String, val subtitle: String) {
@@ -82,9 +81,7 @@ fun SettingsScreen(engineHandle: Long = 0L, audioService: AudioService? = null) 
                 selectedOption = selectedAudioMode,
                 onOptionSelected = { mode ->
                     selectedAudioMode = mode
-                    if (engineHandle != 0L) {
-                        NativeAudioEngine.nativeSetAudioMode(engineHandle, mode.ordinal)
-                    }
+                    audioService?.setAudioMode(mode.ordinal)
                 },
                 optionLabel = { it.label }
             )

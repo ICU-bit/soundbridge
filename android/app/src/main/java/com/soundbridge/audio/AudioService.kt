@@ -4,6 +4,7 @@ import android.app.Notification
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.ServiceInfo
 import android.os.Binder
 import android.os.Build
@@ -23,6 +24,10 @@ class AudioService : Service() {
     private val binder = AudioServiceBinder()
     private var engineHandle: Long = 0L
     private var discoveryManager: DeviceDiscoveryManager? = null
+
+    private val prefs: SharedPreferences by lazy {
+        getSharedPreferences("soundbridge_prefs", MODE_PRIVATE)
+    }
 
     // === 平台连接管理器（Real implementations）===
     private var hotspotManager: HotspotManager? = null
@@ -106,6 +111,13 @@ class AudioService : Service() {
             1,
             AudioCaptureManager.FRAME_SIZE
         )
+
+        val savedMode = prefs.getInt("audio_mode", 0)
+        NativeAudioEngine.nativeSetAudioMode(engineHandle, savedMode)
+
+        val savedPcVolume = prefs.getFloat("mix_pc_volume", 0.5f)
+        val savedPhoneVolume = prefs.getFloat("mix_phone_volume", 0.5f)
+        NativeAudioEngine.nativeSetMixRatio(engineHandle, savedPcVolume, savedPhoneVolume)
     }
 
     private fun startForegroundService() {
@@ -192,11 +204,23 @@ class AudioService : Service() {
         discoveryManager?.stopDiscovery()
     }
 
-    /** 设置混音比例（0.0=全PC，1.0=全手机，0.5=均衡） */
+    /** 设置音频模式并持久化 */
+    fun setAudioMode(mode: Int) {
+        if (engineHandle != 0L) {
+            NativeAudioEngine.nativeSetAudioMode(engineHandle, mode)
+        }
+        prefs.edit().putInt("audio_mode", mode).apply()
+    }
+
+    /** 设置混音比例（0.0=全PC，1.0=全手机，0.5=均衡）并持久化 */
     fun setMixRatio(pcVolume: Float, phoneVolume: Float) {
         if (engineHandle != 0L) {
             NativeAudioEngine.nativeSetMixRatio(engineHandle, pcVolume, phoneVolume)
         }
+        prefs.edit()
+            .putFloat("mix_pc_volume", pcVolume)
+            .putFloat("mix_phone_volume", phoneVolume)
+            .apply()
     }
 
     /** 获取混音比例，返回 [pcVolume, phoneVolume]，失败返回 null */
