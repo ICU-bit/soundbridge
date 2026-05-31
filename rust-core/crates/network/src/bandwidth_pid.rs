@@ -205,15 +205,15 @@ impl PidBandwidthController {
         self.prev_error = error;
 
         // PID 输出
-        let output = self.config.kp * error
-            + self.config.ki * self.integral
-            + self.config.kd * derivative;
+        let output =
+            self.config.kp * error + self.config.ki * self.integral + self.config.kd * derivative;
 
         // 调整码率
         let new_bitrate = self.current_bitrate as f32 - output * 1000.0;
-        self.current_bitrate =
-            new_bitrate.clamp(self.config.min_bitrate as f32, self.config.max_bitrate as f32)
-                as u32;
+        self.current_bitrate = new_bitrate.clamp(
+            self.config.min_bitrate as f32,
+            self.config.max_bitrate as f32,
+        ) as u32;
 
         self.current_bitrate
     }

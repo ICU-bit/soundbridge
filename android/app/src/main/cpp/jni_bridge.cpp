@@ -501,7 +501,7 @@ Java_com_soundbridge_native_NativeAudioEngine_nativeConnect(
     }
     g_target_port = static_cast<uint16_t>(port);
 
-    LOGI("Pipeline target set to %s:%d", g_target_address.c_str(), g_target_port);
+    LOGI("Pipeline target set to %s:%d", g_target_address.c_str(), g_target_port.load());
     return 0;
 #endif
 }

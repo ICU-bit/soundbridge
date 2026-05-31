@@ -3466,7 +3466,11 @@ pub extern "C" fn sb_set_audio_profile(profile: SbAudioProfile) -> c_int {
             CHANNELS.store(config.channels, Ordering::Relaxed);
         }
 
-        tracing::info!("Audio profile set to {:?} ({})", profile as u32, audio_profile.name());
+        tracing::info!(
+            "Audio profile set to {:?} ({})",
+            profile as u32,
+            audio_profile.name()
+        );
     }
 
     SbError::Ok as c_int

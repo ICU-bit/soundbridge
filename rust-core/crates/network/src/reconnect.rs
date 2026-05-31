@@ -205,8 +205,7 @@ impl ReconnectManager {
         // 如果是从重连恢复，记录成功
         if self.reconnect_start.is_some() {
             if let Some(start) = self.reconnect_start.take() {
-                self.stats.last_reconnect_duration_ms =
-                    Some(start.elapsed().as_millis() as u64);
+                self.stats.last_reconnect_duration_ms = Some(start.elapsed().as_millis() as u64);
                 self.stats.successful_reconnects += 1;
                 self.state = ReconnectState::Recovered;
             }
@@ -217,9 +216,7 @@ impl ReconnectManager {
 
     /// 当连接断开时调用
     pub fn on_disconnected(&mut self) {
-        if self.state == ReconnectState::Connected
-            || self.state == ReconnectState::Recovered
-        {
+        if self.state == ReconnectState::Connected || self.state == ReconnectState::Recovered {
             self.state = ReconnectState::Disconnected;
             self.last_heartbeat = None;
         }
@@ -235,9 +232,7 @@ impl ReconnectManager {
     ///
     /// 当已连接状态且超过心跳超时时间未收到心跳响应时返回 `true`。
     pub fn is_heartbeat_timeout(&self) -> bool {
-        if self.state != ReconnectState::Connected
-            && self.state != ReconnectState::Recovered
-        {
+        if self.state != ReconnectState::Connected && self.state != ReconnectState::Recovered {
             return false;
         }
         if let Some(last) = self.last_heartbeat {
@@ -291,8 +286,7 @@ impl ReconnectManager {
         self.stats.current_backoff_ms = self.current_backoff_ms;
 
         // 递增退避延迟（指数退避，不超过最大值）
-        self.current_backoff_ms =
-            (self.current_backoff_ms * 2).min(self.config.max_backoff_ms);
+        self.current_backoff_ms = (self.current_backoff_ms * 2).min(self.config.max_backoff_ms);
 
         Ok(true)
     }
