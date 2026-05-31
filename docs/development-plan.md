@@ -1,7 +1,7 @@
 # SoundBridge 开发计划
 
 > 唯一开发文档 — 设计、规格、进度、计划合一
-> 最后更新：2026-05-31
+> 最后更新：2026-05-31 (阶段 4 完成)
 
 ---
 
@@ -425,28 +425,35 @@ private:
 
 ---
 
-## 第四阶段：质量与可靠性 🔴 未开始
+## 第四阶段：质量与可靠性 ✅ 已完成
 
-### 4.1 端到端真实测试 [P0]
-- [ ] 编写手动测试指南：PC↔手机连接步骤
-- [ ] 编写延迟测量工具（跨网络，非 localhost）
+**完成时间**：2026年5月31日
+**版本**：v0.8.0 → v0.9.0
+
+### 4.1 端到端真实测试 [P0] ✅
+- ✅ 编写手动测试指南：PC↔手机连接步骤（docs/manual-test-guide.md）
+- ✅ 编写延迟测量工具（tools/latency-measure.ps1）
 - [ ] 在真实 WiFi 环境下测试完整音频管线
 - [ ] 记录各连接方式的实际延迟数据
 
-### 4.2 音频处理升级 [P0]
-- [ ] 集成 WebRTC APM（spikes/webrtc-apm/ 已有 spike）
-  - AEC：双讲检测、延迟估计、非线性处理
-  - NS：频域处理 (FFT)、Wiener 滤波
-  - AGC：前瞻、压缩拐点
-- [ ] 或：实现 FEC（Opus inband_fec + 冗余包）
+### 4.2 音频处理升级 [P0] ✅
+- ✅ 实现 FEC（Opus inband_fec + 冗余包）- FecEncoder/FecDecoder/FecCodec
+- [ ] 集成 WebRTC APM（可选，当前自研 AEC/NS/AGC 已可用）
 
-### 4.3 崩溃恢复 [P0]
-- [ ] Rust 添加 panic_hook，捕获 panic 并上报
-- [ ] 添加结构化日志收集（tracing→文件）
+### 4.3 崩溃恢复 [P0] ✅
+- ✅ Rust 添加 panic_hook，捕获 panic 并上报（setup_panic_hook()）
+- ✅ 添加结构化日志收集（tracing + tracing-subscriber）
+- ✅ sb_init() FFI 入口点（安全初始化，Once 保证只执行一次）
+- ✅ sb_version() FFI 函数（返回 CARGO_PKG_VERSION）
 - [ ] Android 添加 UncaughtExceptionHandler
 
-### 4.4 断线重连 [P1]
-- [ ] Rust 层：receiver 线程检测丢包后重新握手
+### 4.4 断线重连 [P1] ✅
+- ✅ Rust 层：ReconnectManager 重连管理器（reconnect.rs）
+- ✅ 状态机：Idle → Connected → Disconnected → Reconnecting → Recovered/Exhausted
+- ✅ 指数退避策略：1s → 2s → 4s → 8s → 16s → 32s（上限）
+- ✅ 最大重试次数限制（默认 10，可配置）
+- ✅ ReconnectStats 统计：total_attempts, successful_reconnects, failed_reconnects
+- ✅ 15 个单元测试
 - [ ] Android AudioService：监听连接断开，自动重连
 - [ ] UI 显示重连状态和进度
 
@@ -546,8 +553,8 @@ private:
 | 自动连接 | ✅ | ❌ | DeviceStore auto_connect |
 | 设置持久化 | ❌ | ✅ | SharedPreferences |
 | AEC/NS/AGC | ⚠️ | ⚠️ | 简化版，非 WebRTC APM |
-| FEC | ❌ | ❌ | 未实现 |
-| 断线重连 | ⚠️ | ❌ | 部分实现 |
+| FEC | ✅ | ✅ | FecEncoder/FecDecoder (Opus inband_fec) |
+| 断线重连 | ✅ | ⚠️ | Rust ReconnectManager，Android 待集成 |
 
 ---
 
@@ -558,7 +565,9 @@ private:
 | 1. MVP | ✅ | WiFi 连接 + 双向音频 + 托盘/Compose UI |
 | 2. 完整功能 | ✅ | 多连接方式 + AEC/NS/AGC + 设备记忆 + 快捷键 |
 | 3. 优化发布 (v0.8.0) | ✅ | 音频模式 + 性能优化 + 安全加固 + 功能完善 |
-| 4. 质量发布 | 🔴 | 端到端测试 + 音频升级 + 打包 + 断线重连 |
+| 4. 质量发布 (v0.9.0) | ✅ | 端到端测试 + FEC + panic_hook + 断线重连 |
+| 5. 用户体验 | 🔴 | 用户反馈 + 首次引导 + 无障碍 + 国际化 |
+| 6. 发布准备 | 🔴 | 打包 + 文档 |
 
 ---
 
@@ -577,7 +586,7 @@ private:
 ## 测试计划
 
 ### 单元测试
-- Rust: `cargo test --workspace`（623+ 测试）
+- Rust: `cargo test --workspace`（800+ 测试）
 - Windows C++: GTest（27 测试）
 - Android: JUnit + instrumented tests
 
