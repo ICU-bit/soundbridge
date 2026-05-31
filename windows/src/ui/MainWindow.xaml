@@ -24,6 +24,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
@@ -242,7 +243,24 @@
             </StackPanel>
         </Border>
 
+        <!-- 开机自启 -->
+        <Border Grid.Row="9" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                CornerRadius="12" Padding="16">
+            <StackPanel Spacing="12">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon Glyph="\uE7E8" VerticalAlignment="Center"/>
+                    <TextBlock Text="Auto-start" FontSize="16" FontWeight="SemiBold"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+                <TextBlock Text="Launch SoundBridge automatically when Windows starts (minimized to tray)."
+                           FontSize="12" Opacity="0.6" TextWrapping="Wrap"/>
+                <ToggleSwitch IsOn="{x:Bind ViewModel.IsAutoStartEnabled, Mode=TwoWay}"
+                              OnContent="Enabled" OffContent="Disabled"
+                              HorizontalAlignment="Left"/>
+            </StackPanel>
+        </Border>
+
         <!-- 占位（扩展区域） -->
-        <Grid Grid.Row="9"/>
+        <Grid Grid.Row="10"/>
     </Grid>
 </Window>

@@ -45,6 +45,10 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             }
         }
 
+        // 读取开机自启状态
+        _isAutoStartEnabled = AutoStartManager.IsEnabled();
+        _logger.LogInformation("Auto-start: {Enabled}", _isAutoStartEnabled);
+
         // 打开设备存储（持久化到文件）
         string storePath = System.IO.Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -135,6 +139,9 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private bool _isScanning;
+
+    [ObservableProperty]
+    private bool _isAutoStartEnabled;
 
     /// <summary>已发现的设备列表</summary>
     public ObservableCollection<string> DiscoveredDevices { get; } = new();
@@ -575,45 +582,14 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     // Auto-start (Windows Registry)
     // ============================================================
 
-    private const string AppName = "SoundBridge";
-    private const string RunKeyPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
-
-    /// <summary>检查是否已设置开机自启</summary>
-    public static bool IsAutoStartEnabled()
+    partial void OnIsAutoStartEnabledChanged(bool value)
     {
-        try
-        {
-            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(RunKeyPath, false);
-            return key?.GetValue(AppName) != null;
-        }
-        catch
-        {
-            return false;
-        }
-    }
+        if (value)
+            AutoStartManager.Enable();
+        else
+            AutoStartManager.Disable();
 
-    /// <summary>设置开机自启</summary>
-    public static void SetAutoStart(bool enable)
-    {
-        try
-        {
-            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(RunKeyPath, true);
-            if (key == null) return;
-
-            if (enable)
-            {
-                string exePath = Environment.ProcessPath ?? "";
-                key.SetValue(AppName, $"\"{exePath}\" --minimized");
-            }
-            else
-            {
-                key.DeleteValue(AppName, false);
-            }
-        }
-        catch (Exception)
-        {
-            // 忽略注册表操作失败
-        }
+        _logger.LogInformation("Auto-start {Action}", value ? "enabled" : "disabled");
     }
 
     // ============================================================
