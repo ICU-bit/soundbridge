@@ -225,7 +225,7 @@ fun FirstRunGuideScreen(onGuideComplete: () -> Unit) {
                 Spacer(modifier = Modifier.height(32.dp))
 
                 Text(
-                    text = targetPageData.title,
+                    text = stringResource(targetPageData.titleResId),
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground,
@@ -235,7 +235,7 @@ fun FirstRunGuideScreen(onGuideComplete: () -> Unit) {
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Text(
-                    text = targetPageData.description,
+                    text = stringResource(targetPageData.descriptionResId),
                     fontSize = 15.sp,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
                     textAlign = TextAlign.Center,
