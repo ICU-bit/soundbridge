@@ -23,6 +23,11 @@ class AudioService : Service() {
     private var engineHandle: Long = 0L
     private var discoveryManager: DeviceDiscoveryManager? = null
 
+    // === 平台连接管理器（Real implementations）===
+    private var hotspotManager: HotspotManager? = null
+    private var adbManager: AdbManager? = null
+    private var bluetoothManager: BluetoothManager? = null
+
     /** Engine handle for JNI calls. Returns 0L if not initialized. */
     val handle: Long get() = engineHandle
 
@@ -39,6 +44,18 @@ class AudioService : Service() {
     /** 是否正在扫描 */
     val isScanning: StateFlow<Boolean>
         get() = discoveryManager?.isScanning ?: MutableStateFlow(false)
+
+    // === Hotspot (WiFi Direct) state ===
+    val hotspotState: StateFlow<HotspotManager.HotspotState>
+        get() = hotspotManager?.state ?: MutableStateFlow(HotspotManager.HotspotState.Idle)
+
+    // === ADB state ===
+    val adbState: StateFlow<AdbManager.AdbState>
+        get() = adbManager?.state ?: MutableStateFlow(AdbManager.AdbState.Disconnected)
+
+    // === Bluetooth state ===
+    val bluetoothState: StateFlow<BluetoothManager.BluetoothState>
+        get() = bluetoothManager?.state ?: MutableStateFlow(BluetoothManager.BluetoothState.Idle)
 
     /** 加密状态 */
     enum class EncryptionState {
@@ -67,6 +84,9 @@ class AudioService : Service() {
         super.onCreate()
         initializeEngine()
         discoveryManager = DeviceDiscoveryManager(this)
+        hotspotManager = HotspotManager(this)
+        adbManager = AdbManager()
+        bluetoothManager = BluetoothManager(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -226,8 +246,108 @@ class AudioService : Service() {
         }
     }
 
+    // ============================================================
+    // WiFi Direct (Hotspot) 管理
+    // ============================================================
+
+    /**
+     * 创建 WiFi Direct 热点组。
+     * 会同时调用 JNI stub（状态同步）和真正的 Kotlin HotspotManager。
+     */
+    fun createHotspot(ssid: String = "", password: String = "", channel: Int = 0) {
+        // JNI stub call (for state sync with native layer)
+        if (engineHandle != 0L) {
+            NativeAudioEngine.nativeHotspotCreate(engineHandle, ssid, password, channel)
+        }
+        // Real implementation
+        hotspotManager?.createGroup(ssid, password, channel)
+    }
+
+    /**
+     * 销毁 WiFi Direct 热点组。
+     */
+    fun destroyHotspot() {
+        if (engineHandle != 0L) {
+            NativeAudioEngine.nativeHotspotDestroy(engineHandle)
+        }
+        hotspotManager?.destroyGroup()
+    }
+
+    /**
+     * 获取热点状态码（JNI 兼容）。
+     */
+    fun getHotspotStateCode(): Int = hotspotManager?.getStateCode() ?: 0
+
+    // ============================================================
+    // ADB 端口转发管理
+    // ============================================================
+
+    /**
+     * 设置 ADB 反向端口转发。
+     * 会同时调用 JNI stub 和真正的 Kotlin AdbManager。
+     */
+    fun setupAdbPortForward(localPort: Int, remotePort: Int) {
+        if (engineHandle != 0L) {
+            NativeAudioEngine.nativeAdbSetupPortForward(engineHandle, localPort, remotePort)
+        }
+        adbManager?.setupPortForward(localPort, remotePort)
+    }
+
+    /**
+     * 检查 ADB 连接状态。
+     */
+    fun checkAdbConnection() {
+        adbManager?.checkConnection()
+    }
+
+    /**
+     * 断开 ADB 端口转发。
+     */
+    fun disconnectAdb() {
+        adbManager?.disconnect()
+    }
+
+    /**
+     * 获取 ADB 状态码（JNI 兼容）。
+     */
+    fun getAdbStateCode(): Int = adbManager?.getStateCode() ?: 0
+
+    // ============================================================
+    // 蓝牙管理
+    // ============================================================
+
+    /**
+     * 启动蓝牙 RFCOMM 服务端监听。
+     * 会同时调用 JNI stub 和真正的 Kotlin BluetoothManager。
+     */
+    fun startBluetoothListening(deviceName: String = "SoundBridge") {
+        if (engineHandle != 0L) {
+            NativeAudioEngine.nativeBtInit(engineHandle)
+        }
+        bluetoothManager?.startListening(deviceName)
+    }
+
+    /**
+     * 停止蓝牙监听。
+     */
+    fun stopBluetoothListening() {
+        bluetoothManager?.stopListening()
+    }
+
+    /**
+     * 获取蓝牙状态码（JNI 兼容）。
+     */
+    fun getBluetoothStateCode(): Int = bluetoothManager?.getStateCode() ?: 0
+
     override fun onDestroy() {
         super.onDestroy()
+        // Release platform managers
+        bluetoothManager?.release()
+        bluetoothManager = null
+        adbManager?.release()
+        adbManager = null
+        hotspotManager?.release()
+        hotspotManager = null
         discoveryManager?.release()
         discoveryManager = null
         if (engineHandle != 0L) {

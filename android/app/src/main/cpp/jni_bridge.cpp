@@ -651,19 +651,28 @@ Java_com_soundbridge_native_NativeAudioEngine_nativeDiscoveryFindDevices(
 }
 
 // ============================================================
-// 连接方式管理（存根 - 平台层实现）
+// 连接方式管理（薄触发器 - 真实逻辑在 Kotlin 管理器中）
+// ============================================================
+// 架构说明：
+//   JNI 函数仅作为薄触发器（thin triggers），更新静态状态变量。
+//   真正的平台连接逻辑由 Kotlin 管理器实现：
+//   - HotspotManager: WiFi P2P (WifiP2pManager)
+//   - AdbManager: ADB reverse port forwarding (Runtime.exec)
+//   - BluetoothManager: RFCOMM server socket
+//   AudioService 同时调用 JNI stub + Kotlin 管理器，保持状态同步。
 // ============================================================
 
-// 热点状态（静态变量）
+// 热点/ADB/蓝牙状态（静态变量，薄触发器模式）
+// 真实状态由 Kotlin HotspotManager/AdbManager/BluetoothManager 的 StateFlow 管理
 static int g_hotspot_state = 0; // 0=Idle, 1=Creating, 2=Active, 3=Error
 static int g_adb_state = 0;     // 0=Idle, 1=Connecting, 2=Connected, 3=Error
-static int g_bt_state = 0;      // 0=Idle, 1=Initializing, 2=Ready, 3=Error
+static int g_bt_state = 0;      // 0=Idle, 1=Listening, 2=Connected, 3=Error
 
 JNIEXPORT jint JNICALL
 Java_com_soundbridge_native_NativeAudioEngine_nativeHotspotCreate(
         JNIEnv* env, jobject thiz, jlong engineHandle, jstring ssid, jstring password, jint channel) {
-    LOGI("Hotspot create (stub): channel=%d", channel);
-    g_hotspot_state = 2; // Active
+    LOGI("Hotspot create (thin trigger): channel=%d - real logic in HotspotManager", channel);
+    g_hotspot_state = 2; // Active (thin trigger always succeeds, real state from Kotlin)
     return 0; // OK
 }
 
@@ -692,8 +701,8 @@ Java_com_soundbridge_native_NativeAudioEngine_nativeHotspotSetState(
 JNIEXPORT jint JNICALL
 Java_com_soundbridge_native_NativeAudioEngine_nativeAdbSetupPortForward(
         JNIEnv* env, jobject thiz, jlong engineHandle, jint localPort, jint remotePort) {
-    LOGI("ADB setup port forward (stub): %d -> %d", localPort, remotePort);
-    g_adb_state = 2; // Connected
+    LOGI("ADB setup port forward (thin trigger): %d -> %d - real logic in AdbManager", localPort, remotePort);
+    g_adb_state = 2; // Connected (thin trigger, real state from Kotlin)
     return 0; // OK
 }
 
@@ -714,8 +723,8 @@ Java_com_soundbridge_native_NativeAudioEngine_nativeAdbSetState(
 JNIEXPORT jint JNICALL
 Java_com_soundbridge_native_NativeAudioEngine_nativeBtInit(
         JNIEnv* env, jobject thiz, jlong engineHandle) {
-    LOGI("Bluetooth init (stub)");
-    g_bt_state = 2; // Ready
+    LOGI("Bluetooth init (thin trigger) - real logic in BluetoothManager");
+    g_bt_state = 2; // Ready (thin trigger, real state from Kotlin)
     return 0; // OK
 }
 

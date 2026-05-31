@@ -275,6 +275,18 @@ pub struct SbEngine {
 
     /// SRTP 密钥材料（在 sb_enable_encryption 时设置）
     crypto_keys: Option<CryptoKeys>,
+
+    /// 是否启用自动重连
+    reconnect_enabled: bool,
+
+    /// 重连超时时间（毫秒）
+    reconnect_timeout_ms: u64,
+
+    /// 重连状态（原子：0=Idle, 1=Reconnecting, 2=Connected, 3=Failed）
+    reconnect_state: Arc<AtomicU32>,
+
+    /// 最大重连尝试次数
+    reconnect_max_attempts: u32,
 }
 
 /// 创建引擎
@@ -321,6 +333,10 @@ pub extern "C" fn sb_engine_create() -> *mut c_void {
         session: None,
         encryption_enabled: false,
         crypto_keys: None,
+        reconnect_enabled: false,
+        reconnect_timeout_ms: 5000,
+        reconnect_state: Arc::new(AtomicU32::new(0)),
+        reconnect_max_attempts: 3,
     };
 
     Box::into_raw(Box::new(engine)) as *mut c_void
@@ -1134,7 +1150,7 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
 
     // 克隆 socket 和 target 给发送线程
     let send_socket = socket.clone();
-    let recv_socket = socket;
+    let mut recv_socket = socket;
     let frame_size = opus_config.frame_size_samples(); // 960 samples per frame (20ms @ 48kHz)
 
     // 启动发送线程：采集 ring buffer → 编码 → UDP 发送
@@ -1300,6 +1316,11 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
     let receiver_mixer = engine.mixer.clone();
     let pc_volume = engine.mix_pc_volume.clone();
     let phone_volume = engine.mix_phone_volume.clone();
+    // 重连配置（从 engine 读取，闭包内使用本地副本）
+    let reconnect_enabled = engine.reconnect_enabled;
+    let reconnect_timeout_ms = engine.reconnect_timeout_ms;
+    let reconnect_max_attempts = engine.reconnect_max_attempts;
+    let reconnect_state = engine.reconnect_state.clone();
     let receiver_handle = match std::thread::Builder::new()
         .name("sb-receiver".to_string())
         .spawn(move || {
@@ -1314,6 +1335,10 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
 
             // Jitter Buffer：在解码前缓冲 Opus 包，处理乱序和延迟抖动
             let mut jitter_buf = RawJitterBuffer::with_default_config();
+
+            // 自动重连状态
+            let mut last_packet_time = Instant::now();
+            let mut reconnect_attempts: u32 = 0;
 
             tracing::info!("Receiver thread started (with jitter buffer)");
 
@@ -1388,6 +1413,14 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                 // 阶段 1：接收 UDP 包，推入 jitter buffer
                 match recv_socket.recv_from(&mut recv_buf) {
                     Ok((len, _from)) => {
+                        // 更新最后接收时间（用于重连超时检测）
+                        last_packet_time = Instant::now();
+                        // 如果重连中，标记为已连接
+                        if reconnect_enabled && reconnect_attempts > 0 {
+                            reconnect_state.store(2, Ordering::Relaxed); // Connected
+                            reconnect_attempts = 0;
+                        }
+
                         // 如果启用加密，先解密
                         let packet_data: Cow<'_, [u8]> = if let Some(ref mut srtp) = receiver_srtp {
                             match srtp.unprotect(&recv_buf[..len]) {
@@ -1470,6 +1503,68 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
                                 &packet.data,
                             );
                         }
+
+                        // 自动重连检测：如果超时且启用重连
+                        if reconnect_enabled {
+                            let elapsed = last_packet_time.elapsed().as_millis() as u64;
+                            if elapsed >= reconnect_timeout_ms
+                                && reconnect_attempts < reconnect_max_attempts
+                            {
+                                reconnect_state.store(1, Ordering::Relaxed); // Reconnecting
+                                reconnect_attempts += 1;
+                                tracing::warn!(
+                                    "Reconnect attempt {}/{} (timeout={}ms, elapsed={}ms)",
+                                    reconnect_attempts,
+                                    reconnect_max_attempts,
+                                    reconnect_timeout_ms,
+                                    elapsed
+                                );
+
+                                // 尝试重新绑定 UDP socket
+                                let bind_addr = format!(
+                                    "0.0.0.0:{}",
+                                    recv_socket.local_addr().map(|a| a.port()).unwrap_or(0)
+                                );
+                                match UdpSocket::bind(&bind_addr) {
+                                    Ok(new_socket) => {
+                                        let _ = new_socket.set_nonblocking(true);
+                                        if new_socket.connect(target).is_ok() {
+                                            tracing::info!(
+                                                "Reconnect: new socket bound to {}",
+                                                new_socket
+                                                    .local_addr()
+                                                    .unwrap_or_else(|_| "unknown".parse().unwrap())
+                                            );
+                                            // 替换接收线程的 socket 引用
+                                            recv_socket = Arc::new(new_socket);
+                                            last_packet_time = Instant::now();
+                                            reconnect_state.store(2, Ordering::Relaxed);
+                                        // Connected
+                                        } else {
+                                            tracing::warn!(
+                                                "Reconnect: failed to connect new socket"
+                                            );
+                                            reconnect_state.store(3, Ordering::Relaxed);
+                                            // Failed
+                                        }
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!(
+                                            "Reconnect: failed to bind new socket: {}",
+                                            e
+                                        );
+                                        reconnect_state.store(3, Ordering::Relaxed);
+                                        // Failed
+                                    }
+                                }
+                            } else if reconnect_attempts >= reconnect_max_attempts
+                                && reconnect_attempts > 0
+                            {
+                                // 超过最大尝试次数
+                                reconnect_state.store(3, Ordering::Relaxed); // Failed
+                            }
+                        }
+
                         std::thread::yield_now();
                     }
                     Err(e) => {
@@ -2204,6 +2299,71 @@ pub unsafe extern "C" fn sb_is_encrypted(engine: *mut c_void) -> c_int {
     } else {
         0
     }
+}
+
+// ============================================================
+// 自动重连 FFI
+// ============================================================
+
+/// 设置自动重连配置
+///
+/// 当接收线程检测到数据包超时时，会自动尝试重新绑定 UDP 端口并重新连接。
+/// 默认：禁用，超时 5000ms，最大尝试 3 次。
+///
+/// # Safety
+/// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_set_reconnect_config(
+    engine: *mut c_void,
+    enabled: bool,
+    timeout_ms: u64,
+    max_attempts: u32,
+) -> c_int {
+    clear_error();
+
+    if engine.is_null() {
+        set_error("engine is null");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let engine = unsafe { &mut *(engine as *mut SbEngine) };
+
+    engine.reconnect_enabled = enabled;
+    engine.reconnect_timeout_ms = timeout_ms;
+    engine.reconnect_max_attempts = max_attempts;
+
+    tracing::info!(
+        "Reconnect config: enabled={}, timeout_ms={}, max_attempts={}",
+        enabled,
+        timeout_ms,
+        max_attempts
+    );
+    SbError::Ok as c_int
+}
+
+/// 获取自动重连状态
+///
+/// 返回值：
+/// - 0: Idle（空闲 / 未启用）
+/// - 1: Reconnecting（重连中）
+/// - 2: Connected（已连接）
+/// - 3: Failed（重连失败）
+/// - 负数: 错误
+///
+/// # Safety
+/// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_get_reconnect_state(engine: *mut c_void) -> c_int {
+    clear_error();
+
+    if engine.is_null() {
+        set_error("engine is null");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let engine = unsafe { &*(engine as *const SbEngine) };
+
+    engine.reconnect_state.load(Ordering::Relaxed) as c_int
 }
 
 // ============================================================

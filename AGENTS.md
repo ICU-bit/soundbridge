@@ -1,135 +1,105 @@
-# PROJECT KNOWLEDGE BASE
+# SoundBridge — Agent Instructions
 
-**Generated:** 2026-05-30
-**Commit:** e7522d4
-**Branch:** master
-**Version:** v0.8.0
+跨端音频融合：Windows (C++/C#) ↔ Android (Kotlin/JNI)，Rust 核心引擎。
+游戏时不用摘耳机，同时听电脑和手机的声音。
 
-## OVERVIEW
+## Project layout
 
-SoundBridge 跨端音频融合软件。核心目标：游戏时不用摘耳机，同时听电脑和手机的声音。Rust 核心库 + Windows C++/C# + Android Kotlin/JNI 三端架构。
+- `rust-core/` — Rust workspace (10 crates). **All dev commands run here, not root.**
+- `windows/` — C++20 core + C# WinUI 3 UI. CMake build.
+- `android/` — Kotlin + Jetpack Compose + JNI C++. Gradle build.
+- `scripts/` — PowerShell helper scripts (`test.ps1`, `bench.ps1`, `build-windows.ps1`, `release.ps1`, `verify-release.ps1`)
+- `tools/` — `test-harness.ps1` (full check), `benchmark-runner.ps1`
+- `docs/` — `design.md`, `development-plan.md`, `technical-spec.md`
 
-## STRUCTURE
+Sub-platform guidance: `rust-core/AGENTS.md`, `windows/AGENTS.md`, `android/AGENTS.md`.
+Each Rust crate has its own `AI_GUIDE.md` — **read it before modifying that crate**.
 
-```
-.
-├── rust-core/              # Rust workspace（10 个 crate），核心音频引擎
-│   └── crates/
-│       ├── audio-core/     # 基础类型：Sample trait、AudioBuffer、AudioFormat、AudioMode
-│       ├── audio-codec/    # Opus 编解码（完整实现，零拷贝 API）
-│       ├── audio-capture/  # 音频采集（cpal 实现，Fixed(960) 帧大小）
-│       ├── audio-playback/ # 音频播放（cpal 实现，混音输出）
-│       ├── audio-processor/# 音频处理 AEC/NS/AGC/PLC（波形外推丢包隐藏）
-│       ├── audio-mixer/    # 混音引擎（完整实现，soft_clip tanh）
-│       ├── network/        # UDP 传输、自适应 Jitter Buffer、网络监控、DTLS/SRTP、QUIC 控制、会话握手
-│       ├── discovery/      # 设备发现 mDNS（mdns_sd 实现）
-│       ├── protocol/       # 协议序列化（12字节头，零拷贝）
-│       └── ffi-bindings/   # FFI 跨语言绑定（完整管线：capture→encode→send + recv→decode→play）
-├── windows/                # Windows 原生 C++ 核心 + C# WinUI 3 界面
-│   ├── include/soundbridge/# 公共 API 接口（IAudioEngine、types、export）
-│   ├── src/audio/          # WASAPI 采集、Opus 编解码、WebRTC APM
-│   ├── src/core/           # AudioEngine、AudioPipeline、Session
-│   ├── src/network/        # UDP 传输实现
-│   ├── src/ui/             # WinUI 3 C# 界面（MainWindow + ViewModel + TrayIcon）
-│   ├── cmake/              # 自定义 CMake Find 模块（FindOpus、FindWebRTC）
-│   └── tests/              # GTest 测试文件（test_opus_codec、test_audio_pipeline、test_udp_transport）
-├── android/                # Android Kotlin + JNI C++
-│   ├── app/src/main/java/com/soundbridge/
-│   │   ├── native/         # JNI 桥接（NativeAudioEngine.kt - 40+ 函数）
-│   │   ├── audio/          # AudioService + DeviceDiscoveryManager
-│   │   └── ui/             # Jetpack Compose 界面（Home、Settings、Theme）
-│   └── app/src/main/cpp/   # JNI 实现（pipeline + discovery stubs）
-├── android-app/            # 已删除（代码在 android/ 目录）
-├── windows-app/            # 已删除（代码在 windows/ 目录）
-├── docs/                   # 设计文档、开发计划、技术规格
-├── scripts/                # 工具脚本（bench.ps1、test.ps1、build-windows.ps1、release.ps1、verify-release.ps1）
-└── tools/                  # 开发工具（benchmark-runner.ps1、test-harness.ps1）
-```
+## Commands
 
-## WHERE TO LOOK
-
-| Task | Location | Notes |
-|------|----------|-------|
-| **Rust 核心开发** | `rust-core/crates/*/` | 先看各 crate 的 AI_GUIDE.md |
-| **Opus 编解码** | `rust-core/crates/audio-codec/` | 完整实现，零拷贝 API |
-| **Rust 错误类型** | `rust-core/crates/audio-core/src/lib.rs` | AudioError、Result 定义 |
-| **Windows 音频引擎** | `windows/src/core/` | AudioEngine、AudioPipeline、Session |
-| **Windows 公共 API** | `windows/include/soundbridge/` | IAudioEngine 接口、类型定义 |
-| **Windows 界面** | `windows/src/ui/` | WinUI 3 C#，依赖注入模式 |
-| **Android JNI 桥接** | `android/app/src/main/java/com/soundbridge/native/` | NativeAudioEngine.kt |
-| **Android 设备发现** | `android/app/src/main/java/com/soundbridge/audio/` | DeviceDiscoveryManager (NsdManager) |
-| **Android 界面** | `android/app/src/main/java/com/soundbridge/ui/` | Jetpack Compose，Material3 |
-| **设计文档** | `docs/design.md` | 核心需求和架构设计 |
-| **开发计划** | `docs/development-plan.md` | 分阶段开发任务 |
-| **技术规格** | `docs/technical-spec.md` | 详细参数和协议规格 |
-
-## CONVENTIONS
-
-### 跨平台统一参数
-- 采样率：48000 Hz（三端一致）
-- 默认通道：单声道（Mono）
-- 帧大小：960 samples（20ms@48kHz）
-- 内部格式：Float32
-
-### Rust crate 约定
-- 每个 crate 必须有 `AI_GUIDE.md`（当前状态和下一步）
-- 统一错误类型：`audio_core::Result`
-- 骨架 crate 使用 `_private: ()` 字段禁止外部构造
-- 测试文件命名：`{name}_test.rs`（非 Rust 社区惯例）
-
-### Windows C++ 约定
-- 接口/实现分离：`IAudioEngine`（纯虚）vs `AudioEngineImpl`
-- 工厂函数返回 `std::unique_ptr`
-- 禁止拷贝：`= delete`
-- 命名空间：`soundbridge`
-- DLL 导出宏：`SOUNDBRIDGE_API`、`SOUNDBRIDGE_CALL`
-
-### Android Kotlin 约定
-- 包名：`com.soundbridge`
-- JNI 句柄传递：`jlong`（0L = 无效）
-- 所有 `native*` 方法第一个参数是 `engineHandle: Long`
-- 必须调用 `nativeRelease` 防止内存泄漏
-- UI：Jetpack Compose + Material3，深色主题优先
-
-### 网络协议
-- 魔术数：`0x53424447`（"SBDG" = SoundBridge DataGram）
-- 音频流：UDP（低延迟）
-- 控制信令：UDP（当前实现），未来计划 QUIC（可靠加密）
-
-## ANTI-PATTERNS (THIS PROJECT)
-
-- **不要跳过 AI_GUIDE.md**：修改任何 crate 前先读其 AI_GUIDE.md
-- **不要破坏跨平台参数**：48kHz、单声道、960 samples 是硬编码的
-- **不要直接构造骨架 crate**：使用 `new()` 工厂函数
-- **不要忽略 JNI 句柄释放**：必须调用 `nativeRelease`
-- **不要在 Rust crate 中使用 `unwrap()`**：使用 `Result` 传播错误
-
-## COMMANDS
+All Rust commands require `workdir=rust-core` (workspace root is there, not repo root).
 
 ```bash
-# Rust
-cargo test --workspace          # 运行所有测试
-cargo bench --workspace         # 运行基准测试
-cargo clippy --workspace        # 代码质量检查
-cargo fmt -- --check            # 格式检查
-cargo test -p audio-core        # 运行特定 crate 测试
+# Test (CI skips hardware-dependent tests)
+cargo test --workspace
+cargo test --workspace -- --skip test_capture_device --skip test_playback_device
+cargo test -p audio-codec          # single crate
 
-# Windows (CMake)
-cmake -B build -S windows       # 配置
-cmake --build build             # 构建
+# Quality gates (order matters: fmt → clippy → test)
+cargo fmt -- --check
+cargo clippy --workspace -- -D warnings
 
-# Android (Gradle)
-./gradlew build                 # 构建
-./gradlew test                  # 测试
+# Benchmarks (audio-codec only, Criterion)
+cargo bench -p audio-codec
+
+# Windows C++ (needs vcpkg: opus, spdlog)
+cmake -B build -S windows -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake
+cmake --build build --config Release
+
+# Android
+cd android && ./gradlew build
 ```
 
-## NOTES
+PowerShell shortcuts: `.\scripts\test.ps1 -Clippy -Fmt`, `.\scripts\bench.ps1`
 
-- 所有 10 个 Rust crate 均已完整实现（非骨架），826 测试通过，零 clippy 警告
-- Windows C++ 测试文件已创建（test_opus_codec.cpp、test_audio_pipeline.cpp、test_udp_transport.cpp）
-- CI/CD 已配置（.github/workflows/ci.yml：Rust 测试 + Windows C++ 构建 + Android 构建）
-- 已有 .editorconfig、rustfmt.toml 格式化配置
-- `opus_benchmark.rs` 已修复（rand 依赖 + OpusConfig Copy）
-- Phase 1-3 全部完成（v0.7.2），所有连接方式已实现
-- QUIC 控制信令未实现（文档已移除相关声明，当前仅 UDP 传输）
-- Android JNI 连接管理为存根实现（无 Android NDK 环境无法编译验证）
+## Hard-won conventions
+
+These differ from language defaults — violating them will break things:
+
+**Rust:**
+- Dependencies are pinned in `[workspace.dependencies]` in `rust-core/Cargo.toml`. Individual crates use `foo.workspace = true`. Don't add versions in crate `Cargo.toml`.
+- Error types: `audio-core` defines `AudioError` / `Result`. All crates use `audio_core::Result`. `audio-codec` has its own `CodecError`.
+- Factory pattern: `_private: ()` field + `new() -> Result<Self>`. Prevents external construction.
+- Test files: `tests/{name}_test.rs` (project convention, **not** Rust standard `#[cfg(test)]` in src).
+- Formatting: `rustfmt.toml` at repo root (edition 2021, max_width=100, 4-space tabs).
+- No `unwrap()` in library code — propagate with `Result`.
+- `audio-core` is the foundation — changes here break all other crates.
+
+**Windows C++:**
+- C++20, MSVC `/permissive-` strict conformance, `/utf-8 /W4 /WX`
+- Interface/impl split: pure virtual `IAudioEngine` in `include/soundbridge/`, `AudioEngineImpl final` in `src/`
+- Factory functions return `std::unique_ptr`. Copy `= delete` on all impl classes.
+- Include public headers as `<soundbridge/...>`, not `"soundbridge/..."`
+- `NOMINMAX` is defined — use `<algorithm>` for `std::min`/`std::max`
+- Packet magic: `0x53424447` ("SBDG") — packed struct, all platforms must match
+
+**Android:**
+- JNI handles: `jlong`, `0L` = invalid. All `native*` methods take `engineHandle: Long` as first param.
+- Must call `nativeRelease` for every handle in `onDestroy` — memory leak otherwise.
+- `NativeAudioEngine` is Kotlin `object` singleton. `System.loadLibrary` in `init` block only.
+- State: `StateFlow` (not `LiveData`). `ConnectionState` enum: `DISCONNECTED`, `CONNECTING`, `CONNECTED`.
+- Colors: semantic names from `Color.kt` (`AudioLevelLow`, `ConnectionConnected`, etc). Never raw `Color(0xFF...)`.
+- Foreground service: `FOREGROUND_SERVICE_TYPE_MICROPHONE`, `START_STICKY`.
+
+**Cross-platform audio params (hardcoded, don't change):**
+- Sample rate: 48000 Hz, Mono, 960 samples/frame (20ms), Float32 internal format
+
+## Network protocol
+
+- Magic: `0x53424447` ("SBDG" = SoundBridge DataGram)
+- Audio: UDP low-latency. Control: UDP (QUIC planned but not implemented).
+- mDNS service type: `_soundbridge._udp`
+
+## CI
+
+- `.github/workflows/ci.yml`: Rust (fmt → clippy → test → build release), Windows C++ (CMake+vcpkg), Android (Gradle)
+- CI runs on `windows-latest` for Rust/Windows, `ubuntu-latest` for Android
+- Rust CI skips hardware tests: `--skip test_capture_device --skip test_playback_device`
+
+## Anti-patterns
+
+- Modifying `audio-core` types without considering downstream breakage
+- Adding deps to individual crates without checking `[workspace.dependencies]`
+- Calling JNI `native*` methods without checking handle `!= 0L`
+- Using raw `Color` literals in Android Compose
+- Constructing `AudioEngineImpl` directly (use factory)
+- Accessing `capture_state_`/`render_state_` without `std::atomic`
+
+## Commit style
+
+Conventional Commits: `feat:`, `fix:`, `docs:`, `style:`, `refactor:`, `test:`, `chore:`
+
+## Formatting
+
+`.editorconfig`: UTF-8, CRLF line endings, 4-space indent (YAML 2-space), trailing whitespace trimmed (except .md).
+`rustfmt.toml`: edition 2021, max_width 100, 4-space tabs, field/try init shorthand.

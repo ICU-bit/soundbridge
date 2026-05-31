@@ -704,3 +704,90 @@ fn test_pipeline_stats_without_pipeline() {
         destroy_engine(engine);
     }
 }
+
+// ============================================================================
+// Test 13: Reconnect config set/get and initial state
+// ============================================================================
+
+#[test]
+fn test_reconnect_config_set_get() {
+    let engine = match create_engine() {
+        Some(e) => e,
+        None => return,
+    };
+
+    unsafe {
+        // 初始状态应为 Idle (0)
+        let state = sb_get_reconnect_state(engine);
+        assert_eq!(state, 0, "Initial reconnect state should be Idle (0)");
+
+        // 设置重连配置：启用，超时 3000ms，最大 5 次
+        let rc = sb_set_reconnect_config(engine, true, 3000, 5);
+        assert_eq!(rc, 0, "sb_set_reconnect_config should succeed");
+
+        // 验证状态仍为 Idle（配置不影响状态）
+        let state = sb_get_reconnect_state(engine);
+        assert_eq!(state, 0, "Reconnect state should remain Idle after config");
+
+        // 设置不同配置：禁用
+        let rc = sb_set_reconnect_config(engine, false, 1000, 1);
+        assert_eq!(rc, 0, "sb_set_reconnect_config(disabled) should succeed");
+
+        // 状态仍为 Idle
+        let state = sb_get_reconnect_state(engine);
+        assert_eq!(
+            state, 0,
+            "Reconnect state should be Idle after disable config"
+        );
+
+        destroy_engine(engine);
+    }
+}
+
+// ============================================================================
+// Test 14: Reconnect state returns 0 without pipeline
+// ============================================================================
+
+#[test]
+fn test_reconnect_state_without_pipeline() {
+    let engine = match create_engine() {
+        Some(e) => e,
+        None => return,
+    };
+
+    unsafe {
+        // 未配置时应为 Idle (0)
+        let state = sb_get_reconnect_state(engine);
+        assert_eq!(
+            state, 0,
+            "Reconnect state without pipeline should be Idle (0)"
+        );
+
+        // 配置后仍为 Idle
+        let rc = sb_set_reconnect_config(engine, true, 5000, 3);
+        assert_eq!(rc, 0);
+        let state = sb_get_reconnect_state(engine);
+        assert_eq!(
+            state, 0,
+            "Reconnect state after config should still be Idle (0)"
+        );
+
+        // Null engine 应返回负数错误
+        let state = sb_get_reconnect_state(ptr::null_mut());
+        assert_eq!(
+            state,
+            SbError::InvalidArgument as c_int,
+            "Null engine should return InvalidArgument"
+        );
+
+        // Null engine for set_config 应返回负数错误
+        let rc = sb_set_reconnect_config(ptr::null_mut(), true, 5000, 3);
+        assert_eq!(
+            rc,
+            SbError::InvalidArgument as c_int,
+            "Null engine for set_config should return InvalidArgument"
+        );
+
+        destroy_engine(engine);
+    }
+}
