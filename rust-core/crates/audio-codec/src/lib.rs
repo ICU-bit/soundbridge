@@ -69,7 +69,11 @@ pub enum Bitrate {
     Kbps64 = 64000,
     Kbps96 = 96000,
     Kbps128 = 128000,
+    Kbps192 = 192000,
     Kbps256 = 256000,
+    Kbps320 = 320000,
+    Kbps512 = 512000,
+    Kbps1024 = 1024000,
 }
 
 impl Bitrate {

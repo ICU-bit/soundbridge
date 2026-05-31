@@ -97,6 +97,12 @@ pub struct AudioProcessor {
     ns: NsProcessor,
     agc: AgcProcessor,
     plc: PlcProcessor,
+    /// 回声消除开关
+    aec_enabled: bool,
+    /// 噪声抑制开关
+    ns_enabled: bool,
+    /// 自动增益控制开关
+    agc_enabled: bool,
 }
 
 impl AudioProcessor {
@@ -135,6 +141,9 @@ impl AudioProcessor {
             ns,
             agc,
             plc,
+            aec_enabled: true,
+            ns_enabled: true,
+            agc_enabled: true,
         })
     }
 
@@ -153,11 +162,15 @@ impl AudioProcessor {
         // 2. 噪声门
         self.noise_gate.process(buffer)?;
 
-        // 3. 噪声抑制
-        self.ns.process(buffer)?;
+        // 3. 噪声抑制（可关闭）
+        if self.ns_enabled {
+            self.ns.process(buffer)?;
+        }
 
-        // 4. 自动增益控制
-        self.agc.process(buffer)?;
+        // 4. 自动增益控制（可关闭）
+        if self.agc_enabled {
+            self.agc.process(buffer)?;
+        }
 
         Ok(())
     }
@@ -166,8 +179,10 @@ impl AudioProcessor {
     ///
     /// 处理流程：AEC → 增益 → 噪声门 → NS → AGC
     pub fn process_with_aec(&mut self, buffer: &mut [f32], reference: &[f32]) -> Result<()> {
-        // 1. 回声消除
-        self.aec.process(buffer, reference)?;
+        // 1. 回声消除（可关闭）
+        if self.aec_enabled {
+            self.aec.process(buffer, reference)?;
+        }
 
         // 2. 应用增益
         self.gain.process(buffer)?;
@@ -175,11 +190,15 @@ impl AudioProcessor {
         // 3. 噪声门
         self.noise_gate.process(buffer)?;
 
-        // 4. 噪声抑制
-        self.ns.process(buffer)?;
+        // 4. 噪声抑制（可关闭）
+        if self.ns_enabled {
+            self.ns.process(buffer)?;
+        }
 
-        // 5. 自动增益控制
-        self.agc.process(buffer)?;
+        // 5. 自动增益控制（可关闭）
+        if self.agc_enabled {
+            self.agc.process(buffer)?;
+        }
 
         Ok(())
     }
@@ -197,6 +216,36 @@ impl AudioProcessor {
     /// 获取配置
     pub fn config(&self) -> &ProcessorConfig {
         &self.config
+    }
+
+    /// 设置回声消除开关
+    pub fn set_aec_enabled(&mut self, enabled: bool) {
+        self.aec_enabled = enabled;
+    }
+
+    /// 获取回声消除开关状态
+    pub fn is_aec_enabled(&self) -> bool {
+        self.aec_enabled
+    }
+
+    /// 设置噪声抑制开关
+    pub fn set_ns_enabled(&mut self, enabled: bool) {
+        self.ns_enabled = enabled;
+    }
+
+    /// 获取噪声抑制开关状态
+    pub fn is_ns_enabled(&self) -> bool {
+        self.ns_enabled
+    }
+
+    /// 设置自动增益控制开关
+    pub fn set_agc_enabled(&mut self, enabled: bool) {
+        self.agc_enabled = enabled;
+    }
+
+    /// 获取自动增益控制开关状态
+    pub fn is_agc_enabled(&self) -> bool {
+        self.agc_enabled
     }
 
     /// 喂入有效音频帧到 PLC 历史缓冲区

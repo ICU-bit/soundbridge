@@ -986,6 +986,72 @@ pub unsafe extern "C" fn sb_processor_process(
     SbError::Ok as c_int
 }
 
+/// 设置回声消除开关
+///
+/// # Safety
+/// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_set_echo_cancellation_enabled(
+    engine: *mut c_void,
+    enabled: c_int,
+) -> c_int {
+    clear_error();
+
+    if engine.is_null() {
+        set_error("engine is null");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let engine = unsafe { &mut *(engine as *mut SbEngine) };
+    engine.processor.set_aec_enabled(enabled != 0);
+    tracing::info!("Echo cancellation: {}", if enabled != 0 { "enabled" } else { "disabled" });
+    SbError::Ok as c_int
+}
+
+/// 设置噪声抑制开关
+///
+/// # Safety
+/// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_set_noise_suppression_enabled(
+    engine: *mut c_void,
+    enabled: c_int,
+) -> c_int {
+    clear_error();
+
+    if engine.is_null() {
+        set_error("engine is null");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let engine = unsafe { &mut *(engine as *mut SbEngine) };
+    engine.processor.set_ns_enabled(enabled != 0);
+    tracing::info!("Noise suppression: {}", if enabled != 0 { "enabled" } else { "disabled" });
+    SbError::Ok as c_int
+}
+
+/// 设置自动增益控制开关
+///
+/// # Safety
+/// `engine` 必须是通过 `sb_engine_create` 创建的有效指针。
+#[no_mangle]
+pub unsafe extern "C" fn sb_set_agc_enabled(
+    engine: *mut c_void,
+    enabled: c_int,
+) -> c_int {
+    clear_error();
+
+    if engine.is_null() {
+        set_error("engine is null");
+        return SbError::InvalidArgument as c_int;
+    }
+
+    let engine = unsafe { &mut *(engine as *mut SbEngine) };
+    engine.processor.set_agc_enabled(enabled != 0);
+    tracing::info!("AGC: {}", if enabled != 0 { "enabled" } else { "disabled" });
+    SbError::Ok as c_int
+}
+
 /// 获取列表设备数量
 ///
 /// # Safety
@@ -1096,17 +1162,31 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
         }
     };
 
-    // 创建编解码器（使用当前音频模式的配置）
-    let mode_config = engine.mode_manager.current_config();
-    let sample_rate = audio_codec::SampleRate::from_u32(mode_config.sample_rate)
+    // 创建编解码器（根据自动档位状态决定配置来源）
+    let is_auto = AUTO_PROFILE_ENABLED.load(Ordering::Relaxed);
+    let (sr, br, frame_ms) = if is_auto {
+        let mc = engine.mode_manager.current_config();
+        (mc.sample_rate, mc.bitrate, mc.frame_size_ms)
+    } else {
+        (
+            SAMPLE_RATE.load(Ordering::Relaxed),
+            BITRATE.load(Ordering::Relaxed),
+            20, // 手动模式固定 20ms 帧
+        )
+    };
+    let sample_rate = audio_codec::SampleRate::from_u32(sr)
         .unwrap_or(audio_codec::SampleRate::Hz48000);
-    let bitrate = match mode_config.bitrate {
+    let bitrate = match br {
         64000 => audio_codec::Bitrate::Kbps64,
         128000 => audio_codec::Bitrate::Kbps128,
+        192000 => audio_codec::Bitrate::Kbps192,
         256000 => audio_codec::Bitrate::Kbps256,
+        320000 => audio_codec::Bitrate::Kbps320,
+        512000 => audio_codec::Bitrate::Kbps512,
+        1024000 => audio_codec::Bitrate::Kbps1024,
         _ => audio_codec::Bitrate::Kbps128,
     };
-    let frame_size = match mode_config.frame_size_ms {
+    let frame_size = match frame_ms {
         10 => audio_codec::FrameSize::Ms10,
         20 => audio_codec::FrameSize::Ms20,
         40 => audio_codec::FrameSize::Ms40,
@@ -1119,8 +1199,8 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
         frame_size,
     );
     tracing::info!(
-        "Creating codec with mode {:?}: sr={}, bitrate={}, frame_ms={}",
-        engine.mode_manager.current_mode(),
+        "Creating codec (auto={}): sr={}, bitrate={}, frame_ms={}",
+        is_auto,
         opus_config.sample_rate.value(),
         opus_config.bitrate.bits_per_second(),
         opus_config.frame_size.milliseconds()
@@ -1223,7 +1303,7 @@ pub unsafe extern "C" fn sb_pipeline_start(engine: *mut c_void) -> c_int {
 
     // 创建共享状态
     let running = Arc::new(AtomicBool::new(true));
-    let stats = Arc::new(SharedPipelineStats::new(mode_config.frame_size_ms));
+    let stats = Arc::new(SharedPipelineStats::new(frame_ms));
     let sequence = engine.sequence.clone();
 
     // 获取采集和播放设备的 ring buffer（线程安全的 Arc 引用）
@@ -3401,6 +3481,8 @@ pub enum SbEqPreset {
 /// 全局音频配置状态
 static AUDIO_PROFILE: AtomicU32 = AtomicU32::new(SbAudioProfile::Standard as u32);
 static CHANNELS: AtomicU32 = AtomicU32::new(1);
+static SAMPLE_RATE: AtomicU32 = AtomicU32::new(48000);
+static BITRATE: AtomicU32 = AtomicU32::new(128000);
 static EQ_ENABLED: AtomicBool = AtomicBool::new(false);
 static EQ_PRESET: AtomicU32 = AtomicU32::new(SbEqPreset::Flat as u32);
 
@@ -3505,6 +3587,64 @@ pub extern "C" fn sb_set_channels(channels: u32) -> c_int {
 #[no_mangle]
 pub extern "C" fn sb_get_channels() -> u32 {
     CHANNELS.load(Ordering::Relaxed)
+}
+
+/// 设置采样率
+///
+/// 支持的采样率: 44100, 48000, 96000, 192000 Hz。
+/// 设置后会影响编码器配置。
+///
+/// 返回 0 表示成功，负数表示错误。
+#[no_mangle]
+pub extern "C" fn sb_set_sample_rate(sample_rate: u32) -> c_int {
+    clear_error();
+
+    match sample_rate {
+        44100 | 48000 | 96000 | 192000 => {}
+        _ => {
+            set_error("sample_rate must be 44100, 48000, 96000, or 192000");
+            return SbError::InvalidArgument as c_int;
+        }
+    }
+
+    SAMPLE_RATE.store(sample_rate, Ordering::Relaxed);
+    tracing::info!("Sample rate set to {} Hz", sample_rate);
+    SbError::Ok as c_int
+}
+
+/// 获取当前采样率
+#[no_mangle]
+pub extern "C" fn sb_get_sample_rate() -> u32 {
+    SAMPLE_RATE.load(Ordering::Relaxed)
+}
+
+/// 设置码率
+///
+/// 支持的码率: 128000, 192000, 256000, 320000, 512000, 1024000 bps。
+/// 设置后会影响编码器配置。
+///
+/// 返回 0 表示成功，负数表示错误。
+#[no_mangle]
+pub extern "C" fn sb_set_bitrate(bitrate: u32) -> c_int {
+    clear_error();
+
+    match bitrate {
+        128000 | 192000 | 256000 | 320000 | 512000 | 1024000 => {}
+        _ => {
+            set_error("bitrate must be 128000, 192000, 256000, 320000, 512000, or 1024000");
+            return SbError::InvalidArgument as c_int;
+        }
+    }
+
+    BITRATE.store(bitrate, Ordering::Relaxed);
+    tracing::info!("Bitrate set to {} bps", bitrate);
+    SbError::Ok as c_int
+}
+
+/// 获取当前码率
+#[no_mangle]
+pub extern "C" fn sb_get_bitrate() -> u32 {
+    BITRATE.load(Ordering::Relaxed)
 }
 
 /// 设置均衡器单个频段
