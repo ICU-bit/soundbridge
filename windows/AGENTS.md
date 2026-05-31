@@ -1,6 +1,6 @@
 # WINDOWS MODULE
 
-Windows native C++ core engine + C# WinUI 3 UI for SoundBridge.
+Windows native C++ core engine + C# WPF UI for SoundBridge.
 
 ## STRUCTURE
 
@@ -11,7 +11,7 @@ windows/
 │   ├── audio/              # WASAPI capture/renderer, Opus codec, WebRTC APM wrappers
 │   ├── core/               # AudioEngineImpl, AudioPipeline, Session implementations
 │   ├── network/            # UDP transport, PacketBuilder (magic: 0x53424447)
-│   └── ui/                 # WinUI 3 C# app (SoundBridge.csproj, App.xaml.cs)
+│   └── ui/                 # WPF C# app (SoundBridge.csproj, App.xaml.cs)
 ├── cmake/                  # FindOpus.cmake, FindWebRTC.cmake
 └── tests/                  # GTest test .cpp files (3 files: test_opus_codec, test_audio_pipeline, test_udp_transport)
 ```
@@ -33,7 +33,7 @@ windows/
 | Packet format | `src/network/packet.h` | `PacketHeader`, `PacketBuilder`, checksum |
 | UDP transport | `src/network/udp_transport.h` | Low-latency audio streaming |
 | Transport interface | `src/network/transport_interface.h` | Abstract transport base |
-| WinUI 3 app | `src/ui/App.xaml.cs` | C# entry point, DI container setup |
+| WPF app | `src/ui/App.xaml.cs` | C# entry point, DI container setup |
 | Build config | `CMakeLists.txt` | C++20, MSVC /utf-8 /W4 /WX |
 | Test config | `tests/CMakeLists.txt` | GTest, expects `test_*.cpp` files |
 

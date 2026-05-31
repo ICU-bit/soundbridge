@@ -237,7 +237,7 @@
 - Visual Studio 2022
 - Windows 10 SDK
 - CMake 3.20+
-- WinUI 3
+- WPF
 
 ### Android
 - Android Studio Hedgehog+

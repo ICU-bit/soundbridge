@@ -20,7 +20,7 @@ SoundBridge
 │   ├── discovery/
 │   ├── protocol/
 │   └── ffi-bindings/
-├── windows-app/        # WinUI 3 (C#)
+├── windows-app/        # WPF (C#)
 └── android-app/        # Kotlin + Compose
 ```
 

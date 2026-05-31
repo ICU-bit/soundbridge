@@ -6,7 +6,7 @@
 ## Project layout
 
 - `rust-core/` — Rust workspace (10 crates). **All dev commands run here, not root.**
-- `windows/` — C++20 core + C# WinUI 3 UI. CMake build.
+- `windows/` — C++20 core + C# WPF UI. CMake build.
 - `android/` — Kotlin + Jetpack Compose + JNI C++. Gradle build.
 - `scripts/` — PowerShell helper scripts (`test.ps1`, `bench.ps1`, `build-windows.ps1`, `release.ps1`, `verify-release.ps1`)
 - `tools/` — `test-harness.ps1` (full check), `benchmark-runner.ps1`
