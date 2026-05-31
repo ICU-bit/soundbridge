@@ -2,6 +2,9 @@
 //!
 //! 提供多路音频混音功能，支持音量控制和防削波。
 
+pub mod stereo;
+pub use stereo::{mono_to_stereo, stereo_to_mono, StereoMixer};
+
 /// 混音配置
 #[derive(Debug, Clone)]
 pub struct MixerConfig {
