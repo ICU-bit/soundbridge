@@ -50,7 +50,8 @@
                           Maximum="1"
                           Width="180" Height="180"
                           StrokeThickness="12"
-                          Foreground="{x:Bind ViewModel.AudioLevel, Converter={StaticResource LevelToColorConverter}, Mode=OneWay}"/>
+                          Foreground="{x:Bind ViewModel.AudioLevel, Converter={StaticResource LevelToColorConverter}, Mode=OneWay}"
+                          AutomationProperties.Name="Audio Level"/>
             <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                 <TextBlock Text="{x:Bind ViewModel.AudioLevel, Converter={StaticResource LevelToPercentConverter}, Mode=OneWay}"
                            FontSize="36" FontWeight="Bold"
@@ -78,7 +79,8 @@
                 <Slider Minimum="0" Maximum="100"
                         Value="{x:Bind ViewModel.Volume, Mode=TwoWay}"
                         StepFrequency="1"
-                        HorizontalAlignment="Stretch"/>
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.Name="Volume"/>
             </StackPanel>
         </Border>
 
@@ -87,7 +89,8 @@
             <Button Command="{x:Bind ViewModel.ToggleConnectionCommand}"
                     Height="56" MinWidth="160"
                     IsEnabled="{x:Bind ViewModel.IsConnecting, Converter={StaticResource InvertBoolConverter}, Mode=OneWay}"
-                    Style="{StaticResource AccentButtonStyle}">
+                    Style="{StaticResource AccentButtonStyle}"
+                    AutomationProperties.Name="Toggle Connection">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <ProgressRing IsActive="{x:Bind ViewModel.IsConnecting, Mode=OneWay}"
                                   Width="20" Height="20"
@@ -103,7 +106,8 @@
 
             <Button Command="{x:Bind ViewModel.TogglePauseCommand}"
                     Height="56" MinWidth="120"
-                    Visibility="{x:Bind ViewModel.IsConnected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                    Visibility="{x:Bind ViewModel.IsConnected, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}"
+                    AutomationProperties.Name="Toggle Pause">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <FontIcon Glyph="{x:Bind ViewModel.IsPaused, Converter={StaticResource BoolToPauseIconConverter}, Mode=OneWay}"/>
                     <TextBlock Text="{x:Bind ViewModel.IsPaused, Converter={StaticResource BoolToPauseTextConverter}, Mode=OneWay}"/>
@@ -111,7 +115,8 @@
             </Button>
 
             <Button Command="{x:Bind ViewModel.ToggleMuteCommand}"
-                    Height="56" MinWidth="120">
+                    Height="56" MinWidth="120"
+                    AutomationProperties.Name="Toggle Mute">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <FontIcon Glyph="{x:Bind ViewModel.IsMuted, Converter={StaticResource BoolToMuteIconConverter}, Mode=OneWay}"/>
                     <TextBlock Text="{x:Bind ViewModel.IsMuted, Converter={StaticResource BoolToMuteTextConverter}, Mode=OneWay}"/>
@@ -126,11 +131,13 @@
                 <TextBlock Text="Server Configuration" FontSize="16" FontWeight="SemiBold"/>
                 <TextBox Header="Server Address"
                          Text="{x:Bind ViewModel.ServerAddress, Mode=TwoWay}"
-                         PlaceholderText="192.168.1.100"/>
+                         PlaceholderText="192.168.1.100"
+                         AutomationProperties.Name="Server Address"/>
                 <TextBox Header="Port"
                          Text="{x:Bind ViewModel.ServerPort, Mode=TwoWay}"
                          PlaceholderText="8080"
-                         InputScope="Number"/>
+                         InputScope="Number"
+                         AutomationProperties.Name="Port"/>
             </StackPanel>
         </Border>
 
@@ -147,7 +154,8 @@
                            FontSize="12" Opacity="0.6" TextWrapping="Wrap"/>
                 <ComboBox ItemsSource="{x:Bind ViewModel.ConnectionTypeNames}"
                           SelectedIndex="{x:Bind ViewModel.SelectedConnectionType, Mode=TwoWay}"
-                          HorizontalAlignment="Stretch"/>
+                          HorizontalAlignment="Stretch"
+                          AutomationProperties.Name="Connection Type"/>
             </StackPanel>
         </Border>
 
@@ -164,7 +172,8 @@
                            FontSize="12" Opacity="0.6" TextWrapping="Wrap"/>
                 <Button Command="{x:Bind ViewModel.ScanDevicesCommand}"
                         IsEnabled="{x:Bind ViewModel.IsScanning, Converter={StaticResource InvertBoolConverter}, Mode=OneWay}"
-                        HorizontalAlignment="Stretch">
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.Name="Scan Devices">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <ProgressRing IsActive="{x:Bind ViewModel.IsScanning, Mode=OneWay}"
                                       Width="16" Height="16"
@@ -178,7 +187,8 @@
                 <ListView ItemsSource="{x:Bind ViewModel.DiscoveredDevices}"
                           Visibility="{x:Bind ViewModel.DiscoveredDevices, Converter={StaticResource CollectionToVisibilityConverter}, Mode=OneWay}"
                           MaxHeight="200"
-                          SelectionChanged="DeviceList_SelectionChanged">
+                          SelectionChanged="DeviceList_SelectionChanged"
+                          AutomationProperties.Name="Discovered Devices">
                     <ListView.ItemTemplate>
                         <DataTemplate x:DataType="x:String">
                             <Grid Padding="4">
@@ -209,7 +219,8 @@
                            FontSize="12" Opacity="0.6" TextWrapping="Wrap"/>
                 <ComboBox ItemsSource="{x:Bind AudioModeOptions}"
                           SelectedIndex="{x:Bind ViewModel.SelectedAudioMode, Mode=TwoWay}"
-                          HorizontalAlignment="Stretch"/>
+                          HorizontalAlignment="Stretch"
+                          AutomationProperties.Name="Audio Mode"/>
             </StackPanel>
         </Border>
 
@@ -238,7 +249,8 @@
                     <Slider Grid.Column="1" Minimum="0" Maximum="100"
                             Value="{x:Bind ViewModel.MixRatio, Mode=TwoWay}"
                             StepFrequency="5"
-                            HorizontalAlignment="Stretch"/>
+                            HorizontalAlignment="Stretch"
+                            AutomationProperties.Name="Mix Ratio"/>
                     <TextBlock Grid.Column="2" Text="Phone" FontSize="12" Opacity="0.6"
                                VerticalAlignment="Center" Margin="8,0,0,0"/>
                 </Grid>
@@ -258,7 +270,8 @@
                            FontSize="12" Opacity="0.6" TextWrapping="Wrap"/>
                 <ToggleSwitch IsOn="{x:Bind ViewModel.IsAutoStartEnabled, Mode=TwoWay}"
                               OnContent="Enabled" OffContent="Disabled"
-                              HorizontalAlignment="Left"/>
+                              HorizontalAlignment="Left"
+                              AutomationProperties.Name="Auto-start"/>
             </StackPanel>
         </Border>
 
@@ -277,7 +290,8 @@
                           Header="Quality Profile"
                           SelectedIndex="1"
                           SelectionChanged="AudioProfileComboBox_SelectionChanged"
-                          HorizontalAlignment="Stretch">
+                          HorizontalAlignment="Stretch"
+                          AutomationProperties.Name="Audio Profile">
                     <ComboBoxItem Content="Bandwidth Saving"/>
                     <ComboBoxItem Content="Standard"/>
                     <ComboBoxItem Content="High Quality"/>
@@ -291,7 +305,8 @@
                               IsOn="True"
                               OnContent="Enabled" OffContent="Disabled"
                               Toggled="AutoProfileToggle_Toggled"
-                              HorizontalAlignment="Left"/>
+                              HorizontalAlignment="Left"
+                              AutomationProperties.Name="Auto Profile Mode"/>
             </StackPanel>
         </Border>
 
@@ -305,7 +320,8 @@
                               Header="Preset"
                               SelectedIndex="0"
                               SelectionChanged="EqPresetComboBox_SelectionChanged"
-                              HorizontalAlignment="Stretch">
+                              HorizontalAlignment="Stretch"
+                              AutomationProperties.Name="EQ Preset">
                         <ComboBoxItem Content="Flat"/>
                         <ComboBoxItem Content="Gaming"/>
                         <ComboBoxItem Content="Music"/>
@@ -315,25 +331,35 @@
                     </ComboBox>
 
                     <Slider x:Name="EqBand0" Header="31 Hz" Minimum="-12" Maximum="12" Value="0"
-                            StepFrequency="0.5" ValueChanged="EqBand_ValueChanged"/>
+                            StepFrequency="0.5" ValueChanged="EqBand_ValueChanged"
+                            AutomationProperties.Name="EQ Band 31 Hz"/>
                     <Slider x:Name="EqBand1" Header="62 Hz" Minimum="-12" Maximum="12" Value="0"
-                            StepFrequency="0.5" ValueChanged="EqBand_ValueChanged"/>
+                            StepFrequency="0.5" ValueChanged="EqBand_ValueChanged"
+                            AutomationProperties.Name="EQ Band 62 Hz"/>
                     <Slider x:Name="EqBand2" Header="125 Hz" Minimum="-12" Maximum="12" Value="0"
-                            StepFrequency="0.5" ValueChanged="EqBand_ValueChanged"/>
+                            StepFrequency="0.5" ValueChanged="EqBand_ValueChanged"
+                            AutomationProperties.Name="EQ Band 125 Hz"/>
                     <Slider x:Name="EqBand3" Header="250 Hz" Minimum="-12" Maximum="12" Value="0"
-                            StepFrequency="0.5" ValueChanged="EqBand_ValueChanged"/>
+                            StepFrequency="0.5" ValueChanged="EqBand_ValueChanged"
+                            AutomationProperties.Name="EQ Band 250 Hz"/>
                     <Slider x:Name="EqBand4" Header="500 Hz" Minimum="-12" Maximum="12" Value="0"
-                            StepFrequency="0.5" ValueChanged="EqBand_ValueChanged"/>
+                            StepFrequency="0.5" ValueChanged="EqBand_ValueChanged"
+                            AutomationProperties.Name="EQ Band 500 Hz"/>
                     <Slider x:Name="EqBand5" Header="1 kHz" Minimum="-12" Maximum="12" Value="0"
-                            StepFrequency="0.5" ValueChanged="EqBand_ValueChanged"/>
+                            StepFrequency="0.5" ValueChanged="EqBand_ValueChanged"
+                            AutomationProperties.Name="EQ Band 1 kHz"/>
                     <Slider x:Name="EqBand6" Header="2 kHz" Minimum="-12" Maximum="12" Value="0"
-                            StepFrequency="0.5" ValueChanged="EqBand_ValueChanged"/>
+                            StepFrequency="0.5" ValueChanged="EqBand_ValueChanged"
+                            AutomationProperties.Name="EQ Band 2 kHz"/>
                     <Slider x:Name="EqBand7" Header="4 kHz" Minimum="-12" Maximum="12" Value="0"
-                            StepFrequency="0.5" ValueChanged="EqBand_ValueChanged"/>
+                            StepFrequency="0.5" ValueChanged="EqBand_ValueChanged"
+                            AutomationProperties.Name="EQ Band 4 kHz"/>
                     <Slider x:Name="EqBand8" Header="8 kHz" Minimum="-12" Maximum="12" Value="0"
-                            StepFrequency="0.5" ValueChanged="EqBand_ValueChanged"/>
+                            StepFrequency="0.5" ValueChanged="EqBand_ValueChanged"
+                            AutomationProperties.Name="EQ Band 8 kHz"/>
                     <Slider x:Name="EqBand9" Header="16 kHz" Minimum="-12" Maximum="12" Value="0"
-                            StepFrequency="0.5" ValueChanged="EqBand_ValueChanged"/>
+                            StepFrequency="0.5" ValueChanged="EqBand_ValueChanged"
+                            AutomationProperties.Name="EQ Band 16 kHz"/>
                 </StackPanel>
             </Border>
         </Expander>

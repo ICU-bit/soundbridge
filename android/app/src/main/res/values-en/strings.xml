@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SoundBridge</string>
+    
+    <!-- Connection types -->
+    <string name="connection_type_wifi_lan">WiFi LAN</string>
+    <string name="connection_type_wifi_direct">WiFi Direct</string>
+    <string name="connection_type_usb_adb">USB/ADB</string>
+    <string name="connection_type_bluetooth">Bluetooth</string>
+    
+    <!-- Connection status -->
+    <string name="connection_failed">Connection Failed</string>
+    <string name="connection_timeout">Connection Timeout</string>
+    <string name="connection_timeout_check">Please check:\n• Network connection is working\n• Server address is correct\n• Firewall allows the connection</string>
+    <string name="connection_timeout_elapsed">Waited %d seconds</string>
+    
+    <!-- Buttons -->
+    <string name="button_confirm">OK</string>
+    <string name="button_retry">Retry</string>
+    <string name="button_cancel">Cancel</string>
+    
+    <!-- Audio quality settings -->
+    <string name="audio_quality_title">Audio Quality Tier</string>
+    <string name="audio_quality_tier">Tier</string>
+    <string name="audio_quality_auto">Auto</string>
+    <string name="audio_quality_auto_desc">Automatically adjusts based on network conditions</string>
+    <string name="audio_quality_manual_desc">Manually select tier</string>
+    
+    <!-- Equalizer -->
+    <string name="equalizer_title">Equalizer</string>
+    <string name="equalizer_enabled">Enabled — %s</string>
+    <string name="equalizer_disabled">Disabled</string>
+    
+    <!-- First-run guide -->
+    <string name="guide_welcome_title">Welcome to SoundBridge</string>
+    <string name="guide_welcome_desc">Keep your headphones on while gaming — hear both PC and phone audio simultaneously.\n\nSoundBridge streams your PC audio to your phone in real time over the network.</string>
+    <string name="guide_permissions_title">Grant Required Permissions</string>
+    <string name="guide_permissions_granted">All permissions granted</string>
+    <string name="guide_permissions_button">Grant Permissions</string>
+    <string name="guide_audio_test_title">Test Audio Playback</string>
+    <string name="guide_audio_test_desc">We\'ll play a test sound to verify your phone speaker or headphones are working.\n\nPlease turn up the volume so you can hear the test tone.</string>
+    <string name="guide_audio_test_complete">Audio test complete</string>
+    <string name="guide_audio_test_playing">Playing...</string>
+    <string name="guide_audio_test_button">Play Test Sound</string>
+    <string name="guide_ready_title">All Set</string>
+    <string name="guide_ready_desc">Everything is ready!\n\nHow to use:\n1. Start the SoundBridge server on your PC\n2. Make sure your phone and PC are on the same network\n3. Tap \"Scan\" to discover your PC\n4. Tap Connect to start streaming</string>
+    <string name="guide_button_previous">Previous</string>
+    <string name="guide_button_start">Get Started</string>
+    <string name="guide_button_next">Next</string>
+    <string name="guide_button_skip">Skip Guide</string>
+</resources>
