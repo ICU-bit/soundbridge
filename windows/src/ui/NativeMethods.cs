@@ -5,7 +5,7 @@ namespace SoundBridge.UI;
 /// <summary>
 /// Rust FFI 连接状态枚举（对应 SbConnectionState）
 /// </summary>
-internal enum SbConnectionState : int
+public enum SbConnectionState : int
 {
     Disconnected = 0,
     Connecting = 1,

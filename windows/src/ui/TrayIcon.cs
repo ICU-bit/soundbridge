@@ -1,6 +1,5 @@
 using System;
 using System.Runtime.InteropServices;
-using Microsoft.UI.Xaml;
 
 namespace SoundBridge.UI;
 

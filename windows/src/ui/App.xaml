@@ -1,32 +1,6 @@
-<Application
-    x:Class="SoundBridge.UI.App"
-    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:local="using:SoundBridge.UI">
-    <Application.Resources>
-        <ResourceDictionary>
-            <ResourceDictionary.MergedDictionaries>
-                <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
-            </ResourceDictionary.MergedDictionaries>
-            <local:BoolToColorConverter x:Key="BoolToColorConverter"/>
-            <local:BoolToStatusColorConverter x:Key="BoolToStatusColorConverter"/>
-            <local:LevelToColorConverter x:Key="LevelToColorConverter"/>
-            <local:LevelToPercentConverter x:Key="LevelToPercentConverter"/>
-            <local:BoolToIconConverter x:Key="BoolToIconConverter"/>
-            <local:BoolToConnectTextConverter x:Key="BoolToConnectTextConverter"/>
-            <local:BoolToMuteIconConverter x:Key="BoolToMuteIconConverter"/>
-            <local:BoolToMuteTextConverter x:Key="BoolToMuteTextConverter"/>
-            <local:BoolToPauseIconConverter x:Key="BoolToPauseIconConverter"/>
-            <local:BoolToPauseTextConverter x:Key="BoolToPauseTextConverter"/>
-            <local:VolumeToPercentConverter x:Key="VolumeToPercentConverter"/>
-            <local:VolumeToIconConverter x:Key="VolumeToIconConverter"/>
-            <local:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
-            <local:MixRatioToPercentConverter x:Key="MixRatioToPercentConverter"/>
-            <local:InvertBoolConverter x:Key="InvertBoolConverter"/>
-            <local:InvertBoolToVisibilityConverter x:Key="InvertBoolToVisibilityConverter"/>
-            <local:BoolToScanTextConverter x:Key="BoolToScanTextConverter"/>
-            <local:CollectionToVisibilityConverter x:Key="CollectionToVisibilityConverter"/>
-            <local:EmptyCollectionToVisibilityConverter x:Key="EmptyCollectionToVisibilityConverter"/>
-        </ResourceDictionary>
-    </Application.Resources>
+﻿<Application x:Class="SoundBridge.UI.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             StartupUri="MainWindow.xaml">
+    <Application.Resources />
 </Application>

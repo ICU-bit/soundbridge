@@ -1,308 +1,232 @@
-using Microsoft.UI;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Data;
-using Microsoft.UI.Xaml.Media;
 using System;
+using System.Globalization;
+using System.Windows;
+using System.Windows.Data;
+using System.Windows.Media;
 
 namespace SoundBridge.UI;
 
-/// <summary>
-/// bool → 连接状态背景色
-/// </summary>
 public class BoolToColorConverter : IValueConverter
 {
-    public object Convert(object value, Type targetType, object parameter, string language)
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
         bool isConnected = value is bool b && b;
         return isConnected
-            ? new SolidColorBrush(Colors.ForestGreen)
-            : new SolidColorBrush(Colors.IndianRed);
+            ? new SolidColorBrush(Color.FromRgb(34, 139, 34))
+            : new SolidColorBrush(Color.FromRgb(205, 92, 92));
     }
-
-    public object ConvertBack(object value, Type targetType, object parameter, string language) =>
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
         throw new NotImplementedException();
 }
 
-/// <summary>
-/// bool → 状态指示灯颜色
-/// </summary>
 public class BoolToStatusColorConverter : IValueConverter
 {
-    public object Convert(object value, Type targetType, object parameter, string language)
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
         bool isConnected = value is bool b && b;
         return isConnected
-            ? new SolidColorBrush(Colors.LightGreen)
-            : new SolidColorBrush(Colors.Red);
+            ? new SolidColorBrush(Color.FromRgb(144, 238, 144))
+            : new SolidColorBrush(Color.FromRgb(255, 0, 0));
     }
-
-    public object ConvertBack(object value, Type targetType, object parameter, string language) =>
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
         throw new NotImplementedException();
 }
 
-/// <summary>
-/// float → 音频电平颜色（绿/黄/红）
-/// </summary>
 public class LevelToColorConverter : IValueConverter
 {
-    public object Convert(object value, Type targetType, object parameter, string language)
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
         float level = value is float f ? f : 0f;
-        if (level < 0.3f) return new SolidColorBrush(Colors.LimeGreen);
-        if (level < 0.7f) return new SolidColorBrush(Colors.Gold);
-        return new SolidColorBrush(Colors.Red);
+        if (level < 0.3f) return new SolidColorBrush(Color.FromRgb(50, 205, 50));
+        if (level < 0.7f) return new SolidColorBrush(Color.FromRgb(255, 215, 0));
+        return new SolidColorBrush(Color.FromRgb(255, 0, 0));
     }
-
-    public object ConvertBack(object value, Type targetType, object parameter, string language) =>
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
         throw new NotImplementedException();
 }
 
-/// <summary>
-/// float → 百分比文本
-/// </summary>
 public class LevelToPercentConverter : IValueConverter
 {
-    public object Convert(object value, Type targetType, object parameter, string language)
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
         float level = value is float f ? f : 0f;
         return $"{(int)(level * 100)}%";
     }
-
-    public object ConvertBack(object value, Type targetType, object parameter, string language) =>
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
         throw new NotImplementedException();
 }
 
-/// <summary>
-/// bool → 连接/断开图标字形
-/// </summary>
 public class BoolToIconConverter : IValueConverter
 {
-    public object Convert(object value, Type targetType, object parameter, string language)
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
         bool isConnected = value is bool b && b;
-        return isConnected ? "\uE711" : "\uE768"; // Close / Play
+        return isConnected ? "✕" : "▶";
     }
-
-    public object ConvertBack(object value, Type targetType, object parameter, string language) =>
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
         throw new NotImplementedException();
 }
 
-/// <summary>
-/// bool → "Disconnect" / "Connect"
-/// </summary>
 public class BoolToConnectTextConverter : IValueConverter
 {
-    public object Convert(object value, Type targetType, object parameter, string language)
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
         bool isConnected = value is bool b && b;
         return isConnected ? "Disconnect" : "Connect";
     }
-
-    public object ConvertBack(object value, Type targetType, object parameter, string language) =>
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
         throw new NotImplementedException();
 }
 
-/// <summary>
-/// bool → 静音图标字形
-/// </summary>
 public class BoolToMuteIconConverter : IValueConverter
 {
-    public object Convert(object value, Type targetType, object parameter, string language)
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
         bool isMuted = value is bool b && b;
-        return isMuted ? "\uE720" : "\uE729"; // MicOff / Mic
+        return isMuted ? "🔇" : "🔊";
     }
-
-    public object ConvertBack(object value, Type targetType, object parameter, string language) =>
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
         throw new NotImplementedException();
 }
 
-/// <summary>
-/// bool → "Unmute" / "Mute"
-/// </summary>
 public class BoolToMuteTextConverter : IValueConverter
 {
-    public object Convert(object value, Type targetType, object parameter, string language)
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
         bool isMuted = value is bool b && b;
         return isMuted ? "Unmute" : "Mute";
     }
-
-    public object ConvertBack(object value, Type targetType, object parameter, string language) =>
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
         throw new NotImplementedException();
 }
 
-/// <summary>
-/// bool → 暂停/播放图标字形
-/// </summary>
 public class BoolToPauseIconConverter : IValueConverter
 {
-    public object Convert(object value, Type targetType, object parameter, string language)
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
         bool isPaused = value is bool b && b;
-        return isPaused ? "\uE768" : "\uE769"; // Play / Pause
+        return isPaused ? "▶" : "⏸";
     }
-
-    public object ConvertBack(object value, Type targetType, object parameter, string language) =>
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
         throw new NotImplementedException();
 }
 
-/// <summary>
-/// bool → "Resume" / "Pause"
-/// </summary>
 public class BoolToPauseTextConverter : IValueConverter
 {
-    public object Convert(object value, Type targetType, object parameter, string language)
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
         bool isPaused = value is bool b && b;
         return isPaused ? "Resume" : "Pause";
     }
-
-    public object ConvertBack(object value, Type targetType, object parameter, string language) =>
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
         throw new NotImplementedException();
 }
 
-/// <summary>
-/// double → 音量百分比文本（如 "80%"）
-/// </summary>
 public class VolumeToPercentConverter : IValueConverter
 {
-    public object Convert(object value, Type targetType, object parameter, string language)
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
         double volume = value is double d ? d : 0;
         return $"{(int)volume}%";
     }
-
-    public object ConvertBack(object value, Type targetType, object parameter, string language) =>
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
         throw new NotImplementedException();
 }
 
-/// <summary>
-/// double → 音量图标字形（低/中/高/静音）
-/// </summary>
 public class VolumeToIconConverter : IValueConverter
 {
-    public object Convert(object value, Type targetType, object parameter, string language)
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
         double volume = value is double d ? d : 0;
-        if (volume <= 0) return "\uE74F";   // Volume0 (静音)
-        if (volume < 33) return "\uE993";    // Volume1 (低)
-        if (volume < 66) return "\uE994";    // Volume2 (中)
-        return "\uE995";                     // Volume3 (高)
+        if (volume <= 0) return "🔇";
+        if (volume < 33) return "🔈";
+        if (volume < 66) return "🔉";
+        return "🔊";
     }
-
-    public object ConvertBack(object value, Type targetType, object parameter, string language) =>
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
         throw new NotImplementedException();
 }
 
-/// <summary>
-/// bool → Visibility
-/// </summary>
 public class BoolToVisibilityConverter : IValueConverter
 {
-    public object Convert(object value, Type targetType, object parameter, string language)
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
         bool b = value is bool v && v;
         return b ? Visibility.Visible : Visibility.Collapsed;
     }
-
-    public object ConvertBack(object value, Type targetType, object parameter, string language) =>
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
         throw new NotImplementedException();
 }
 
-/// <summary>
-/// double → 混音比例描述文本（如 "PC 60% / Phone 40%"）
-/// </summary>
 public class MixRatioToPercentConverter : IValueConverter
 {
-    public object Convert(object value, Type targetType, object parameter, string language)
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
         double ratio = value is double d ? d : 50;
         int pc = (int)(100 - ratio);
         int phone = (int)ratio;
         return $"PC {pc}% / Phone {phone}%";
     }
-
-    public object ConvertBack(object value, Type targetType, object parameter, string language) =>
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
         throw new NotImplementedException();
 }
 
-/// <summary>
-/// bool → 取反 bool
-/// </summary>
 public class InvertBoolConverter : IValueConverter
 {
-    public object Convert(object value, Type targetType, object parameter, string language)
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
         bool b = value is bool v && v;
         return !b;
     }
-
-    public object ConvertBack(object value, Type targetType, object parameter, string language)
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
     {
         bool b = value is bool v && v;
         return !b;
     }
 }
 
-/// <summary>
-/// bool → 取反 Visibility（true=Collapsed, false=Visible）
-/// </summary>
 public class InvertBoolToVisibilityConverter : IValueConverter
 {
-    public object Convert(object value, Type targetType, object parameter, string language)
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
         bool b = value is bool v && v;
         return b ? Visibility.Collapsed : Visibility.Visible;
     }
-
-    public object ConvertBack(object value, Type targetType, object parameter, string language) =>
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
         throw new NotImplementedException();
 }
 
-/// <summary>
-/// bool → "Stop" / "Scan"
-/// </summary>
 public class BoolToScanTextConverter : IValueConverter
 {
-    public object Convert(object value, Type targetType, object parameter, string language)
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
         bool isScanning = value is bool v && v;
         return isScanning ? "Stop" : "Scan";
     }
-
-    public object ConvertBack(object value, Type targetType, object parameter, string language) =>
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
         throw new NotImplementedException();
 }
 
-/// <summary>
-/// ICollection → Visibility（非空=Visible, 空=Collapsed）
-/// </summary>
 public class CollectionToVisibilityConverter : IValueConverter
 {
-    public object Convert(object value, Type targetType, object parameter, string language)
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
         if (value is System.Collections.ICollection collection)
             return collection.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         return Visibility.Collapsed;
     }
-
-    public object ConvertBack(object value, Type targetType, object parameter, string language) =>
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
         throw new NotImplementedException();
 }
 
-/// <summary>
-/// ICollection → 反 Visibility（空=Visible, 非空=Collapsed）
-/// </summary>
 public class EmptyCollectionToVisibilityConverter : IValueConverter
 {
-    public object Convert(object value, Type targetType, object parameter, string language)
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
         if (value is System.Collections.ICollection collection)
             return collection.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         return Visibility.Visible;
     }
-
-    public object ConvertBack(object value, Type targetType, object parameter, string language) =>
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
         throw new NotImplementedException();
 }
