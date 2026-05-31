@@ -4,6 +4,7 @@
 
 pub mod aec;
 pub mod agc;
+pub mod eq;
 pub mod gain;
 pub mod noise_gate;
 pub mod ns;
@@ -12,6 +13,7 @@ pub mod silence_detector;
 
 pub use aec::AecProcessor;
 pub use agc::AgcProcessor;
+pub use eq::{BiquadFilter, EqPreset, ParametricEq};
 pub use gain::GainProcessor;
 pub use noise_gate::NoiseGate;
 pub use ns::NsProcessor;
