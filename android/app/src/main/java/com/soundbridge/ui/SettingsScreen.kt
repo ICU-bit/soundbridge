@@ -439,6 +439,7 @@ fun AudioProfileSection() {
 // 均衡器
 // ============================================================
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EqualizerSection() {
     var selectedPreset by remember { mutableStateOf(EqPreset.Flat) }

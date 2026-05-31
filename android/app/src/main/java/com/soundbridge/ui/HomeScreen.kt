@@ -240,7 +240,7 @@ fun ConnectionStatusCard(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 LinearProgressIndicator(
-                    progress = { reconnectAttempt.toFloat() / maxReconnectAttempts },
+                    progress = reconnectAttempt.toFloat() / maxReconnectAttempts,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(4.dp)

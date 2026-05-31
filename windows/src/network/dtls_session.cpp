@@ -1,5 +1,6 @@
 #include "dtls_session.h"
 
+#include <windows.h>
 #include <bcrypt.h>
 #include <cstring>
 #include <random>
