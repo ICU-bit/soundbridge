@@ -23,6 +23,13 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         _logger = logger;
         _notificationService = notificationService;
 
+        // 初始化 FFI 库（设置 panic hook、tracing，必须在其他 sb_* 调用前调用一次）
+        int initRc = NativeMethods.sb_init();
+        if (initRc != NativeMethods.SB_OK)
+            _logger.LogWarning("sb_init failed: {Error}", NativeMethods.GetLastError());
+        else
+            _logger.LogInformation("FFI initialized");
+
         // 创建引擎
         _engine = NativeMethods.sb_engine_create();
         if (_engine == IntPtr.Zero)

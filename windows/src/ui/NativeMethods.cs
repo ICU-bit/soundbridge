@@ -28,6 +28,14 @@ internal static partial class NativeMethods
     private const string DllName = "ffi_bindings";
 
     // ============================================================
+    // 初始化
+    // ============================================================
+
+    /// <summary>初始化 FFI 库（设置 panic hook、tracing，必须在其他 sb_* 调用前调用一次）</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int sb_init();
+
+    // ============================================================
     // 引擎生命周期
     // ============================================================
 

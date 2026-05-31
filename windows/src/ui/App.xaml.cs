@@ -74,7 +74,13 @@ public partial class App : Application
 
     private IntPtr WndProc(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
+        // Route tray icon messages (WM_USER+1)
         if (_trayIcon != null && _trayIcon.HandleWindowMessage(hWnd, (uint)msg, wParam, lParam))
+        {
+            handled = true;
+        }
+        // Route hotkey messages (WM_HOTKEY = 0x0312)
+        if (_window?.HotkeyManager != null && _window.HotkeyManager.HandleWindowMessage(hWnd, (uint)msg, wParam, lParam))
         {
             handled = true;
         }

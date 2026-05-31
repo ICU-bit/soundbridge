@@ -13,6 +13,8 @@ public partial class MainWindow : Window
     private readonly ILogger<MainWindow> _logger;
     private readonly ILoggerFactory _loggerFactory;
     private HotkeyManager? _hotkeyManager;
+    /// <summary>供 App.xaml.cs WndProc 路由 WM_HOTKEY 消息</summary>
+    public HotkeyManager? HotkeyManager => _hotkeyManager;
 
     public IReadOnlyList<string> AudioModeOptions { get; } = new[]
     {
