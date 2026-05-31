@@ -15,6 +15,7 @@ import com.soundbridge.MainActivity
 import com.soundbridge.R
 import com.soundbridge.SoundBridgeApp
 import com.soundbridge.native.NativeAudioEngine
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.security.SecureRandom
@@ -91,6 +92,24 @@ class AudioService : Service() {
         DISCONNECTED, CONNECTING, CONNECTED
     }
 
+    enum class ReconnectState {
+        IDLE, RECONNECTING, FAILED
+    }
+
+    // === Auto-reconnect ===
+    private val _reconnectState = MutableStateFlow(ReconnectState.IDLE)
+    val reconnectState: StateFlow<ReconnectState> = _reconnectState
+
+    private val _reconnectAttempt = MutableStateFlow(0)
+    val reconnectAttempt: StateFlow<Int> = _reconnectAttempt
+
+    private var autoReconnectEnabled = true
+    private var reconnectJob: Job? = null
+    private val reconnectScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var lastAddress: String = ""
+    private var lastPort: Int = 0
+    private var userDisconnected = false
+
     inner class AudioServiceBinder : Binder() {
         fun getService(): AudioService = this@AudioService
     }
@@ -143,6 +162,8 @@ class AudioService : Service() {
     }
 
     private fun stopForegroundService() {
+        userDisconnected = true
+        cancelReconnect()
         _connectionState.value = ConnectionState.DISCONNECTED
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
@@ -171,6 +192,9 @@ class AudioService : Service() {
             feedbackManager?.onConnectionFailed(FeedbackManager.ErrorCode.ENGINE_NOT_INITIALIZED)
             return
         }
+        userDisconnected = false
+        lastAddress = address
+        lastPort = port
         _connectionState.value = ConnectionState.CONNECTING
         feedbackManager?.onConnectionStarted()
 
@@ -179,6 +203,7 @@ class AudioService : Service() {
         if (bindResult != 0) {
             _connectionState.value = ConnectionState.DISCONNECTED
             feedbackManager?.onConnectionFailed(FeedbackManager.ErrorCode.BIND_FAILED)
+            scheduleReconnect()
             return
         }
 
@@ -187,6 +212,7 @@ class AudioService : Service() {
         if (connectResult != 0) {
             _connectionState.value = ConnectionState.DISCONNECTED
             feedbackManager?.onConnectionFailed(FeedbackManager.ErrorCode.CONNECT_FAILED)
+            scheduleReconnect()
             return
         }
 
@@ -198,13 +224,17 @@ class AudioService : Service() {
         if (pipelineResult == 0) {
             _connectionState.value = ConnectionState.CONNECTED
             feedbackManager?.onConnectionSuccess()
+            cancelReconnect()
         } else {
             _connectionState.value = ConnectionState.DISCONNECTED
             feedbackManager?.onConnectionFailed(FeedbackManager.ErrorCode.PIPELINE_FAILED)
+            scheduleReconnect()
         }
     }
 
     fun disconnect() {
+        userDisconnected = true
+        cancelReconnect()
         btUdpBridge?.stop()
         btUdpBridge = null
         if (engineHandle != 0L) {
@@ -470,8 +500,76 @@ class AudioService : Service() {
         feedbackManager?.clearTimeout()
     }
 
+    // ============================================================
+    // Auto-reconnect with exponential backoff
+    // ============================================================
+
+    private fun scheduleReconnect() {
+        if (!autoReconnectEnabled || userDisconnected || lastAddress.isEmpty()) return
+        if (reconnectJob?.isActive == true) return
+
+        reconnectJob = reconnectScope.launch {
+            _reconnectState.value = ReconnectState.RECONNECTING
+            var attempt = 0
+            while (attempt < MAX_RECONNECT_ATTEMPTS && autoReconnectEnabled && !userDisconnected) {
+                attempt++
+                _reconnectAttempt.value = attempt
+                val delayMs = (INITIAL_DELAY_MS * (1L shl (attempt - 1))).coerceAtMost(MAX_DELAY_MS)
+                Log.i(TAG, "Reconnect attempt $attempt/$MAX_RECONNECT_ATTEMPTS in ${delayMs}ms")
+                delay(delayMs)
+
+                if (!autoReconnectEnabled || userDisconnected) break
+
+                withContext(Dispatchers.Main) {
+                    connectToServer(lastAddress, lastPort)
+                }
+
+                // 等待连接结果
+                delay(2000)
+                if (_connectionState.value == ConnectionState.CONNECTED) {
+                    Log.i(TAG, "Reconnect succeeded on attempt $attempt")
+                    _reconnectState.value = ReconnectState.IDLE
+                    _reconnectAttempt.value = 0
+                    return@launch
+                }
+            }
+            if (_connectionState.value != ConnectionState.CONNECTED) {
+                Log.w(TAG, "Reconnect failed after $MAX_RECONNECT_ATTEMPTS attempts")
+                _reconnectState.value = ReconnectState.FAILED
+            }
+        }
+    }
+
+    private fun cancelReconnect() {
+        reconnectJob?.cancel()
+        reconnectJob = null
+        _reconnectState.value = ReconnectState.IDLE
+        _reconnectAttempt.value = 0
+    }
+
+    /** 启用/禁用自动重连 */
+    fun setAutoReconnectEnabled(enabled: Boolean) {
+        autoReconnectEnabled = enabled
+        if (!enabled) cancelReconnect()
+    }
+
+    /** 获取自动重连是否启用 */
+    fun isAutoReconnectEnabled(): Boolean = autoReconnectEnabled
+
+    /** 手动触发重连（重置失败状态后重试） */
+    fun manualReconnect() {
+        cancelReconnect()
+        userDisconnected = false
+        if (lastAddress.isNotEmpty()) {
+            connectToServer(lastAddress, lastPort)
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
+        userDisconnected = true
+        cancelReconnect()
+        reconnectScope.cancel()
         btUdpBridge?.stop()
         btUdpBridge = null
         // Release platform managers
@@ -496,5 +594,8 @@ class AudioService : Service() {
         const val ACTION_START = "com.soundbridge.ACTION_START"
         const val ACTION_STOP = "com.soundbridge.ACTION_STOP"
         const val NOTIFICATION_ID = 1001
+        const val MAX_RECONNECT_ATTEMPTS = 5
+        const val INITIAL_DELAY_MS = 1000L
+        const val MAX_DELAY_MS = 16000L
     }
 }

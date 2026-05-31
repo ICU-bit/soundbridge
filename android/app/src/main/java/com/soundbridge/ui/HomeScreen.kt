@@ -35,6 +35,8 @@ fun HomeScreen(audioService: AudioService? = null) {
     val audioLevel by (audioService?.audioLevel?.collectAsState() ?: remember { mutableFloatStateOf(0f) })
     val feedbackState by (audioService?.feedbackState?.collectAsState() ?: remember { mutableStateOf(FeedbackManager.FeedbackState.Idle) })
     val errorMessage by (audioService?.errorMessage?.collectAsState() ?: remember { mutableStateOf(null) })
+    val reconnectState by (audioService?.reconnectState?.collectAsState() ?: remember { mutableStateOf(AudioService.ReconnectState.IDLE) })
+    val reconnectAttempt by (audioService?.reconnectAttempt?.collectAsState() ?: remember { mutableIntStateOf(0) })
     var isMuted by remember { mutableStateOf(audioService?.isMuted() ?: false) }
     var serverAddress by remember { mutableStateOf("192.168.1.100") }
     var serverPort by remember { mutableStateOf("8080") }
@@ -80,7 +82,12 @@ fun HomeScreen(audioService: AudioService? = null) {
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        ConnectionStatusCard(connected)
+        ConnectionStatusCard(
+            isConnected = connected,
+            reconnectState = reconnectState,
+            reconnectAttempt = reconnectAttempt,
+            maxReconnectAttempts = AudioService.MAX_RECONNECT_ATTEMPTS
+        )
 
         Spacer(modifier = Modifier.height(32.dp))
 
@@ -91,8 +98,11 @@ fun HomeScreen(audioService: AudioService? = null) {
         ControlButtons(
             isConnected = connected,
             isMuted = isMuted,
+            reconnectState = reconnectState,
             onConnectClick = {
                 if (connected) {
+                    audioService?.disconnect()
+                } else if (reconnectState == AudioService.ReconnectState.RECONNECTING) {
                     audioService?.disconnect()
                 } else {
                     val port = serverPort.toIntOrNull() ?: 8080
@@ -148,37 +158,106 @@ fun HomeScreen(audioService: AudioService? = null) {
 }
 
 @Composable
-fun ConnectionStatusCard(isConnected: Boolean) {
+fun ConnectionStatusCard(
+    isConnected: Boolean,
+    reconnectState: AudioService.ReconnectState = AudioService.ReconnectState.IDLE,
+    reconnectAttempt: Int = 0,
+    maxReconnectAttempts: Int = 5
+) {
+    val isReconnecting = reconnectState == AudioService.ReconnectState.RECONNECTING
+    val reconnectFailed = reconnectState == AudioService.ReconnectState.FAILED
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (isConnected) ConnectionConnected.copy(alpha = 0.2f)
-            else ConnectionDisconnected.copy(alpha = 0.2f)
+            containerColor = when {
+                isConnected -> ConnectionConnected.copy(alpha = 0.2f)
+                isReconnecting -> ConnectionReconnecting.copy(alpha = 0.2f)
+                reconnectFailed -> SoundBridgeError.copy(alpha = 0.2f)
+                else -> ConnectionDisconnected.copy(alpha = 0.2f)
+            }
         ),
         shape = RoundedCornerShape(16.dp)
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Box(
-                modifier = Modifier
-                    .size(12.dp)
-                    .clip(CircleShape)
-                    .background(if (isConnected) ConnectionConnected else ConnectionDisconnected)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = if (isConnected) "Connected" else "Disconnected",
-                color = if (isConnected) ConnectionConnected else ConnectionDisconnected,
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                if (isReconnecting) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(12.dp),
+                        strokeWidth = 2.dp,
+                        color = ConnectionReconnecting
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(12.dp)
+                            .clip(CircleShape)
+                            .background(
+                                when {
+                                    isConnected -> ConnectionConnected
+                                    reconnectFailed -> SoundBridgeError
+                                    else -> ConnectionDisconnected
+                                }
+                            )
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = when {
+                        isConnected -> "Connected"
+                        isReconnecting -> "Reconnecting..."
+                        reconnectFailed -> "Reconnect Failed"
+                        else -> "Disconnected"
+                    },
+                    color = when {
+                        isConnected -> ConnectionConnected
+                        isReconnecting -> ConnectionReconnecting
+                        reconnectFailed -> SoundBridgeError
+                        else -> ConnectionDisconnected
+                    },
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+            }
+
+            if (isReconnecting) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Attempt $reconnectAttempt / $maxReconnectAttempts",
+                    color = ConnectionReconnecting.copy(alpha = 0.8f),
+                    fontSize = 13.sp
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                LinearProgressIndicator(
+                    progress = { reconnectAttempt.toFloat() / maxReconnectAttempts },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp)),
+                    color = ConnectionReconnecting,
+                    trackColor = ConnectionReconnecting.copy(alpha = 0.2f),
+                )
+            }
+
+            if (reconnectFailed) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "All $maxReconnectAttempts attempts failed",
+                    color = SoundBridgeError.copy(alpha = 0.8f),
+                    fontSize = 13.sp
+                )
+            }
         }
     }
 }
@@ -245,9 +324,12 @@ fun AudioLevelVisualizer(level: Float) {
 fun ControlButtons(
     isConnected: Boolean,
     isMuted: Boolean,
+    reconnectState: AudioService.ReconnectState = AudioService.ReconnectState.IDLE,
     onConnectClick: () -> Unit,
     onMuteClick: () -> Unit
 ) {
+    val isReconnecting = reconnectState == AudioService.ReconnectState.RECONNECTING
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceEvenly
@@ -255,7 +337,10 @@ fun ControlButtons(
         Button(
             onClick = onConnectClick,
             colors = ButtonDefaults.buttonColors(
-                containerColor = if (isConnected) ConnectionDisconnected else ConnectionConnected
+                containerColor = when {
+                    isConnected || isReconnecting -> ConnectionDisconnected
+                    else -> ConnectionConnected
+                }
             ),
             modifier = Modifier
                 .weight(1f)
@@ -263,12 +348,22 @@ fun ControlButtons(
                 .padding(horizontal = 8.dp)
         ) {
             Icon(
-                imageVector = if (isConnected) Icons.Default.Close else Icons.Default.PlayArrow,
+                imageVector = when {
+                    isConnected -> Icons.Default.Close
+                    isReconnecting -> Icons.Default.Close
+                    else -> Icons.Default.PlayArrow
+                },
                 contentDescription = null,
                 modifier = Modifier.size(24.dp)
             )
             Spacer(modifier = Modifier.width(8.dp))
-            Text(if (isConnected) "Disconnect" else "Connect")
+            Text(
+                when {
+                    isConnected -> "Disconnect"
+                    isReconnecting -> "Cancel"
+                    else -> "Connect"
+                }
+            )
         }
 
         Button(
