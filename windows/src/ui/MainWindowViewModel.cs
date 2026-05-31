@@ -53,6 +53,13 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
                 _selectedAudioMode = mode;
                 _logger.LogInformation("Initial audio mode: {Mode}", mode);
             }
+
+            // 读取当前连接方式
+            if (NativeMethods.sb_get_connection_type(_engine, out int connType) == NativeMethods.SB_OK)
+            {
+                _selectedConnectionType = connType;
+                _logger.LogInformation("Initial connection type: {Type}", connType);
+            }
         }
 
         // 读取开机自启状态
@@ -343,6 +350,23 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             _logger.LogWarning("sb_set_mix_ratio failed: {Error}", NativeMethods.GetLastError());
         else
             _logger.LogDebug("Mix ratio set: PC={Pc:F2}, Phone={Phone:F2}", pcVol, phoneVol);
+    }
+
+    partial void OnSelectedConnectionTypeChanged(int value)
+    {
+        if (_engine == IntPtr.Zero) return;
+        int rc = NativeMethods.sb_set_connection_type(_engine, value);
+        if (rc != NativeMethods.SB_OK)
+            _logger.LogWarning("sb_set_connection_type failed: {Error}", NativeMethods.GetLastError());
+        else
+            _logger.LogInformation("Connection type set to {Type}", value switch
+            {
+                0 => "WiFiLan",
+                1 => "WiFiDirect",
+                2 => "UsbAdb",
+                3 => "Bluetooth",
+                _ => "Unknown"
+            });
     }
 
     [RelayCommand]

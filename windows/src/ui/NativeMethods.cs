@@ -80,6 +80,18 @@ internal static partial class NativeMethods
     internal static extern int sb_get_connection_state(IntPtr engine, out SbConnectionState state);
 
     // ============================================================
+    // 连接方式
+    // ============================================================
+
+    /// <summary>设置连接方式（0=WiFiLan, 1=WiFiDirect, 2=UsbAdb, 3=Bluetooth）</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int sb_set_connection_type(IntPtr engine, int connType);
+
+    /// <summary>获取当前连接方式</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int sb_get_connection_type(IntPtr engine, out int connType);
+
+    // ============================================================
     // 音频采集
     // ============================================================
 

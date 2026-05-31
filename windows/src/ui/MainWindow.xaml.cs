@@ -33,6 +33,10 @@ public partial class MainWindow : Window
         Title = "SoundBridge";
         DataContext = ViewModel;
 
+        // 恢复音频档位
+        var profile = NativeMethods.sb_get_audio_profile();
+        AudioProfileComboBox.SelectedIndex = (int)profile;
+
         this.SourceInitialized += OnSourceInitialized;
     }
 
