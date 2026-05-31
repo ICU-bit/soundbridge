@@ -77,6 +77,45 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    /// <summary>音质档位变更</summary>
+    private void AudioProfileComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (AudioProfileComboBox.SelectedIndex < 0) return;
+        var profile = (NativeMethods.SbAudioProfile)AudioProfileComboBox.SelectedIndex;
+        NativeMethods.sb_set_audio_profile(profile);
+        _logger.LogInformation("Audio profile changed to {Profile}", profile);
+    }
+
+    /// <summary>自动档切换</summary>
+    private void AutoProfileToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (AutoProfileToggle.IsOn)
+        {
+            NativeMethods.sb_set_audio_profile(NativeMethods.SbAudioProfile.Auto);
+            AudioProfileComboBox.SelectedIndex = (int)NativeMethods.SbAudioProfile.Auto;
+            _logger.LogInformation("Auto profile enabled");
+        }
+    }
+
+    /// <summary>均衡器预设变更</summary>
+    private void EqPresetComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (EqPresetComboBox.SelectedIndex < 0) return;
+        var preset = (NativeMethods.SbEqPreset)EqPresetComboBox.SelectedIndex;
+        NativeMethods.sb_set_eq_preset(preset);
+        _logger.LogInformation("EQ preset changed to {Preset}", preset);
+    }
+
+    /// <summary>均衡器频段增益变更</summary>
+    private void EqBand_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    {
+        if (sender is not Slider slider) return;
+        var name = slider.Name;
+        if (!name.StartsWith("EqBand")) return;
+        if (!int.TryParse(name.Substring("EqBand".Length), out var band)) return;
+        NativeMethods.sb_set_eq_band((uint)band, (float)slider.Value, 1.0f);
+    }
+
     protected override IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
         // 处理全局快捷键消息

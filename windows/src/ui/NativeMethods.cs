@@ -200,6 +200,62 @@ internal static partial class NativeMethods
     internal static extern int sb_get_audio_mode(IntPtr engine, out int mode);
 
     // ============================================================
+    // 音质档位
+    // ============================================================
+
+    /// <summary>音质档位枚举</summary>
+    internal enum SbAudioProfile : uint
+    {
+        BandwidthSaving = 0,
+        Standard = 1,
+        HighQuality = 2,
+        Lossless = 3,
+        HighResolution = 4,
+        StudioMaster = 5,
+        Auto = 6,
+        Custom = 7,
+    }
+
+    /// <summary>均衡器预设枚举</summary>
+    internal enum SbEqPreset : uint
+    {
+        Flat = 0,
+        Gaming = 1,
+        Music = 2,
+        Voice = 3,
+        Bass = 4,
+        Treble = 5,
+    }
+
+    /// <summary>设置音质档位</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int sb_set_audio_profile(SbAudioProfile profile);
+
+    /// <summary>获取当前音质档位</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern SbAudioProfile sb_get_audio_profile();
+
+    /// <summary>设置通道数</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int sb_set_channels(uint channels);
+
+    /// <summary>获取通道数</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern uint sb_get_channels();
+
+    /// <summary>设置均衡器频段增益</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int sb_set_eq_band(uint band, float gainDb, float q);
+
+    /// <summary>设置均衡器预设</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int sb_set_eq_preset(SbEqPreset preset);
+
+    /// <summary>启用/禁用均衡器</summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int sb_set_eq_enabled(int enabled);
+
+    // ============================================================
     // 混音比例
     // ============================================================
 

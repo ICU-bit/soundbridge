@@ -25,6 +25,8 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
@@ -260,7 +262,83 @@
             </StackPanel>
         </Border>
 
+        <!-- 音质档位 -->
+        <Border Grid.Row="10" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                CornerRadius="12" Padding="16">
+            <StackPanel Spacing="12">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon Glyph="\uE8D6" VerticalAlignment="Center"/>
+                    <TextBlock Text="Audio Profile" FontSize="16" FontWeight="SemiBold"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+                <TextBlock Text="Higher quality uses more bandwidth. Auto adjusts based on network conditions."
+                           FontSize="12" Opacity="0.6" TextWrapping="Wrap"/>
+                <ComboBox x:Name="AudioProfileComboBox"
+                          Header="Quality Profile"
+                          SelectedIndex="1"
+                          SelectionChanged="AudioProfileComboBox_SelectionChanged"
+                          HorizontalAlignment="Stretch">
+                    <ComboBoxItem Content="Bandwidth Saving"/>
+                    <ComboBoxItem Content="Standard"/>
+                    <ComboBoxItem Content="High Quality"/>
+                    <ComboBoxItem Content="Lossless"/>
+                    <ComboBoxItem Content="High Resolution"/>
+                    <ComboBoxItem Content="Studio Master"/>
+                    <ComboBoxItem Content="Auto"/>
+                </ComboBox>
+                <ToggleSwitch x:Name="AutoProfileToggle"
+                              Header="Auto Mode"
+                              IsOn="True"
+                              OnContent="Enabled" OffContent="Disabled"
+                              Toggled="AutoProfileToggle_Toggled"
+                              HorizontalAlignment="Left"/>
+            </StackPanel>
+        </Border>
+
+        <!-- 均衡器 -->
+        <Expander Grid.Row="11" Header="Equalizer"
+                  HorizontalAlignment="Stretch">
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    CornerRadius="0 0 12 12" Padding="16">
+                <StackPanel Spacing="12">
+                    <ComboBox x:Name="EqPresetComboBox"
+                              Header="Preset"
+                              SelectedIndex="0"
+                              SelectionChanged="EqPresetComboBox_SelectionChanged"
+                              HorizontalAlignment="Stretch">
+                        <ComboBoxItem Content="Flat"/>
+                        <ComboBoxItem Content="Gaming"/>
+                        <ComboBoxItem Content="Music"/>
+                        <ComboBoxItem Content="Voice"/>
+                        <ComboBoxItem Content="Bass Boost"/>
+                        <ComboBoxItem Content="Treble Boost"/>
+                    </ComboBox>
+
+                    <Slider x:Name="EqBand0" Header="31 Hz" Minimum="-12" Maximum="12" Value="0"
+                            StepFrequency="0.5" ValueChanged="EqBand_ValueChanged"/>
+                    <Slider x:Name="EqBand1" Header="62 Hz" Minimum="-12" Maximum="12" Value="0"
+                            StepFrequency="0.5" ValueChanged="EqBand_ValueChanged"/>
+                    <Slider x:Name="EqBand2" Header="125 Hz" Minimum="-12" Maximum="12" Value="0"
+                            StepFrequency="0.5" ValueChanged="EqBand_ValueChanged"/>
+                    <Slider x:Name="EqBand3" Header="250 Hz" Minimum="-12" Maximum="12" Value="0"
+                            StepFrequency="0.5" ValueChanged="EqBand_ValueChanged"/>
+                    <Slider x:Name="EqBand4" Header="500 Hz" Minimum="-12" Maximum="12" Value="0"
+                            StepFrequency="0.5" ValueChanged="EqBand_ValueChanged"/>
+                    <Slider x:Name="EqBand5" Header="1 kHz" Minimum="-12" Maximum="12" Value="0"
+                            StepFrequency="0.5" ValueChanged="EqBand_ValueChanged"/>
+                    <Slider x:Name="EqBand6" Header="2 kHz" Minimum="-12" Maximum="12" Value="0"
+                            StepFrequency="0.5" ValueChanged="EqBand_ValueChanged"/>
+                    <Slider x:Name="EqBand7" Header="4 kHz" Minimum="-12" Maximum="12" Value="0"
+                            StepFrequency="0.5" ValueChanged="EqBand_ValueChanged"/>
+                    <Slider x:Name="EqBand8" Header="8 kHz" Minimum="-12" Maximum="12" Value="0"
+                            StepFrequency="0.5" ValueChanged="EqBand_ValueChanged"/>
+                    <Slider x:Name="EqBand9" Header="16 kHz" Minimum="-12" Maximum="12" Value="0"
+                            StepFrequency="0.5" ValueChanged="EqBand_ValueChanged"/>
+                </StackPanel>
+            </Border>
+        </Expander>
+
         <!-- 占位（扩展区域） -->
-        <Grid Grid.Row="10"/>
+        <Grid Grid.Row="12"/>
     </Grid>
 </Window>
