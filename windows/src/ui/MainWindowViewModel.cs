@@ -173,6 +173,9 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _isAutoStartEnabled;
 
+    [ObservableProperty]
+    private bool _isExclusiveMode;
+
     /// <summary>已发现的设备列表</summary>
     public ObservableCollection<string> DiscoveredDevices { get; } = new();
 
@@ -658,6 +661,13 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             AutoStartManager.Disable();
 
         _logger.LogInformation("Auto-start {Action}", value ? "enabled" : "disabled");
+    }
+
+    partial void OnIsExclusiveModeChanged(bool value)
+    {
+        if (_engine == IntPtr.Zero) return;
+        NativeMethods.sb_set_exclusive_mode(_engine, value);
+        _logger.LogInformation("Exclusive mode: {Mode}", value ? "ON" : "OFF");
     }
 
     // ============================================================

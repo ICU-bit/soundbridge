@@ -60,6 +60,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
@@ -285,8 +286,23 @@
             </StackPanel>
         </Border>
 
-        <!-- 音质档位 -->
+        <!-- 独占模式 -->
         <Border Grid.Row="10" Style="{StaticResource CardBorder}">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                    <TextBlock Text="🔊" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBlock Text="Exclusive Mode" Style="{StaticResource SectionTitle}"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+                <TextBlock Style="{StaticResource DescriptionText}" Margin="0,0,0,8"
+                           Text="WASAPI exclusive mode for lower latency (~10ms vs ~50ms). Falls back to shared mode if unavailable."/>
+                <CheckBox IsChecked="{Binding IsExclusiveMode, Mode=TwoWay}"
+                          Content="Enable exclusive mode" Foreground="White"/>
+            </StackPanel>
+        </Border>
+
+        <!-- 音质档位 -->
+        <Border Grid.Row="11" Style="{StaticResource CardBorder}">
             <StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                     <TextBlock Text="🎚" VerticalAlignment="Center" Margin="0,0,8,0"/>
@@ -317,7 +333,7 @@
         </Border>
 
         <!-- 均衡器 -->
-        <Expander Grid.Row="11" Header="Equalizer"
+        <Expander Grid.Row="12" Header="Equalizer"
                   HorizontalAlignment="Stretch" Foreground="White" Margin="0,0,0,8">
             <Border Style="{StaticResource CardBorder}" CornerRadius="0,0,12,12">
                 <StackPanel>
@@ -367,6 +383,6 @@
             </Border>
         </Expander>
 
-        <Grid Grid.Row="12"/>
+        <Grid Grid.Row="13"/>
     </Grid>
 </Window>
