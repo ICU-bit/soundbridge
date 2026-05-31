@@ -44,6 +44,9 @@ class BluetoothManager(private val context: Context) {
     private val _state = MutableStateFlow<BluetoothState>(BluetoothState.Idle)
     val state: StateFlow<BluetoothState> = _state
 
+    /** Callback invoked when a Bluetooth connection is accepted. Receives the remote device address. */
+    var listener: ((String) -> Unit)? = null
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private var serverSocket: BluetoothServerSocket? = null
@@ -126,10 +129,13 @@ class BluetoothManager(private val context: Context) {
                 connectedSocket?.close()
 
                 connectedSocket = socket
+                val address = socket.remoteDevice.address ?: "Unknown"
                 _state.value = BluetoothState.Connected(
                     deviceName = socket.remoteDevice.name ?: "Unknown",
-                    deviceAddress = socket.remoteDevice.address ?: "Unknown"
+                    deviceAddress = address
                 )
+
+                listener?.invoke(address)
 
                 // Keep the socket open for data transfer
                 // Actual data I/O would be handled by the caller
@@ -180,6 +186,7 @@ class BluetoothManager(private val context: Context) {
     }
 
     fun release() {
+        listener = null
         stopListening()
     }
 }

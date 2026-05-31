@@ -8,6 +8,7 @@ import android.content.pm.ServiceInfo
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.soundbridge.MainActivity
 import com.soundbridge.R
@@ -86,7 +87,9 @@ class AudioService : Service() {
         discoveryManager = DeviceDiscoveryManager(this)
         hotspotManager = HotspotManager(this)
         adbManager = AdbManager()
-        bluetoothManager = BluetoothManager(this)
+        bluetoothManager = BluetoothManager(this).apply {
+            listener = { deviceAddress -> connectViaBluetooth(deviceAddress) }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -317,6 +320,35 @@ class AudioService : Service() {
     // ============================================================
 
     /**
+     * Called when a Bluetooth RFCOMM connection is accepted.
+     * Starts the audio pipeline bound to a local port.
+     *
+     * @param deviceAddress the MAC address of the connected Bluetooth device
+     */
+    fun connectViaBluetooth(deviceAddress: String) {
+        if (engineHandle == 0L) {
+            _connectionState.value = ConnectionState.DISCONNECTED
+            return
+        }
+        _connectionState.value = ConnectionState.CONNECTING
+
+        val bindResult = NativeAudioEngine.nativeBind(engineHandle, 0)
+        if (bindResult != 0) {
+            _connectionState.value = ConnectionState.DISCONNECTED
+            return
+        }
+
+        NativeAudioEngine.nativeStart(engineHandle)
+        val pipelineResult = NativeAudioEngine.nativePipelineStart(engineHandle)
+        if (pipelineResult == 0) {
+            _connectionState.value = ConnectionState.CONNECTED
+            Log.i(TAG, "Audio pipeline started via Bluetooth from $deviceAddress")
+        } else {
+            _connectionState.value = ConnectionState.DISCONNECTED
+        }
+    }
+
+    /**
      * 启动蓝牙 RFCOMM 服务端监听。
      * 会同时调用 JNI stub 和真正的 Kotlin BluetoothManager。
      */
@@ -357,6 +389,7 @@ class AudioService : Service() {
     }
 
     companion object {
+        private const val TAG = "AudioService"
         const val ACTION_START = "com.soundbridge.ACTION_START"
         const val ACTION_STOP = "com.soundbridge.ACTION_STOP"
         const val NOTIFICATION_ID = 1001
