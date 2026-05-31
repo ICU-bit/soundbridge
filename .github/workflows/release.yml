@@ -1,0 +1,161 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  rust-build:
+    name: Build Rust Libraries
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: rust-core
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust-core/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('rust-core/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Build release
+        run: cargo build --release --workspace
+
+      - name: Upload Rust artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-libs
+          path: |
+            rust-core/target/release/*.dll
+            rust-core/target/release/*.lib
+
+  windows-package:
+    name: Package Windows App
+    needs: rust-build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Rust artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: rust-libs
+          path: rust-libs
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Setup CMake
+        uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: '3.20'
+
+      - name: Install deps (vcpkg)
+        run: |
+          cd C:\vcpkg
+          .\vcpkg install opus:x64-windows spdlog:x64-windows
+
+      - name: Configure
+        run: cmake -B build -S windows -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Create MSIX package
+        run: |
+          mkdir -p package/SoundBridge
+          cp build/Release/*.exe package/SoundBridge/
+          cp build/Release/*.dll package/SoundBridge/
+          cp rust-libs/*.dll package/SoundBridge/
+          cp -r windows/assets package/SoundBridge/ 2>/dev/null || true
+          cd package
+          tar -czf ../SoundBridge-Windows-x64.zip SoundBridge
+
+      - name: Upload Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-package
+          path: SoundBridge-Windows-x64.zip
+
+  android-package:
+    name: Package Android App
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Build Release AAB
+        run: chmod +x gradlew && ./gradlew bundleRelease
+        working-directory: android
+
+      - name: Build Release APK
+        run: chmod +x gradlew && ./gradlew assembleRelease
+        working-directory: android
+
+      - name: Sign AAB
+        run: |
+          if [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
+            echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > keystore.jks
+            jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
+              -keystore keystore.jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
+              -keystore keystore.jks \
+              -storepass "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" \
+              android/app/build/outputs/bundle/release/app-release.aab \
+              "${{ secrets.ANDROID_KEY_ALIAS }}"
+          else
+            echo "No keystore configured, skipping signing"
+          fi
+
+      - name: Upload Android artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-package
+          path: |
+            android/app/build/outputs/bundle/release/*.aab
+            android/app/build/outputs/apk/release/*.apk
+
+  create-release:
+    name: Create GitHub Release
+    needs: [windows-package, android-package]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/windows-package/*.zip
+            artifacts/android-package/*.aab
+            artifacts/android-package/*.apk
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
