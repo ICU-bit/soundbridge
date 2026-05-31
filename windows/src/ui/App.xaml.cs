@@ -23,30 +23,53 @@ public partial class App : Application
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "SoundBridge", "logs", "soundbridge-.log");
 
-        _host = Host.CreateDefaultBuilder()
-            .UseSerilog((_, lc) => lc.MinimumLevel.Debug()
-                .WriteTo.Debug()
-                .WriteTo.File(logPath, rollingInterval: RollingInterval.Day))
-            .ConfigureServices((_, services) =>
-            {
-                services.AddSingleton<MainWindowViewModel>();
-                services.AddSingleton<MainWindow>();
-            })
-            .Build();
+        try
+        {
+            _host = Host.CreateDefaultBuilder()
+                .UseSerilog((_, lc) => lc.MinimumLevel.Debug()
+                    .WriteTo.Debug()
+                    .WriteTo.File(logPath, rollingInterval: RollingInterval.Day))
+                .ConfigureServices((_, services) =>
+                {
+                    services.AddSingleton<MainWindowViewModel>();
+                    services.AddSingleton<MainWindow>();
+                })
+                .Build();
 
-        await _host.StartAsync();
-        _window = _host.Services.GetRequiredService<MainWindow>();
-        _window.Show();
-        InitializeTrayIcon();
+            await _host.StartAsync();
+            _window = _host.Services.GetRequiredService<MainWindow>();
+            _window.Show();
+            InitializeTrayIcon();
 
-        // Create notification service after tray icon exists
-        var logger = _host.Services.GetRequiredService<ILogger<ConnectionNotificationService>>();
-        var dq = System.Windows.Threading.Dispatcher.CurrentDispatcher;
-        _notificationService = new ConnectionNotificationService(logger, dq, _trayIcon);
+            // Create notification service after tray icon exists
+            var logger = _host.Services.GetRequiredService<ILogger<ConnectionNotificationService>>();
+            var dq = System.Windows.Threading.Dispatcher.CurrentDispatcher;
+            _notificationService = new ConnectionNotificationService(logger, dq, _trayIcon);
 
-        // Register engine with notification service (ViewModel was created before this service)
-        var vm = _host.Services.GetRequiredService<MainWindowViewModel>();
-        vm.RegisterNotificationService(_notificationService);
+            // Register engine with notification service (ViewModel was created before this service)
+            var vm = _host.Services.GetRequiredService<MainWindowViewModel>();
+            vm.RegisterNotificationService(_notificationService);
+        }
+        catch (DllNotFoundException ex)
+        {
+            MessageBox.Show(
+                $"SoundBridge native DLL not found.\n\n" +
+                $"Please ensure ffi_bindings.dll is in the application directory.\n\n" +
+                $"Error: {ex.Message}",
+                "SoundBridge - DLL Not Found",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            Shutdown(1);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"Failed to start SoundBridge.\n\n{ex.Message}\n\n{ex.StackTrace}",
+                "SoundBridge - Startup Error",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            Shutdown(1);
+        }
     }
 
     private IntPtr WndProc(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
