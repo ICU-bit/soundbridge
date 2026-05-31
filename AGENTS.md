@@ -95,6 +95,14 @@ These differ from language defaults — violating them will break things:
 - Constructing `AudioEngineImpl` directly (use factory)
 - Accessing `capture_state_`/`render_state_` without `std::atomic`
 
+## Git remotes
+
+两个远程仓库，提交后都要推送，能推一个就行：
+- `origin` → GitHub (`ICU-bit/soundbridge`)
+- `gitee` → Gitee (`baigeijiuwanshile/soundbridge`)
+
+推送命令：`git push origin master; git push gitee master`
+
 ## Commit style
 
 Conventional Commits: `feat:`, `fix:`, `docs:`, `style:`, `refactor:`, `test:`, `chore:`
