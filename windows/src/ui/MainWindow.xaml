@@ -174,10 +174,21 @@
                                VerticalAlignment="Center"/>
                 </StackPanel>
                 <TextBlock Style="{StaticResource DescriptionText}" Margin="0,0,0,8"
-                           Text="WiFi LAN: auto-discover on same network. WiFi Direct: hotspot mode. USB/ADB: wired via ADB port forwarding. Bluetooth: BLE audio."/>
+                           Text="WiFi LAN: auto-discover on same network. (WiFi Direct, USB/ADB, Bluetooth — planned, not yet available)"/>
                 <ComboBox ItemsSource="{Binding ConnectionTypeNames}"
                           SelectedIndex="{Binding SelectedConnectionType, Mode=TwoWay}"
-                          HorizontalAlignment="Stretch" Padding="8"/>
+                          HorizontalAlignment="Stretch" Padding="8">
+                    <ComboBox.ItemContainerStyle>
+                        <Style TargetType="ComboBoxItem">
+                            <Setter Property="IsEnabled" Value="False"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding}" Value="WiFi 局域网">
+                                    <Setter Property="IsEnabled" Value="True"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ComboBox.ItemContainerStyle>
+                </ComboBox>
             </StackPanel>
         </Border>
 
