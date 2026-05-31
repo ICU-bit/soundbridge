@@ -44,6 +44,7 @@
 //! # }
 //! ```
 
+pub mod bandwidth_pid;
 pub mod connection;
 pub mod crypto;
 pub mod jitter_buffer;
@@ -53,6 +54,7 @@ pub mod reconnect;
 pub mod session;
 pub mod transport;
 
+pub use bandwidth_pid::{NetworkMetrics, PidBandwidthController, PidConfig};
 pub use connection::{
     AdbConfig, AdbState, BluetoothConfig, BluetoothState, ConnectionConfig, ConnectionManager,
     ConnectionState, ConnectionType, HotspotConfig, HotspotState,
