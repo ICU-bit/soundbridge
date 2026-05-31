@@ -4,6 +4,9 @@
 #include <mutex>
 #include <string>
 
+// JNI 函数签名由规范固定，env/thiz 参数无法省略
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+
 #include "include/audio_engine.h"
 #ifdef SOUNDBRIDGE_HAS_OPUS
 #include "include/opus_codec.h"
