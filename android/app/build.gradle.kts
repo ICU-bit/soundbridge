@@ -16,6 +16,8 @@ if (keystorePropertiesFile.exists()) {
 android {
     namespace = "com.soundbridge"
     compileSdk = 34
+    ndkVersion = "25.2.9519653"
+    buildToolsVersion = "37.0.0"
 
     defaultConfig {
         applicationId = "com.soundbridge"
@@ -92,7 +94,6 @@ android {
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
-            version = "3.22.1"
         }
     }
 
