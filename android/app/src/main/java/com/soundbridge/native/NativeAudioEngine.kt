@@ -81,6 +81,14 @@ object NativeAudioEngine {
     external fun nativeSetChannels(channels: Int): Int
     external fun nativeGetChannels(): Int
 
+    // === 采样率控制 ===
+    external fun nativeSetSampleRate(sampleRate: Int): Int
+    external fun nativeGetSampleRate(): Int
+
+    // === 码率控制 ===
+    external fun nativeSetBitrate(bitrate: Int): Int
+    external fun nativeGetBitrate(): Int
+
     // === 均衡器 ===
     external fun nativeSetEqBand(band: Int, gainDb: Float, q: Float): Int
     external fun nativeSetEqPreset(preset: Int): Int

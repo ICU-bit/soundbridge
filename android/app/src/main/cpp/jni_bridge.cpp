@@ -152,28 +152,49 @@ Java_com_soundbridge_native_NativeAudioEngine_nativeGetAudioLevel(
 JNIEXPORT void JNICALL
 Java_com_soundbridge_native_NativeAudioEngine_nativeSetEchoCancellationEnabled(
         JNIEnv* env, jobject thiz, jlong engineHandle, jboolean enabled) {
+#ifdef SOUNDBRIDGE_USE_RUST_FFI
+    void* engine = getRustEngine(engineHandle);
+    if (engine) {
+        sb_set_echo_cancellation_enabled(engine, enabled ? 1 : 0);
+    }
+#else
     auto* engine = getEngine(engineHandle);
     if (engine) {
         engine->setEchoCancellationEnabled(enabled);
     }
+#endif
 }
 
 JNIEXPORT void JNICALL
 Java_com_soundbridge_native_NativeAudioEngine_nativeSetNoiseSuppressionEnabled(
         JNIEnv* env, jobject thiz, jlong engineHandle, jboolean enabled) {
+#ifdef SOUNDBRIDGE_USE_RUST_FFI
+    void* engine = getRustEngine(engineHandle);
+    if (engine) {
+        sb_set_noise_suppression_enabled(engine, enabled ? 1 : 0);
+    }
+#else
     auto* engine = getEngine(engineHandle);
     if (engine) {
         engine->setNoiseSuppressionEnabled(enabled);
     }
+#endif
 }
 
 JNIEXPORT void JNICALL
 Java_com_soundbridge_native_NativeAudioEngine_nativeSetGainControlEnabled(
         JNIEnv* env, jobject thiz, jlong engineHandle, jboolean enabled) {
+#ifdef SOUNDBRIDGE_USE_RUST_FFI
+    void* engine = getRustEngine(engineHandle);
+    if (engine) {
+        sb_set_agc_enabled(engine, enabled ? 1 : 0);
+    }
+#else
     auto* engine = getEngine(engineHandle);
     if (engine) {
         engine->setGainControlEnabled(enabled);
     }
+#endif
 }
 
 JNIEXPORT jint JNICALL
@@ -1050,6 +1071,62 @@ Java_com_soundbridge_native_NativeAudioEngine_nativeSetAutoProfileEnabled(
 #else
     LOGI("Auto profile enabled (stub): %s", enabled ? "true" : "false");
     return 0;
+#endif
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeSetSampleRate(
+        JNIEnv* env, jobject thiz, jint sampleRate) {
+#ifdef SOUNDBRIDGE_USE_RUST_FFI
+    int rc = sb_set_sample_rate(static_cast<uint32_t>(sampleRate));
+    if (rc != 0) {
+        const char* err = sb_last_error();
+        LOGE("sb_set_sample_rate failed: %s", err ? err : "unknown");
+        return -1;
+    }
+    LOGI("Sample rate set: %d Hz", sampleRate);
+    return 0;
+#else
+    LOGI("Sample rate set (stub): %d Hz", sampleRate);
+    return 0;
+#endif
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeGetSampleRate(
+        JNIEnv* env, jobject thiz) {
+#ifdef SOUNDBRIDGE_USE_RUST_FFI
+    return static_cast<jint>(sb_get_sample_rate());
+#else
+    return 48000; // Default
+#endif
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeSetBitrate(
+        JNIEnv* env, jobject thiz, jint bitrate) {
+#ifdef SOUNDBRIDGE_USE_RUST_FFI
+    int rc = sb_set_bitrate(static_cast<uint32_t>(bitrate));
+    if (rc != 0) {
+        const char* err = sb_last_error();
+        LOGE("sb_set_bitrate failed: %s", err ? err : "unknown");
+        return -1;
+    }
+    LOGI("Bitrate set: %d bps", bitrate);
+    return 0;
+#else
+    LOGI("Bitrate set (stub): %d bps", bitrate);
+    return 0;
+#endif
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeGetBitrate(
+        JNIEnv* env, jobject thiz) {
+#ifdef SOUNDBRIDGE_USE_RUST_FFI
+    return static_cast<jint>(sb_get_bitrate());
+#else
+    return 128000; // Default
 #endif
 }
 
