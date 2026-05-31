@@ -103,6 +103,11 @@ These differ from language defaults — violating them will break things:
 
 推送命令：`git push origin master; git push gitee master`
 
+**推送策略：**
+1. 先推 Gitee（稳定），再尝试 GitHub
+2. GitHub 连不上不阻塞，下次 session 补推
+3. 每次 session 开始时检查 `git log origin/master..master` 看 GitHub 是否有未同步的提交
+
 ## Commit style
 
 Conventional Commits: `feat:`, `fix:`, `docs:`, `style:`, `refactor:`, `test:`, `chore:`
