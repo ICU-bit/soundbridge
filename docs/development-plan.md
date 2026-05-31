@@ -214,7 +214,7 @@
 ### Windows 快捷键
 | 快捷键 | 功能 |
 |--------|------|
-| `Ctrl+Alt+T` | 切换传输方向 |
+| `Ctrl+Alt+P` | 切换传输方向 |
 | `Ctrl+Alt+M` | 切换混音模式 |
 | `Ctrl+Alt+S` | 打开设置 |
 
@@ -335,7 +335,7 @@ private:
 ### 2.3 设备管理 + 快捷键 ✅
 - ✅ 设备记忆（JSON 持久化到 %LocalAppData%/SoundBridge/devices.json）
 - ✅ 启动自启（Windows Registry HKCU\...\Run）
-- ✅ 全局快捷键（HotkeyManager, Ctrl+Alt+T/M/S）
+- ✅ 全局快捷键（HotkeyManager, Ctrl+Alt+P/M/S）
 - ✅ 系统通知（ConnectionNotificationService + Toast）
 
 ### 2.4 技术实现细节

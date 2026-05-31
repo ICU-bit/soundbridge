@@ -39,7 +39,7 @@
 - ✅ Windows 桌面客户端 - MainWindow + ViewModel + 19 个 Converter
 - ✅ Android App - Jetpack Compose UI + NativeAudioEngine JNI
 - ✅ 系统托盘常驻 - TrayIcon.cs（Shell_NotifyIcon P/Invoke）
-- ✅ 全局快捷键 - HotkeyManager.cs（RegisterHotKey, Ctrl+Alt+T/M/S）
+- ✅ 全局快捷键 - HotkeyManager.cs（RegisterHotKey, Ctrl+Alt+P/M/S）
 - ✅ 双向控制 - sb_send_volume / sb_send_pause / sb_send_resume
 
 ### ✨ 附加功能
@@ -139,7 +139,7 @@
 ### 第二阶段：完整功能 ✅ 已完成
 - ✅ 回声消除（NLMS）、噪声抑制（SNR）、自动增益控制（AGC）
 - ✅ 设备记忆（JSON 持久化）、启动自启（Registry）
-- ✅ 全局快捷键（Ctrl+Alt+T/M/S）
+- ✅ 全局快捷键（Ctrl+Alt+P/M/S）
 - ✅ 系统托盘 + 连接状态通知（Toast）
 - ✅ 音频模式动态切换（均衡/高音质/超低延迟）
 - ✅ 其他连接方式（WiFi直连、USB、蓝牙）- FFI 已实现
@@ -181,8 +181,7 @@
 | 快捷键 | 功能 |
 |--------|------|
 | `Ctrl+Alt+M` | 切换混音模式 |
-| `Ctrl+Alt+T` | 切换传输方向 |
-| `Ctrl+Alt+P` | 暂停/恢复 |
+| `Ctrl+Alt+P` | 切换传输方向 |
 | `Ctrl+Alt+S` | 打开设置 |
 
 ---

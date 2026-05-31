@@ -57,7 +57,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Zero-allocation hot path for audio pipeline
 - ECDH key exchange (x25519-dalek)
 - Device memory with JSON persistence
-- Global hotkeys (Ctrl+Alt+T/M/S)
+- Global hotkeys (Ctrl+Alt+P/M/S)
 - Mute flag as Arc<AtomicBool>
 - Auto-start on Windows (Registry HKCU\...\Run)
 - Hotspot mode (WiFi Direct)
