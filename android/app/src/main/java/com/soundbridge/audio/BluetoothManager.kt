@@ -119,6 +119,7 @@ class BluetoothManager(private val context: Context) {
     /**
      * Accept loop - runs in a background thread, waiting for connections.
      */
+    @SuppressLint("MissingPermission")
     private fun acceptLoop() {
         while (!Thread.currentThread().isInterrupted) {
             try {
