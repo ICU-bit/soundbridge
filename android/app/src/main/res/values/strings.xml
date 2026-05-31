@@ -1,4 +1,51 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">SoundBridge</string>
+    
+    <!-- 连接类型 -->
+    <string name="connection_type_wifi_lan">WiFi 局域网</string>
+    <string name="connection_type_wifi_direct">WiFi 直连</string>
+    <string name="connection_type_usb_adb">USB/ADB</string>
+    <string name="connection_type_bluetooth">蓝牙</string>
+    
+    <!-- 连接状态 -->
+    <string name="connection_failed">连接失败</string>
+    <string name="connection_timeout">连接超时</string>
+    <string name="connection_timeout_check">请检查：\n• 网络连接是否正常\n• 服务器地址是否正确\n• 防火墙是否允许连接</string>
+    <string name="connection_timeout_elapsed">已等待 %d秒</string>
+    
+    <!-- 按钮 -->
+    <string name="button_confirm">确定</string>
+    <string name="button_retry">重试</string>
+    <string name="button_cancel">取消</string>
+    
+    <!-- 音质设置 -->
+    <string name="audio_quality_title">音质档位</string>
+    <string name="audio_quality_tier">档位</string>
+    <string name="audio_quality_auto">自动挡</string>
+    <string name="audio_quality_auto_desc">根据网络状况自动选择</string>
+    <string name="audio_quality_manual_desc">手动选择档位</string>
+    
+    <!-- 均衡器 -->
+    <string name="equalizer_title">均衡器</string>
+    <string name="equalizer_enabled">已启用 — %s</string>
+    <string name="equalizer_disabled">已禁用</string>
+    
+    <!-- 首次运行引导 -->
+    <string name="guide_welcome_title">欢迎使用 SoundBridge</string>
+    <string name="guide_welcome_desc">游戏时不用摘耳机，同时听电脑和手机的声音。\n\nSoundBridge 通过网络将电脑音频实时传输到手机，让你用手机耳机也能听到电脑声音。</string>
+    <string name="guide_permissions_title">授权必要权限</string>
+    <string name="guide_permissions_granted">所有权限已授权</string>
+    <string name="guide_permissions_button">授权权限</string>
+    <string name="guide_audio_test_title">测试音频播放</string>
+    <string name="guide_audio_test_desc">接下来播放一段测试音，确认手机扬声器或耳机工作正常。\n\n请调大音量以便听到测试音。</string>
+    <string name="guide_audio_test_complete">音频测试完成</string>
+    <string name="guide_audio_test_playing">播放中...</string>
+    <string name="guide_audio_test_button">播放测试音</string>
+    <string name="guide_ready_title">准备就绪</string>
+    <string name="guide_ready_desc">一切准备完毕！\n\n使用步骤：\n1. 在电脑上启动 SoundBridge 服务端\n2. 确保手机和电脑在同一网络\n3. 点击「扫描」发现电脑\n4. 点击连接，开始使用</string>
+    <string name="guide_button_previous">上一步</string>
+    <string name="guide_button_start">开始使用</string>
+    <string name="guide_button_next">下一步</string>
+    <string name="guide_button_skip">跳过引导</string>
 </resources>

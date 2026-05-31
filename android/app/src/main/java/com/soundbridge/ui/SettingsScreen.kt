@@ -14,7 +14,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
+import com.soundbridge.R
 import com.soundbridge.audio.AudioService
 import com.soundbridge.native.AudioProfile
 import com.soundbridge.native.EqPreset
@@ -343,7 +344,7 @@ fun AudioProfileSection() {
     var isAutoEnabled by remember { mutableStateOf(false) }
     var expanded by remember { mutableStateOf(false) }
 
-    SettingsSection(title = "音质档位") {
+        SettingsSection(title = stringResource(R.string.audio_quality_title)) {
         // 音质选择下拉菜单
         Row(
             modifier = Modifier
@@ -362,7 +363,7 @@ fun AudioProfileSection() {
                     .weight(1f)
                     .padding(horizontal = 16.dp)
             ) {
-                Text(text = "档位", fontWeight = FontWeight.Medium)
+                Text(text = stringResource(R.string.audio_quality_tier), fontWeight = FontWeight.Medium)
                 Text(
                     text = selectedProfile.label,
                     fontSize = 12.sp,
@@ -414,9 +415,9 @@ fun AudioProfileSection() {
                     .weight(1f)
                     .padding(horizontal = 16.dp)
             ) {
-                Text(text = "自动挡", fontWeight = FontWeight.Medium)
+                Text(text = stringResource(R.string.audio_quality_auto), fontWeight = FontWeight.Medium)
                 Text(
-                    text = if (isAutoEnabled) "根据网络状况自动选择" else "手动选择档位",
+                    text = if (isAutoEnabled) stringResource(R.string.audio_quality_auto_desc) else stringResource(R.string.audio_quality_manual_desc),
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
@@ -445,7 +446,7 @@ fun EqualizerSection() {
     var selectedPreset by remember { mutableStateOf(EqPreset.Flat) }
     var isEnabled by remember { mutableStateOf(true) }
 
-    SettingsSection(title = "均衡器") {
+        SettingsSection(title = stringResource(R.string.equalizer_title)) {
         // 开关
         Row(
             modifier = Modifier
@@ -464,9 +465,9 @@ fun EqualizerSection() {
                     .weight(1f)
                     .padding(horizontal = 16.dp)
             ) {
-                Text(text = "均衡器", fontWeight = FontWeight.Medium)
+                Text(text = stringResource(R.string.equalizer_title), fontWeight = FontWeight.Medium)
                 Text(
-                    text = if (isEnabled) "已启用 — ${selectedPreset.label}" else "已禁用",
+                    text = if (isEnabled) stringResource(R.string.equalizer_enabled, selectedPreset.label) else stringResource(R.string.equalizer_disabled),
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )

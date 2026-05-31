@@ -24,7 +24,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
+import com.soundbridge.R
 import com.soundbridge.audio.AudioService
 import com.soundbridge.audio.FeedbackManager
 import com.soundbridge.ui.theme.*
@@ -42,7 +43,12 @@ fun HomeScreen(audioService: AudioService? = null) {
     var serverPort by remember { mutableStateOf("8080") }
     var mixRatio by remember { mutableFloatStateOf(50f) } // 0=全PC, 100=全手机
     var selectedConnectionType by remember { mutableIntStateOf(0) } // 0=WiFiLan, 1=WiFiDirect, 2=UsbAdb, 3=Bluetooth
-    val connectionTypeNames = listOf("WiFi 局域网", "WiFi 直连", "USB/ADB", "蓝牙")
+    val connectionTypeNames = listOf(
+        stringResource(R.string.connection_type_wifi_lan),
+        stringResource(R.string.connection_type_wifi_direct),
+        stringResource(R.string.connection_type_usb_adb),
+        stringResource(R.string.connection_type_bluetooth)
+    )
 
     val connected = isConnected == AudioService.ConnectionState.CONNECTED
 
@@ -704,7 +710,7 @@ fun ErrorDialog(
         },
         title = {
             Text(
-                text = "连接失败",
+                text = stringResource(R.string.connection_failed),
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center
             )
@@ -722,7 +728,7 @@ fun ErrorDialog(
                     containerColor = SoundBridgePrimary
                 )
             ) {
-                Text("确定")
+                Text(stringResource(R.string.button_confirm))
             }
         },
         containerColor = MaterialTheme.colorScheme.surface,
@@ -750,7 +756,7 @@ fun TimeoutDialog(
         },
         title = {
             Text(
-                text = "连接超时",
+                text = stringResource(R.string.connection_timeout),
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center
             )
@@ -760,12 +766,12 @@ fun TimeoutDialog(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "已等待 ${elapsedSeconds}秒",
+                    text = stringResource(R.string.connection_timeout_elapsed, elapsedSeconds),
                     textAlign = TextAlign.Center
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "请检查：\n• 网络连接是否正常\n• 服务器地址是否正确\n• 防火墙是否允许连接",
+                    text = stringResource(R.string.connection_timeout_check),
                     fontSize = 14.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                     textAlign = TextAlign.Start
@@ -779,12 +785,12 @@ fun TimeoutDialog(
                     containerColor = SoundBridgePrimary
                 )
             ) {
-                Text("重试")
+                Text(stringResource(R.string.button_retry))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.button_cancel))
             }
         },
         containerColor = MaterialTheme.colorScheme.surface,

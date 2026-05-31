@@ -32,8 +32,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
+import com.soundbridge.R
 import com.soundbridge.ui.theme.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -54,30 +55,30 @@ fun markFirstRunComplete(context: Context) {
 }
 
 private data class GuidePage(
-    val title: String,
-    val description: String,
+    val titleResId: Int,
+    val descriptionResId: Int,
     val icon: ImageVector
 )
 
-private val guidePages = listOf(
+private val guidePageConfigs = listOf(
     GuidePage(
-        title = "欢迎使用 SoundBridge",
-        description = "游戏时不用摘耳机，同时听电脑和手机的声音。\n\nSoundBridge 通过网络将电脑音频实时传输到手机，让你用手机耳机也能听到电脑声音。",
+        titleResId = R.string.guide_welcome_title,
+        descriptionResId = R.string.guide_welcome_desc,
         icon = Icons.Default.Headphones
     ),
     GuidePage(
-        title = "授权必要权限",
-        description = "SoundBridge 需要以下权限才能正常工作：\n\n• 录音权限 — 采集手机麦克风音频\n• 网络权限 — 与电脑建立连接\n• 位置权限 — 发现局域网设备\n• 蓝牙权限 — 蓝牙连接模式",
+        titleResId = R.string.guide_permissions_title,
+        descriptionResId = R.string.guide_permissions_title, // 描述在 strings.xml 中
         icon = Icons.Default.Security
     ),
     GuidePage(
-        title = "测试音频播放",
-        description = "接下来播放一段测试音，确认手机扬声器或耳机工作正常。\n\n请调大音量以便听到测试音。",
+        titleResId = R.string.guide_audio_test_title,
+        descriptionResId = R.string.guide_audio_test_desc,
         icon = Icons.Default.VolumeUp
     ),
     GuidePage(
-        title = "准备就绪",
-        description = "一切准备完毕！\n\n使用步骤：\n1. 在电脑上启动 SoundBridge 服务端\n2. 确保手机和电脑在同一网络\n3. 点击「扫描」发现电脑\n4. 点击连接，开始使用",
+        titleResId = R.string.guide_ready_title,
+        descriptionResId = R.string.guide_ready_desc,
         icon = Icons.Default.CheckCircle
     )
 )
@@ -251,7 +252,7 @@ fun FirstRunGuideScreen(onGuideComplete: () -> Unit) {
                         }
                         if (allGranted) {
                             StatusChip(
-                                text = "所有权限已授权",
+                                text = stringResource(R.string.guide_permissions_granted),
                                 icon = Icons.Default.CheckCircle,
                                 color = ConnectionConnected
                             )
@@ -267,7 +268,7 @@ fun FirstRunGuideScreen(onGuideComplete: () -> Unit) {
                             ) {
                                 Icon(Icons.Default.Security, contentDescription = null)
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("授权权限", fontSize = 16.sp)
+                                Text(stringResource(R.string.guide_permissions_button), fontSize = 16.sp)
                             }
                         }
                     }
@@ -275,7 +276,7 @@ fun FirstRunGuideScreen(onGuideComplete: () -> Unit) {
                     2 -> {
                         if (audioTestDone) {
                             StatusChip(
-                                text = "音频测试完成",
+                                text = stringResource(R.string.guide_audio_test_complete),
                                 icon = Icons.Default.CheckCircle,
                                 color = ConnectionConnected
                             )
@@ -297,11 +298,11 @@ fun FirstRunGuideScreen(onGuideComplete: () -> Unit) {
                                         strokeWidth = 2.dp
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text("播放中...", fontSize = 16.sp)
+                                    Text(stringResource(R.string.guide_audio_test_playing), fontSize = 16.sp)
                                 } else {
                                     Icon(Icons.Default.VolumeUp, contentDescription = null)
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text("播放测试音", fontSize = 16.sp)
+                                    Text(stringResource(R.string.guide_audio_test_button), fontSize = 16.sp)
                                 }
                             }
                         }
@@ -325,7 +326,7 @@ fun FirstRunGuideScreen(onGuideComplete: () -> Unit) {
                         .height(52.dp),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("上一步", fontSize = 15.sp)
+                    Text(stringResource(R.string.guide_button_previous), fontSize = 15.sp)
                 }
             }
 
@@ -347,7 +348,7 @@ fun FirstRunGuideScreen(onGuideComplete: () -> Unit) {
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Text(
-                    text = if (isLastPage) "开始使用" else "下一步",
+                    text = if (isLastPage) stringResource(R.string.guide_button_start) else stringResource(R.string.guide_button_next),
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Medium
                 )
@@ -361,7 +362,7 @@ fun FirstRunGuideScreen(onGuideComplete: () -> Unit) {
                 modifier = Modifier.padding(top = 8.dp)
             ) {
                 Text(
-                    text = "跳过引导",
+                    text = stringResource(R.string.guide_button_skip),
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
                     fontSize = 13.sp
                 )
