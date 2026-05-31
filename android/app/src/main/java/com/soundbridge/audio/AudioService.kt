@@ -58,6 +58,8 @@ class AudioService : Service() {
     val bluetoothState: StateFlow<BluetoothManager.BluetoothState>
         get() = bluetoothManager?.state ?: MutableStateFlow(BluetoothManager.BluetoothState.Idle)
 
+    private var btUdpBridge: BluetoothUdpBridge? = null
+
     /** 加密状态 */
     enum class EncryptionState {
         DISABLED, ENABLED
@@ -175,6 +177,8 @@ class AudioService : Service() {
     }
 
     fun disconnect() {
+        btUdpBridge?.stop()
+        btUdpBridge = null
         if (engineHandle != 0L) {
             NativeAudioEngine.nativePipelineStop(engineHandle)
             NativeAudioEngine.nativeStop(engineHandle)
@@ -338,12 +342,33 @@ class AudioService : Service() {
             return
         }
 
+        val socket = bluetoothManager?.getConnectedSocket()
+        if (socket == null) {
+            Log.e(TAG, "No Bluetooth socket available for bridge")
+            _connectionState.value = ConnectionState.DISCONNECTED
+            return
+        }
+
+        val localPort = NativeAudioEngine.nativeGetLocalPort(engineHandle)
+        val bridge = BluetoothUdpBridge(
+            btInput = socket.inputStream,
+            btOutput = socket.outputStream,
+            localUdpPort = localPort
+        )
+        btUdpBridge = bridge
+        bridge.start(
+            remoteAddress = java.net.InetAddress.getByName("127.0.0.1"),
+            remotePort = localPort
+        )
+
         NativeAudioEngine.nativeStart(engineHandle)
         val pipelineResult = NativeAudioEngine.nativePipelineStart(engineHandle)
         if (pipelineResult == 0) {
             _connectionState.value = ConnectionState.CONNECTED
             Log.i(TAG, "Audio pipeline started via Bluetooth from $deviceAddress")
         } else {
+            bridge.stop()
+            btUdpBridge = null
             _connectionState.value = ConnectionState.DISCONNECTED
         }
     }
@@ -373,6 +398,8 @@ class AudioService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        btUdpBridge?.stop()
+        btUdpBridge = null
         // Release platform managers
         bluetoothManager?.release()
         bluetoothManager = null
