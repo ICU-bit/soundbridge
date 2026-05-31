@@ -31,7 +31,6 @@ public partial class MainWindow : Window
         Title = "SoundBridge";
         DataContext = ViewModel;
 
-        this.Closed += OnMainWindowClosed;
         this.SourceInitialized += OnSourceInitialized;
     }
 
@@ -97,9 +96,11 @@ public partial class MainWindow : Window
         NativeMethods.sb_set_eq_band((uint)band, (float)slider.Value, 1.0f);
     }
 
-    private void OnMainWindowClosed(object? sender, EventArgs e)
+    /// <summary>应用退出时调用，释放热键等非托管资源</summary>
+    public void Cleanup()
     {
         _hotkeyManager?.Dispose();
         _hotkeyManager = null;
+        _logger.LogInformation("MainWindow cleaned up");
     }
 }

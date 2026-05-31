@@ -141,6 +141,7 @@ public partial class App : Application
             case 3:
                 _notificationService?.Dispose();
                 _trayIcon?.Dispose();
+                _window?.Cleanup();
                 if (viewModel is IDisposable disposable)
                     disposable.Dispose();
                 _host?.StopAsync().Wait();
@@ -151,6 +152,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        _window?.Cleanup();
         _trayIcon?.Dispose();
         _host?.StopAsync().Wait();
         base.OnExit(e);
