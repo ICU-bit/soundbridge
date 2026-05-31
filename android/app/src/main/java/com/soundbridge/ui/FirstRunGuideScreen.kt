@@ -33,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.soundbridge.R
 import com.soundbridge.ui.theme.*
@@ -147,7 +148,7 @@ fun FirstRunGuideScreen(onGuideComplete: () -> Unit) {
         onGuideComplete()
     }
 
-    val isLastPage = currentPage == guidePages.size - 1
+    val isLastPage = currentPage == guidePageConfigs.size - 1
     val canProceed = when (currentPage) {
         1 -> permissionsGranted
         2 -> audioTestDone
@@ -175,7 +176,7 @@ fun FirstRunGuideScreen(onGuideComplete: () -> Unit) {
                 .padding(bottom = 32.dp),
             horizontalArrangement = Arrangement.Center
         ) {
-            repeat(guidePages.size) { index ->
+            repeat(guidePageConfigs.size) { index ->
                 Box(
                     modifier = Modifier
                         .padding(horizontal = 4.dp)
@@ -197,7 +198,7 @@ fun FirstRunGuideScreen(onGuideComplete: () -> Unit) {
             },
             label = "page_transition"
         ) { targetPage ->
-            val targetPageData = guidePages[targetPage]
+            val targetPageData = guidePageConfigs[targetPage]
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
