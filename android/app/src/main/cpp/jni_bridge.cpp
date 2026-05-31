@@ -915,4 +915,139 @@ Java_com_soundbridge_native_NativeAudioEngine_nativeGetMute(
 #endif
 }
 
+// ============================================================
+// 音质档位 / 均衡器 / 声道 / 自动挡
+// ============================================================
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeSetAudioProfile(
+        JNIEnv* env, jobject thiz, jint profile) {
+#ifdef SOUNDBRIDGE_USE_RUST_FFI
+    int rc = sb_set_audio_profile(static_cast<SbAudioProfile>(profile));
+    if (rc != 0) {
+        const char* err = sb_last_error();
+        LOGE("sb_set_audio_profile failed: %s", err ? err : "unknown");
+        return -1;
+    }
+    LOGI("Audio profile set: %d", profile);
+    return 0;
+#else
+    LOGI("Audio profile set (stub): %d", profile);
+    return 0;
+#endif
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeGetAudioProfile(
+        JNIEnv* env, jobject thiz) {
+#ifdef SOUNDBRIDGE_USE_RUST_FFI
+    return static_cast<jint>(sb_get_audio_profile());
+#else
+    return 1; // Standard
+#endif
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeSetChannels(
+        JNIEnv* env, jobject thiz, jint channels) {
+#ifdef SOUNDBRIDGE_USE_RUST_FFI
+    int rc = sb_set_channels(static_cast<uint32_t>(channels));
+    if (rc != 0) {
+        const char* err = sb_last_error();
+        LOGE("sb_set_channels failed: %s", err ? err : "unknown");
+        return -1;
+    }
+    LOGI("Channels set: %d", channels);
+    return 0;
+#else
+    LOGI("Channels set (stub): %d", channels);
+    return 0;
+#endif
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeGetChannels(
+        JNIEnv* env, jobject thiz) {
+#ifdef SOUNDBRIDGE_USE_RUST_FFI
+    return static_cast<jint>(sb_get_channels());
+#else
+    return 1; // Mono
+#endif
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeSetEqBand(
+        JNIEnv* env, jobject thiz, jint band, jfloat gainDb, jfloat q) {
+#ifdef SOUNDBRIDGE_USE_RUST_FFI
+    int rc = sb_set_eq_band(
+        static_cast<uint32_t>(band),
+        static_cast<float>(gainDb),
+        static_cast<float>(q));
+    if (rc != 0) {
+        const char* err = sb_last_error();
+        LOGE("sb_set_eq_band failed: %s", err ? err : "unknown");
+        return -1;
+    }
+    LOGI("EQ band %d set: gain=%.1fdB, q=%.2f", band, gainDb, q);
+    return 0;
+#else
+    LOGI("EQ band set (stub): %d", band);
+    return 0;
+#endif
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeSetEqPreset(
+        JNIEnv* env, jobject thiz, jint preset) {
+#ifdef SOUNDBRIDGE_USE_RUST_FFI
+    int rc = sb_set_eq_preset(static_cast<SbEqPreset>(preset));
+    if (rc != 0) {
+        const char* err = sb_last_error();
+        LOGE("sb_set_eq_preset failed: %s", err ? err : "unknown");
+        return -1;
+    }
+    LOGI("EQ preset set: %d", preset);
+    return 0;
+#else
+    LOGI("EQ preset set (stub): %d", preset);
+    return 0;
+#endif
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeSetEqEnabled(
+        JNIEnv* env, jobject thiz, jboolean enabled) {
+#ifdef SOUNDBRIDGE_USE_RUST_FFI
+    int rc = sb_set_eq_enabled(enabled ? 1 : 0);
+    if (rc != 0) {
+        const char* err = sb_last_error();
+        LOGE("sb_set_eq_enabled failed: %s", err ? err : "unknown");
+        return -1;
+    }
+    LOGI("EQ enabled: %s", enabled ? "true" : "false");
+    return 0;
+#else
+    LOGI("EQ enabled (stub): %s", enabled ? "true" : "false");
+    return 0;
+#endif
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundbridge_native_NativeAudioEngine_nativeSetAutoProfileEnabled(
+        JNIEnv* env, jobject thiz, jboolean enabled) {
+#ifdef SOUNDBRIDGE_USE_RUST_FFI
+    int rc = sb_set_auto_profile_enabled(enabled ? 1 : 0);
+    if (rc != 0) {
+        const char* err = sb_last_error();
+        LOGE("sb_set_auto_profile_enabled failed: %s", err ? err : "unknown");
+        return -1;
+    }
+    LOGI("Auto profile enabled: %s", enabled ? "true" : "false");
+    return 0;
+#else
+    LOGI("Auto profile enabled (stub): %s", enabled ? "true" : "false");
+    return 0;
+#endif
+}
+
 } // extern "C"

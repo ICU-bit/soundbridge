@@ -1,6 +1,8 @@
 package com.soundbridge.ui
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -14,6 +16,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.soundbridge.audio.AudioService
+import com.soundbridge.native.AudioProfile
+import com.soundbridge.native.EqPreset
+import com.soundbridge.native.NativeAudioEngine
 
 enum class AudioMode(val label: String, val subtitle: String) {
     BALANCED("Balanced", "50-100ms latency"),
@@ -110,6 +115,14 @@ fun SettingsScreen(engineHandle: Long = 0L, audioService: AudioService? = null) 
                 optionLabel = { "${it / 1000} kbps" }
             )
         }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        AudioProfileSection()
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        EqualizerSection()
 
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -314,6 +327,175 @@ fun <T> SettingsDropdown(
                         }
                     )
                 }
+            }
+        }
+    }
+}
+
+// ============================================================
+// 音质档位选择
+// ============================================================
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AudioProfileSection() {
+    var selectedProfile by remember { mutableStateOf(AudioProfile.Standard) }
+    var isAutoEnabled by remember { mutableStateOf(false) }
+    var expanded by remember { mutableStateOf(false) }
+
+    SettingsSection(title = "音质档位") {
+        // 音质选择下拉菜单
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.HighQuality,
+                contentDescription = null,
+                modifier = Modifier.size(24.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 16.dp)
+            ) {
+                Text(text = "档位", fontWeight = FontWeight.Medium)
+                Text(
+                    text = selectedProfile.label,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
+            }
+            Box {
+                TextButton(
+                    onClick = { expanded = true },
+                    enabled = !isAutoEnabled
+                ) {
+                    Text(selectedProfile.label)
+                }
+                DropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false }
+                ) {
+                    AudioProfile.entries
+                        .filter { it != AudioProfile.Auto && it != AudioProfile.Custom }
+                        .forEach { profile ->
+                            DropdownMenuItem(
+                                text = { Text(profile.label) },
+                                onClick = {
+                                    selectedProfile = profile
+                                    expanded = false
+                                    NativeAudioEngine.setAudioProfile(profile)
+                                }
+                            )
+                        }
+                }
+            }
+        }
+
+        // 自动挡开关
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.AutoMode,
+                contentDescription = null,
+                modifier = Modifier.size(24.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 16.dp)
+            ) {
+                Text(text = "自动挡", fontWeight = FontWeight.Medium)
+                Text(
+                    text = if (isAutoEnabled) "根据网络状况自动选择" else "手动选择档位",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
+            }
+            Switch(
+                checked = isAutoEnabled,
+                onCheckedChange = {
+                    isAutoEnabled = it
+                    NativeAudioEngine.setAutoProfileEnabled(it)
+                    if (it) {
+                        NativeAudioEngine.setAudioProfile(AudioProfile.Auto)
+                    }
+                }
+            )
+        }
+    }
+}
+
+// ============================================================
+// 均衡器
+// ============================================================
+
+@Composable
+fun EqualizerSection() {
+    var selectedPreset by remember { mutableStateOf(EqPreset.Flat) }
+    var isEnabled by remember { mutableStateOf(true) }
+
+    SettingsSection(title = "均衡器") {
+        // 开关
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.Equalizer,
+                contentDescription = null,
+                modifier = Modifier.size(24.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 16.dp)
+            ) {
+                Text(text = "均衡器", fontWeight = FontWeight.Medium)
+                Text(
+                    text = if (isEnabled) "已启用 — ${selectedPreset.label}" else "已禁用",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
+            }
+            Switch(
+                checked = isEnabled,
+                onCheckedChange = {
+                    isEnabled = it
+                    NativeAudioEngine.setEqEnabled(it)
+                }
+            )
+        }
+
+        // 预设选择
+        LazyRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 40.dp, top = 4.dp, bottom = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(EqPreset.entries) { preset ->
+                FilterChip(
+                    selected = selectedPreset == preset,
+                    onClick = {
+                        selectedPreset = preset
+                        NativeAudioEngine.setEqPreset(preset)
+                    },
+                    label = { Text(preset.label) },
+                    enabled = isEnabled
+                )
             }
         }
     }

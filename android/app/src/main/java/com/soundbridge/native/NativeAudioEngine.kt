@@ -72,4 +72,65 @@ object NativeAudioEngine {
     // === 静音控制 ===
     external fun nativeSetMute(engineHandle: Long, muted: Int): Int
     external fun nativeGetMute(engineHandle: Long): Int
+
+    // === 音质档位 ===
+    external fun nativeSetAudioProfile(profile: Int): Int
+    external fun nativeGetAudioProfile(): Int
+
+    // === 声道控制 ===
+    external fun nativeSetChannels(channels: Int): Int
+    external fun nativeGetChannels(): Int
+
+    // === 均衡器 ===
+    external fun nativeSetEqBand(band: Int, gainDb: Float, q: Float): Int
+    external fun nativeSetEqPreset(preset: Int): Int
+    external fun nativeSetEqEnabled(enabled: Boolean): Int
+
+    // === 自动挡 ===
+    external fun nativeSetAutoProfileEnabled(enabled: Boolean): Int
+
+    // ── Kotlin 包装方法 ──
+
+    fun setAudioProfile(profile: AudioProfile) {
+        nativeSetAudioProfile(profile.ordinal)
+    }
+
+    fun getAudioProfile(): AudioProfile {
+        val ordinal = nativeGetAudioProfile()
+        return AudioProfile.entries.getOrElse(ordinal) { AudioProfile.Standard }
+    }
+
+    fun setEqPreset(preset: EqPreset) {
+        nativeSetEqPreset(preset.ordinal)
+    }
+
+    fun setEqEnabled(enabled: Boolean) {
+        nativeSetEqEnabled(enabled)
+    }
+
+    fun setAutoProfileEnabled(enabled: Boolean) {
+        nativeSetAutoProfileEnabled(enabled)
+    }
+}
+
+/** 音质档位（与 Rust SbAudioProfile 枚举顺序一致） */
+enum class AudioProfile(val label: String) {
+    BandwidthSaving("节省带宽"),
+    Standard("标准"),
+    HighQuality("高质量"),
+    Lossless("无损"),
+    HighResolution("高解析度"),
+    StudioMaster("录音室母带"),
+    Auto("自动挡"),
+    Custom("自定义")
+}
+
+/** 均衡器预设（与 Rust SbEqPreset 枚举顺序一致） */
+enum class EqPreset(val label: String) {
+    Flat("Flat"),
+    Gaming("Gaming"),
+    Music("Music"),
+    Voice("Voice"),
+    Bass("Bass"),
+    Treble("Treble")
 }
