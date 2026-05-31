@@ -11,31 +11,29 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import com.soundbridge.R
 import com.soundbridge.audio.AudioService
-import com.soundbridge.native.AudioProfile
 import com.soundbridge.native.EqPreset
 import com.soundbridge.native.NativeAudioEngine
 
-enum class AudioMode(val label: String, val subtitle: String) {
-    BALANCED("Balanced", "50-100ms latency"),
-    HIGH_QUALITY("High Quality", "48kHz/24bit"),
-    LOW_LATENCY("Low Latency", "<30ms latency")
-}
-
 @Composable
 fun SettingsScreen(engineHandle: Long = 0L, audioService: AudioService? = null) {
-    var echoCancellation by remember { mutableStateOf(true) }
-    var noiseSuppression by remember { mutableStateOf(true) }
-    var gainControl by remember { mutableStateOf(true) }
-    var selectedSampleRate by remember { mutableIntStateOf(48000) }
-    var selectedBitrate by remember { mutableIntStateOf(64000) }
-    var selectedAudioMode by remember { mutableStateOf(AudioMode.BALANCED) }
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("soundbridge_prefs", android.content.Context.MODE_PRIVATE) }
+    
+    var echoCancellation by remember { mutableStateOf(prefs.getBoolean("echo_cancellation", true)) }
+    var noiseSuppression by remember { mutableStateOf(prefs.getBoolean("noise_suppression", true)) }
+    var gainControl by remember { mutableStateOf(prefs.getBoolean("gain_control", true)) }
+    var selectedSampleRate by remember { mutableIntStateOf(prefs.getInt("sample_rate", 48000)) }
+    var selectedBitrate by remember { mutableIntStateOf(prefs.getInt("bitrate", 128000)) }
+    var isAutoMode by remember { mutableStateOf(prefs.getBoolean("auto_mode", false)) }
     val encryptionState by (audioService?.encryptionState?.collectAsState()
         ?: remember { mutableStateOf(AudioService.EncryptionState.DISABLED) })
     var encryptionEnabled by remember { mutableStateOf(encryptionState == AudioService.EncryptionState.ENABLED) }
@@ -45,98 +43,143 @@ fun SettingsScreen(engineHandle: Long = 0L, audioService: AudioService? = null) 
         encryptionEnabled = encryptionState == AudioService.EncryptionState.ENABLED
     }
 
+    // 初始化：将保存的设置同步到native层
+    LaunchedEffect(Unit) {
+        NativeAudioEngine.nativeSetSampleRate(selectedSampleRate)
+        NativeAudioEngine.nativeSetBitrate(selectedBitrate)
+        NativeAudioEngine.setAutoProfileEnabled(isAutoMode)
+        // 音频处理开关同步到native层
+        // 注意：这些需要engineHandle，但当前架构下handle在AudioService中
+        // 先保存状态，连接后AudioService会应用
+    }
+
+    // 保存设置变化的辅助函数
+    fun saveAutoMode(enabled: Boolean) {
+        isAutoMode = enabled
+        NativeAudioEngine.setAutoProfileEnabled(enabled)
+        prefs.edit().putBoolean("auto_mode", enabled).apply()
+    }
+
+    fun saveSampleRate(rate: Int) {
+        selectedSampleRate = rate
+        NativeAudioEngine.nativeSetSampleRate(rate)
+        prefs.edit().putInt("sample_rate", rate).apply()
+    }
+
+    fun saveBitrate(rate: Int) {
+        selectedBitrate = rate
+        NativeAudioEngine.nativeSetBitrate(rate)
+        prefs.edit().putInt("bitrate", rate).apply()
+    }
+
+    fun saveEchoCancellation(enabled: Boolean) {
+        echoCancellation = enabled
+        if (audioService != null && audioService.handle != 0L) {
+            NativeAudioEngine.nativeSetEchoCancellationEnabled(audioService.handle, enabled)
+        }
+        prefs.edit().putBoolean("echo_cancellation", enabled).apply()
+    }
+
+    fun saveNoiseSuppression(enabled: Boolean) {
+        noiseSuppression = enabled
+        if (audioService != null && audioService.handle != 0L) {
+            NativeAudioEngine.nativeSetNoiseSuppressionEnabled(audioService.handle, enabled)
+        }
+        prefs.edit().putBoolean("noise_suppression", enabled).apply()
+    }
+
+    fun saveGainControl(enabled: Boolean) {
+        gainControl = enabled
+        if (audioService != null && audioService.handle != 0L) {
+            NativeAudioEngine.nativeSetGainControlEnabled(audioService.handle, enabled)
+        }
+        prefs.edit().putBoolean("gain_control", enabled).apply()
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
-        SettingsSection(title = "Audio Processing") {
+        SettingsSection(title = stringResource(R.string.section_audio_processing)) {
             SettingsSwitch(
-                title = "Echo Cancellation",
-                subtitle = "Remove echo from audio",
+                title = stringResource(R.string.echo_cancellation),
+                subtitle = stringResource(R.string.echo_cancellation_desc),
                 icon = Icons.Default.Cancel,
                 checked = echoCancellation,
-                onCheckedChange = { echoCancellation = it }
+                onCheckedChange = { saveEchoCancellation(it) }
             )
 
             SettingsSwitch(
-                title = "Noise Suppression",
-                subtitle = "Reduce background noise",
+                title = stringResource(R.string.noise_suppression),
+                subtitle = stringResource(R.string.noise_suppression_desc),
                 icon = Icons.Default.NoiseAware,
                 checked = noiseSuppression,
-                onCheckedChange = { noiseSuppression = it }
+                onCheckedChange = { saveNoiseSuppression(it) }
             )
 
             SettingsSwitch(
-                title = "Gain Control",
-                subtitle = "Automatic volume adjustment",
+                title = stringResource(R.string.gain_control),
+                subtitle = stringResource(R.string.gain_control_desc),
                 icon = Icons.Default.VolumeUp,
                 checked = gainControl,
-                onCheckedChange = { gainControl = it }
+                onCheckedChange = { saveGainControl(it) }
             )
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        SettingsSection(title = "Audio Mode") {
-            SettingsDropdown(
-                title = "Mode",
-                subtitle = selectedAudioMode.subtitle,
-                icon = Icons.Default.Tune,
-                options = AudioMode.entries,
-                selectedOption = selectedAudioMode,
-                onOptionSelected = { mode ->
-                    selectedAudioMode = mode
-                    audioService?.setAudioMode(mode.ordinal)
-                },
-                optionLabel = { it.label }
+        SettingsSection(title = stringResource(R.string.section_audio_quality)) {
+            // 自动档位开关
+            SettingsSwitch(
+                title = stringResource(R.string.auto_mode),
+                subtitle = if (isAutoMode) stringResource(R.string.auto_mode_enabled_desc) else stringResource(R.string.auto_mode_disabled_desc),
+                icon = Icons.Default.AutoMode,
+                checked = isAutoMode,
+                onCheckedChange = { enabled -> saveAutoMode(enabled) }
             )
-        }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        SettingsSection(title = "Audio Quality") {
+            // 采样率选择（自动档位禁用时才可选）
             SettingsDropdown(
-                title = "Sample Rate",
+                title = stringResource(R.string.label_sample_rate),
                 subtitle = "${selectedSampleRate / 1000} kHz",
                 icon = Icons.Default.Speed,
-                options = listOf(16000, 24000, 44100, 48000),
+                options = listOf(44100, 48000, 96000, 192000),
                 selectedOption = selectedSampleRate,
-                onOptionSelected = { selectedSampleRate = it },
-                optionLabel = { "${it / 1000} kHz" }
+                onOptionSelected = { saveSampleRate(it) },
+                optionLabel = { "${it / 1000} kHz" },
+                enabled = !isAutoMode
             )
 
+            // 码率选择（自动档位禁用时才可选）
             SettingsDropdown(
-                title = "Bitrate",
+                title = stringResource(R.string.label_bitrate),
                 subtitle = "${selectedBitrate / 1000} kbps",
                 icon = Icons.Default.DataUsage,
-                options = listOf(16000, 24000, 32000, 48000, 64000, 128000),
+                options = listOf(128000, 192000, 256000, 320000, 512000, 1024000),
                 selectedOption = selectedBitrate,
-                onOptionSelected = { selectedBitrate = it },
-                optionLabel = { "${it / 1000} kbps" }
+                onOptionSelected = { saveBitrate(it) },
+                optionLabel = { "${it / 1000} kbps" },
+                enabled = !isAutoMode
             )
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        AudioProfileSection()
+        EqualizerSection(prefs)
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        EqualizerSection()
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        SettingsSection(title = "Network") {
+        SettingsSection(title = stringResource(R.string.section_network)) {
             SettingsItem(
-                title = "Protocol",
+                title = stringResource(R.string.label_protocol),
                 subtitle = "UDP / QUIC",
                 icon = Icons.Default.Wifi
             )
 
             SettingsItem(
-                title = "Buffer Size",
+                title = stringResource(R.string.label_buffer_size),
                 subtitle = "20ms",
                 icon = Icons.Default.Timer
             )
@@ -144,10 +187,10 @@ fun SettingsScreen(engineHandle: Long = 0L, audioService: AudioService? = null) 
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        SettingsSection(title = "Security") {
+        SettingsSection(title = stringResource(R.string.section_security)) {
             SettingsSwitch(
-                title = "Encryption (DTLS/SRTP)",
-                subtitle = if (encryptionEnabled) "AES-128-CM + HMAC-SHA1-80 enabled" else "End-to-end audio encryption disabled",
+                title = stringResource(R.string.encryption_dtls_srtp),
+                subtitle = if (encryptionEnabled) stringResource(R.string.encryption_enabled_desc) else stringResource(R.string.encryption_disabled_desc),
                 icon = Icons.Default.Lock,
                 checked = encryptionEnabled,
                 onCheckedChange = { enabled ->
@@ -163,15 +206,15 @@ fun SettingsScreen(engineHandle: Long = 0L, audioService: AudioService? = null) 
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        SettingsSection(title = "About") {
+        SettingsSection(title = stringResource(R.string.section_about)) {
             SettingsItem(
-                title = "Version",
+                title = stringResource(R.string.label_version),
                 subtitle = "1.0.0",
                 icon = Icons.Default.Info
             )
 
             SettingsItem(
-                title = "Native Engine",
+                title = stringResource(R.string.label_native_engine),
                 subtitle = "SoundBridge Native",
                 icon = Icons.Default.Memory
             )
@@ -284,36 +327,46 @@ fun <T> SettingsDropdown(
     options: List<T>,
     selectedOption: T,
     onOptionSelected: (T) -> Unit,
-    optionLabel: (T) -> String
+    optionLabel: @Composable (T) -> String,
+    enabled: Boolean = true
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val alpha = if (enabled) 1f else 0.5f
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp),
+            .padding(vertical = 8.dp)
+            .let { if (!enabled) it.alpha(0.5f) else it },
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
             modifier = Modifier.size(24.dp),
-            tint = MaterialTheme.colorScheme.primary
+            tint = MaterialTheme.colorScheme.primary.copy(alpha = alpha)
         )
         Column(
             modifier = Modifier
                 .weight(1f)
                 .padding(horizontal = 16.dp)
         ) {
-            Text(text = title, fontWeight = FontWeight.Medium)
+            Text(
+                text = title,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha)
+            )
             Text(
                 text = subtitle,
                 fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 0.7f else 0.35f)
             )
         }
         Box {
-            TextButton(onClick = { expanded = true }) {
+            TextButton(
+                onClick = { expanded = true },
+                enabled = enabled
+            ) {
                 Text(optionLabel(selectedOption))
             }
             DropdownMenu(
@@ -335,119 +388,28 @@ fun <T> SettingsDropdown(
 }
 
 // ============================================================
-// 音质档位选择
-// ============================================================
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun AudioProfileSection() {
-    var selectedProfile by remember { mutableStateOf(AudioProfile.Standard) }
-    var isAutoEnabled by remember { mutableStateOf(false) }
-    var expanded by remember { mutableStateOf(false) }
-
-        SettingsSection(title = stringResource(R.string.audio_quality_title)) {
-        // 音质选择下拉菜单
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = Icons.Default.HighQuality,
-                contentDescription = null,
-                modifier = Modifier.size(24.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 16.dp)
-            ) {
-                Text(text = stringResource(R.string.audio_quality_tier), fontWeight = FontWeight.Medium)
-                Text(
-                    text = selectedProfile.label,
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                )
-            }
-            Box {
-                TextButton(
-                    onClick = { expanded = true },
-                    enabled = !isAutoEnabled
-                ) {
-                    Text(selectedProfile.label)
-                }
-                DropdownMenu(
-                    expanded = expanded,
-                    onDismissRequest = { expanded = false }
-                ) {
-                    AudioProfile.entries
-                        .filter { it != AudioProfile.Auto && it != AudioProfile.Custom }
-                        .forEach { profile ->
-                            DropdownMenuItem(
-                                text = { Text(profile.label) },
-                                onClick = {
-                                    selectedProfile = profile
-                                    expanded = false
-                                    NativeAudioEngine.setAudioProfile(profile)
-                                }
-                            )
-                        }
-                }
-            }
-        }
-
-        // 自动挡开关
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = Icons.Default.AutoMode,
-                contentDescription = null,
-                modifier = Modifier.size(24.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 16.dp)
-            ) {
-                Text(text = stringResource(R.string.audio_quality_auto), fontWeight = FontWeight.Medium)
-                Text(
-                    text = if (isAutoEnabled) stringResource(R.string.audio_quality_auto_desc) else stringResource(R.string.audio_quality_manual_desc),
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                )
-            }
-            Switch(
-                checked = isAutoEnabled,
-                onCheckedChange = {
-                    isAutoEnabled = it
-                    NativeAudioEngine.setAutoProfileEnabled(it)
-                    if (it) {
-                        NativeAudioEngine.setAudioProfile(AudioProfile.Auto)
-                    }
-                }
-            )
-        }
-    }
-}
-
-// ============================================================
 // 均衡器
 // ============================================================
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun EqualizerSection() {
-    var selectedPreset by remember { mutableStateOf(EqPreset.Flat) }
-    var isEnabled by remember { mutableStateOf(true) }
+fun EqualizerSection(prefs: android.content.SharedPreferences) {
+    var selectedPreset by remember { mutableIntStateOf(prefs.getInt("eq_preset", 0)) }
+    var isEnabled by remember { mutableStateOf(prefs.getBoolean("eq_enabled", true)) }
 
-        SettingsSection(title = stringResource(R.string.equalizer_title)) {
+    fun saveEqEnabled(enabled: Boolean) {
+        isEnabled = enabled
+        NativeAudioEngine.setEqEnabled(enabled)
+        prefs.edit().putBoolean("eq_enabled", enabled).apply()
+    }
+
+    fun saveEqPreset(index: Int) {
+        selectedPreset = index
+        NativeAudioEngine.setEqPreset(EqPreset.entries[index])
+        prefs.edit().putInt("eq_preset", index).apply()
+    }
+
+    SettingsSection(title = stringResource(R.string.equalizer_title)) {
         // 开关
         Row(
             modifier = Modifier
@@ -468,17 +430,14 @@ fun EqualizerSection() {
             ) {
                 Text(text = stringResource(R.string.equalizer_title), fontWeight = FontWeight.Medium)
                 Text(
-                    text = if (isEnabled) stringResource(R.string.equalizer_enabled, selectedPreset.label) else stringResource(R.string.equalizer_disabled),
+                    text = if (isEnabled) stringResource(R.string.equalizer_enabled, EqPreset.entries[selectedPreset].label) else stringResource(R.string.equalizer_disabled),
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
             }
             Switch(
                 checked = isEnabled,
-                onCheckedChange = {
-                    isEnabled = it
-                    NativeAudioEngine.setEqEnabled(it)
-                }
+                onCheckedChange = { saveEqEnabled(it) }
             )
         }
 
@@ -489,14 +448,11 @@ fun EqualizerSection() {
                 .padding(start = 40.dp, top = 4.dp, bottom = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(EqPreset.entries) { preset ->
+            items(EqPreset.entries.size) { index ->
                 FilterChip(
-                    selected = selectedPreset == preset,
-                    onClick = {
-                        selectedPreset = preset
-                        NativeAudioEngine.setEqPreset(preset)
-                    },
-                    label = { Text(preset.label) },
+                    selected = selectedPreset == index,
+                    onClick = { saveEqPreset(index) },
+                    label = { Text(EqPreset.entries[index].label) },
                     enabled = isEnabled
                 )
             }

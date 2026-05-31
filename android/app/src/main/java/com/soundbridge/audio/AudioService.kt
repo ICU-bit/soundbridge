@@ -15,6 +15,7 @@ import com.soundbridge.MainActivity
 import com.soundbridge.R
 import com.soundbridge.SoundBridgeApp
 import com.soundbridge.native.NativeAudioEngine
+import com.soundbridge.native.EqPreset
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -92,6 +93,16 @@ class AudioService : Service() {
         DISCONNECTED, CONNECTING, CONNECTED
     }
 
+    /** 连接方式 */
+    enum class ConnectionType {
+        WIFI_LAN,       // WiFi 局域网（直连）
+        WIFI_DIRECT,    // WiFi 直连（热点）
+        USB_ADB,        // USB/ADB 端口转发
+        BLUETOOTH       // 蓝牙 RFCOMM
+    }
+
+    private var currentConnectionType = ConnectionType.WIFI_LAN
+
     enum class ReconnectState {
         IDLE, RECONNECTING, FAILED
     }
@@ -149,6 +160,28 @@ class AudioService : Service() {
         val savedPcVolume = prefs.getFloat("mix_pc_volume", 0.5f)
         val savedPhoneVolume = prefs.getFloat("mix_phone_volume", 0.5f)
         NativeAudioEngine.nativeSetMixRatio(engineHandle, savedPcVolume, savedPhoneVolume)
+
+        // 恢复音频处理设置
+        val echoEnabled = prefs.getBoolean("echo_cancellation", true)
+        val noiseEnabled = prefs.getBoolean("noise_suppression", true)
+        val gainEnabled = prefs.getBoolean("gain_control", true)
+        NativeAudioEngine.nativeSetEchoCancellationEnabled(engineHandle, echoEnabled)
+        NativeAudioEngine.nativeSetNoiseSuppressionEnabled(engineHandle, noiseEnabled)
+        NativeAudioEngine.nativeSetGainControlEnabled(engineHandle, gainEnabled)
+
+        // 恢复采样率/码率/自动档设置
+        val savedSampleRate = prefs.getInt("sample_rate", 48000)
+        val savedBitrate = prefs.getInt("bitrate", 128000)
+        val savedAutoMode = prefs.getBoolean("auto_mode", false)
+        NativeAudioEngine.nativeSetSampleRate(savedSampleRate)
+        NativeAudioEngine.nativeSetBitrate(savedBitrate)
+        NativeAudioEngine.setAutoProfileEnabled(savedAutoMode)
+
+        // 恢复均衡器设置
+        val eqEnabled = prefs.getBoolean("eq_enabled", true)
+        val eqPreset = prefs.getInt("eq_preset", 0)
+        NativeAudioEngine.setEqEnabled(eqEnabled)
+        NativeAudioEngine.setEqPreset(EqPreset.entries[eqPreset])
     }
 
     private fun startForegroundService() {
@@ -186,7 +219,7 @@ class AudioService : Service() {
             .build()
     }
 
-    fun connectToServer(address: String, port: Int) {
+    fun connectToServer(address: String, port: Int, connectionType: ConnectionType = ConnectionType.WIFI_LAN) {
         if (engineHandle == 0L) {
             _connectionState.value = ConnectionState.DISCONNECTED
             feedbackManager?.onConnectionFailed(FeedbackManager.ErrorCode.ENGINE_NOT_INITIALIZED)
@@ -195,10 +228,20 @@ class AudioService : Service() {
         userDisconnected = false
         lastAddress = address
         lastPort = port
+        currentConnectionType = connectionType
         _connectionState.value = ConnectionState.CONNECTING
         feedbackManager?.onConnectionStarted()
 
-        // 绑定本地 UDP 端口（0 = 自动分配）
+        when (connectionType) {
+            ConnectionType.WIFI_LAN -> connectViaWifiLan(address, port)
+            ConnectionType.WIFI_DIRECT -> connectViaWifiDirect(address, port)
+            ConnectionType.USB_ADB -> connectViaAdb(address, port)
+            ConnectionType.BLUETOOTH -> connectViaBluetoothInternal()
+        }
+    }
+
+    /** WiFi 局域网直连 */
+    private fun connectViaWifiLan(address: String, port: Int) {
         val bindResult = NativeAudioEngine.nativeBind(engineHandle, 0)
         if (bindResult != 0) {
             _connectionState.value = ConnectionState.DISCONNECTED
@@ -207,7 +250,6 @@ class AudioService : Service() {
             return
         }
 
-        // 设置目标地址
         val connectResult = NativeAudioEngine.nativeConnect(engineHandle, "$address:$port")
         if (connectResult != 0) {
             _connectionState.value = ConnectionState.DISCONNECTED
@@ -216,10 +258,68 @@ class AudioService : Service() {
             return
         }
 
-        // 启动采集和播放
-        NativeAudioEngine.nativeStart(engineHandle)
+        startPipeline()
+    }
 
-        // 启动管线（采集→编码→发送 / 接收→解码→播放）
+    /** WiFi 直连（热点模式）*/
+    private fun connectViaWifiDirect(address: String, port: Int) {
+        // 创建热点（如果还没创建）
+        createHotspot()
+
+        // 热点创建后，通过热点 IP 连接
+        // 热点默认网关通常是 192.168.43.1，客户端连接后分配 192.168.43.x
+        // 用户需要手动输入 PC 端在热点网络中的 IP
+        val bindResult = NativeAudioEngine.nativeBind(engineHandle, 0)
+        if (bindResult != 0) {
+            _connectionState.value = ConnectionState.DISCONNECTED
+            feedbackManager?.onConnectionFailed(FeedbackManager.ErrorCode.BIND_FAILED)
+            return
+        }
+
+        val connectResult = NativeAudioEngine.nativeConnect(engineHandle, "$address:$port")
+        if (connectResult != 0) {
+            _connectionState.value = ConnectionState.DISCONNECTED
+            feedbackManager?.onConnectionFailed(FeedbackManager.ErrorCode.CONNECT_FAILED)
+            return
+        }
+
+        startPipeline()
+    }
+
+    /** USB/ADB 连接 */
+    private fun connectViaAdb(address: String, port: Int) {
+        // 设置 ADB 端口转发
+        setupAdbPortForward(port, port)
+
+        // 通过 localhost 连接（ADB 转发后）
+        val bindResult = NativeAudioEngine.nativeBind(engineHandle, 0)
+        if (bindResult != 0) {
+            _connectionState.value = ConnectionState.DISCONNECTED
+            feedbackManager?.onConnectionFailed(FeedbackManager.ErrorCode.BIND_FAILED)
+            return
+        }
+
+        val connectResult = NativeAudioEngine.nativeConnect(engineHandle, "127.0.0.1:$port")
+        if (connectResult != 0) {
+            _connectionState.value = ConnectionState.DISCONNECTED
+            feedbackManager?.onConnectionFailed(FeedbackManager.ErrorCode.CONNECT_FAILED)
+            return
+        }
+
+        startPipeline()
+    }
+
+    /** 蓝牙连接（内部） */
+    private fun connectViaBluetoothInternal() {
+        // 启动蓝牙监听
+        startBluetoothListening()
+        // 蓝牙连接需要等待 RFCOMM 连接回调，由 connectViaBluetooth() 处理
+        // 这里只初始化蓝牙，等待 PC 端主动连接
+    }
+
+    /** 启动音频管线（通用） */
+    private fun startPipeline() {
+        NativeAudioEngine.nativeStart(engineHandle)
         val pipelineResult = NativeAudioEngine.nativePipelineStart(engineHandle)
         if (pipelineResult == 0) {
             _connectionState.value = ConnectionState.CONNECTED

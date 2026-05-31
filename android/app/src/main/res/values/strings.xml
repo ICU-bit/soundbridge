@@ -14,10 +14,46 @@
     <string name="connection_timeout_check">请检查：\n• 网络连接是否正常\n• 服务器地址是否正确\n• 防火墙是否允许连接</string>
     <string name="connection_timeout_elapsed">已等待 %d秒</string>
     
+    <string name="status_connected">已连接</string>
+    <string name="status_disconnected">未连接</string>
+    <string name="status_reconnecting">重新连接中...</string>
+    <string name="status_reconnect_failed">重连失败</string>
+    <string name="status_reconnect_attempt">第 %1$d / %2$d 次重连</string>
+    <string name="status_reconnect_all_failed">全部 %d 次重连失败</string>
+
     <!-- 按钮 -->
     <string name="button_confirm">确定</string>
     <string name="button_retry">重试</string>
     <string name="button_cancel">取消</string>
+    <string name="button_connect">连接</string>
+    <string name="button_disconnect">断开</string>
+    <string name="button_mute">静音</string>
+    <string name="button_unmute">取消静音</string>
+    <string name="button_scan">扫描</string>
+    <string name="button_stop">停止</string>
+
+    <!-- 音频 -->
+    <string name="label_audio_level">音频电平</string>
+
+    <!-- 服务器配置 -->
+    <string name="section_server_config">服务器配置</string>
+    <string name="label_server_address">服务器地址</string>
+    <string name="label_port">端口</string>
+
+    <!-- 连接方式 -->
+    <string name="section_connection_type">连接方式</string>
+    <string name="connection_type_hint">WiFi 局域网：自动发现。WiFi 直连：热点。USB/ADB：有线。蓝牙：BLE。</string>
+
+    <!-- 设备发现 -->
+    <string name="section_discovered_devices">已发现设备</string>
+    <string name="scanning">扫描中...</string>
+    <string name="no_devices_found">未发现设备，点击扫描搜索。</string>
+
+    <!-- 混音比例 -->
+    <string name="section_mix_ratio">混音比例</string>
+    <string name="mix_ratio_format">电脑 %1$d%% / 手机 %2$d%%</string>
+    <string name="label_pc">电脑</string>
+    <string name="label_phone">手机</string>
     
     <!-- 音质设置 -->
     <string name="audio_quality_title">音质档位</string>
@@ -30,6 +66,49 @@
     <string name="equalizer_title">均衡器</string>
     <string name="equalizer_enabled">已启用 — %s</string>
     <string name="equalizer_disabled">已禁用</string>
+
+    <!-- 音频处理 -->
+    <string name="section_audio_processing">音频处理</string>
+    <string name="echo_cancellation">回声消除</string>
+    <string name="echo_cancellation_desc">消除音频中的回声</string>
+    <string name="noise_suppression">噪声抑制</string>
+    <string name="noise_suppression_desc">降低背景噪声</string>
+    <string name="gain_control">自动增益控制</string>
+    <string name="gain_control_desc">自动调节音量</string>
+
+    <!-- 音频模式 -->
+    <string name="section_audio_mode">音频模式</string>
+    <string name="label_mode">模式</string>
+    <string name="audio_mode_balanced">均衡</string>
+    <string name="audio_mode_balanced_desc">50-100ms 延迟</string>
+    <string name="audio_mode_high_quality">高音质</string>
+    <string name="audio_mode_high_quality_desc">48kHz/24bit</string>
+    <string name="audio_mode_low_latency">超低延迟</string>
+    <string name="audio_mode_low_latency_desc">&lt;30ms 延迟</string>
+
+    <!-- 音频质量 -->
+    <string name="section_audio_quality">音频质量</string>
+    <string name="label_sample_rate">采样率</string>
+    <string name="label_bitrate">码率</string>
+    <string name="auto_mode">自动档位</string>
+    <string name="auto_mode_enabled_desc">根据网络状况自动选择采样率和码率</string>
+    <string name="auto_mode_disabled_desc">手动设置采样率和码率</string>
+
+    <!-- 网络 -->
+    <string name="section_network">网络</string>
+    <string name="label_protocol">协议</string>
+    <string name="label_buffer_size">缓冲区大小</string>
+
+    <!-- 安全 -->
+    <string name="section_security">安全</string>
+    <string name="encryption_dtls_srtp">加密 (DTLS/SRTP)</string>
+    <string name="encryption_enabled_desc">AES-128-CM + HMAC-SHA1-80 已启用</string>
+    <string name="encryption_disabled_desc">端到端音频加密已禁用</string>
+
+    <!-- 关于 -->
+    <string name="section_about">关于</string>
+    <string name="label_version">版本</string>
+    <string name="label_native_engine">原生引擎</string>
     
     <!-- 首次运行引导 -->
     <string name="guide_welcome_title">欢迎使用 SoundBridge</string>

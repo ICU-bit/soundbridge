@@ -7,6 +7,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -44,6 +46,12 @@ fun HomeScreen(audioService: AudioService? = null) {
     var serverPort by remember { mutableStateOf("8080") }
     var mixRatio by remember { mutableFloatStateOf(50f) } // 0=全PC, 100=全手机
     var selectedConnectionType by remember { mutableIntStateOf(0) } // 0=WiFiLan, 1=WiFiDirect, 2=UsbAdb, 3=Bluetooth
+    val connectionTypes = listOf(
+        AudioService.ConnectionType.WIFI_LAN,
+        AudioService.ConnectionType.WIFI_DIRECT,
+        AudioService.ConnectionType.USB_ADB,
+        AudioService.ConnectionType.BLUETOOTH
+    )
     val connectionTypeNames = listOf(
         stringResource(R.string.connection_type_wifi_lan),
         stringResource(R.string.connection_type_wifi_direct),
@@ -86,6 +94,7 @@ fun HomeScreen(audioService: AudioService? = null) {
                     )
                 )
             )
+            .verticalScroll(rememberScrollState())
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -113,7 +122,8 @@ fun HomeScreen(audioService: AudioService? = null) {
                     audioService?.disconnect()
                 } else {
                     val port = serverPort.toIntOrNull() ?: 8080
-                    audioService?.connectToServer(serverAddress, port)
+                    val connType = connectionTypes[selectedConnectionType]
+                    audioService?.connectToServer(serverAddress, port, connType)
                 }
             },
             onMuteClick = {
@@ -222,10 +232,10 @@ fun ConnectionStatusCard(
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = when {
-                        isConnected -> "Connected"
-                        isReconnecting -> "Reconnecting..."
-                        reconnectFailed -> "Reconnect Failed"
-                        else -> "Disconnected"
+                        isConnected -> stringResource(R.string.status_connected)
+                        isReconnecting -> stringResource(R.string.status_reconnecting)
+                        reconnectFailed -> stringResource(R.string.status_reconnect_failed)
+                        else -> stringResource(R.string.status_disconnected)
                     },
                     color = when {
                         isConnected -> ConnectionConnected
@@ -241,7 +251,7 @@ fun ConnectionStatusCard(
             if (isReconnecting) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Attempt $reconnectAttempt / $maxReconnectAttempts",
+                    text = stringResource(R.string.status_reconnect_attempt, reconnectAttempt, maxReconnectAttempts),
                     color = ConnectionReconnecting.copy(alpha = 0.8f),
                     fontSize = 13.sp
                 )
@@ -260,7 +270,7 @@ fun ConnectionStatusCard(
             if (reconnectFailed) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "All $maxReconnectAttempts attempts failed",
+                    text = stringResource(R.string.status_reconnect_all_failed, maxReconnectAttempts),
                     color = SoundBridgeError.copy(alpha = 0.8f),
                     fontSize = 13.sp
                 )
@@ -319,7 +329,7 @@ fun AudioLevelVisualizer(level: Float) {
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = "Audio Level",
+                text = stringResource(R.string.label_audio_level),
                 fontSize = 14.sp,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
             )
@@ -366,9 +376,9 @@ fun ControlButtons(
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 when {
-                    isConnected -> "Disconnect"
-                    isReconnecting -> "Cancel"
-                    else -> "Connect"
+                    isConnected -> stringResource(R.string.button_disconnect)
+                    isReconnecting -> stringResource(R.string.button_cancel)
+                    else -> stringResource(R.string.button_connect)
                 }
             )
         }
@@ -390,7 +400,7 @@ fun ControlButtons(
                 modifier = Modifier.size(24.dp)
             )
             Spacer(modifier = Modifier.width(8.dp))
-            Text(if (isMuted) "Unmute" else "Mute")
+            Text(if (isMuted) stringResource(R.string.button_unmute) else stringResource(R.string.button_mute))
         }
     }
 }
@@ -413,7 +423,7 @@ fun ServerConfigSection(
             modifier = Modifier.padding(16.dp)
         ) {
             Text(
-                text = "Server Configuration",
+                text = stringResource(R.string.section_server_config),
                 fontWeight = FontWeight.Bold,
                 fontSize = 16.sp,
                 modifier = Modifier.padding(bottom = 12.dp)
@@ -422,7 +432,7 @@ fun ServerConfigSection(
             OutlinedTextField(
                 value = serverAddress,
                 onValueChange = onAddressChange,
-                label = { Text("Server Address") },
+                label = { Text(stringResource(R.string.label_server_address)) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
@@ -432,7 +442,7 @@ fun ServerConfigSection(
             OutlinedTextField(
                 value = serverPort,
                 onValueChange = onPortChange,
-                label = { Text("Port") },
+                label = { Text(stringResource(R.string.label_port)) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
@@ -462,7 +472,7 @@ fun ConnectionTypeSection(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Connection Type",
+                    text = stringResource(R.string.section_connection_type),
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp
                 )
@@ -476,7 +486,7 @@ fun ConnectionTypeSection(
             Spacer(modifier = Modifier.height(4.dp))
 
             Text(
-                text = "WiFi LAN: auto-discover. WiFi Direct: hotspot. USB/ADB: wired. Bluetooth: BLE.",
+                text = stringResource(R.string.connection_type_hint),
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
             )
@@ -527,7 +537,7 @@ fun DeviceDiscoverySection(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Discovered Devices",
+                    text = stringResource(R.string.section_discovered_devices),
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp
                 )
@@ -552,7 +562,7 @@ fun DeviceDiscoverySection(
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text(if (isScanning) "Stop" else "Scan")
+                    Text(if (isScanning) stringResource(R.string.button_stop) else stringResource(R.string.button_scan))
                 }
             }
 
@@ -560,7 +570,7 @@ fun DeviceDiscoverySection(
 
             if (discoveredDevices.isEmpty()) {
                 Text(
-                    text = if (isScanning) "Scanning..." else "No devices found. Tap Scan to search.",
+                    text = if (isScanning) stringResource(R.string.scanning) else stringResource(R.string.no_devices_found),
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                     fontSize = 14.sp,
                     modifier = Modifier.padding(vertical = 8.dp)
@@ -623,7 +633,7 @@ fun DeviceItem(
             }
             Icon(
                 imageVector = Icons.Default.ArrowForward,
-                contentDescription = "Connect",
+                contentDescription = stringResource(R.string.button_connect),
                 tint = MaterialTheme.colorScheme.primary
             )
         }
@@ -654,12 +664,12 @@ fun MixRatioSection(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Mix Ratio",
+                    text = stringResource(R.string.section_mix_ratio),
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp
                 )
                 Text(
-                    text = "PC $pcPercent% / Phone $phonePercent%",
+                    text = stringResource(R.string.mix_ratio_format, pcPercent, phonePercent),
                     fontSize = 14.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
@@ -672,7 +682,7 @@ fun MixRatioSection(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "PC",
+                    text = stringResource(R.string.label_pc),
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                     modifier = Modifier.width(28.dp)
@@ -685,7 +695,7 @@ fun MixRatioSection(
                     modifier = Modifier.weight(1f)
                 )
                 Text(
-                    text = "Phone",
+                    text = stringResource(R.string.label_phone),
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                     modifier = Modifier.width(50.dp)

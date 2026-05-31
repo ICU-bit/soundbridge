@@ -9,6 +9,12 @@
     <string name="connection_type_bluetooth">Bluetooth</string>
     
     <!-- Connection status -->
+    <string name="status_connected">Connected</string>
+    <string name="status_disconnected">Disconnected</string>
+    <string name="status_reconnecting">Reconnecting...</string>
+    <string name="status_reconnect_failed">Reconnect Failed</string>
+    <string name="status_reconnect_attempt">Attempt %1$d / %2$d</string>
+    <string name="status_reconnect_all_failed">All %d attempts failed</string>
     <string name="connection_failed">Connection Failed</string>
     <string name="connection_timeout">Connection Timeout</string>
     <string name="connection_timeout_check">Please check:\n• Network connection is working\n• Server address is correct\n• Firewall allows the connection</string>
@@ -18,6 +24,35 @@
     <string name="button_confirm">OK</string>
     <string name="button_retry">Retry</string>
     <string name="button_cancel">Cancel</string>
+    <string name="button_connect">Connect</string>
+    <string name="button_disconnect">Disconnect</string>
+    <string name="button_mute">Mute</string>
+    <string name="button_unmute">Unmute</string>
+    <string name="button_scan">Scan</string>
+    <string name="button_stop">Stop</string>
+
+    <!-- Audio -->
+    <string name="label_audio_level">Audio Level</string>
+
+    <!-- Server config -->
+    <string name="section_server_config">Server Configuration</string>
+    <string name="label_server_address">Server Address</string>
+    <string name="label_port">Port</string>
+
+    <!-- Connection type -->
+    <string name="section_connection_type">Connection Type</string>
+    <string name="connection_type_hint">WiFi LAN: auto-discover. WiFi Direct: hotspot. USB/ADB: wired. Bluetooth: BLE.</string>
+
+    <!-- Device discovery -->
+    <string name="section_discovered_devices">Discovered Devices</string>
+    <string name="scanning">Scanning...</string>
+    <string name="no_devices_found">No devices found. Tap Scan to search.</string>
+
+    <!-- Mix ratio -->
+    <string name="section_mix_ratio">Mix Ratio</string>
+    <string name="mix_ratio_format">PC %1$d%% / Phone %2$d%%</string>
+    <string name="label_pc">PC</string>
+    <string name="label_phone">Phone</string>
     
     <!-- Audio quality settings -->
     <string name="audio_quality_title">Audio Quality Tier</string>
@@ -30,6 +65,49 @@
     <string name="equalizer_title">Equalizer</string>
     <string name="equalizer_enabled">Enabled — %s</string>
     <string name="equalizer_disabled">Disabled</string>
+
+    <!-- Audio Processing -->
+    <string name="section_audio_processing">Audio Processing</string>
+    <string name="echo_cancellation">Echo Cancellation</string>
+    <string name="echo_cancellation_desc">Remove echo from audio</string>
+    <string name="noise_suppression">Noise Suppression</string>
+    <string name="noise_suppression_desc">Reduce background noise</string>
+    <string name="gain_control">Gain Control</string>
+    <string name="gain_control_desc">Automatic volume adjustment</string>
+
+    <!-- Audio Mode -->
+    <string name="section_audio_mode">Audio Mode</string>
+    <string name="label_mode">Mode</string>
+    <string name="audio_mode_balanced">Balanced</string>
+    <string name="audio_mode_balanced_desc">50-100ms latency</string>
+    <string name="audio_mode_high_quality">High Quality</string>
+    <string name="audio_mode_high_quality_desc">48kHz/24bit</string>
+    <string name="audio_mode_low_latency">Low Latency</string>
+    <string name="audio_mode_low_latency_desc">&lt;30ms latency</string>
+
+    <!-- Audio Quality -->
+    <string name="section_audio_quality">Audio Quality</string>
+    <string name="label_sample_rate">Sample Rate</string>
+    <string name="label_bitrate">Bitrate</string>
+    <string name="auto_mode">Auto Mode</string>
+    <string name="auto_mode_enabled_desc">Automatically adjusts sample rate and bitrate based on network conditions</string>
+    <string name="auto_mode_disabled_desc">Manually set sample rate and bitrate</string>
+
+    <!-- Network -->
+    <string name="section_network">Network</string>
+    <string name="label_protocol">Protocol</string>
+    <string name="label_buffer_size">Buffer Size</string>
+
+    <!-- Security -->
+    <string name="section_security">Security</string>
+    <string name="encryption_dtls_srtp">Encryption (DTLS/SRTP)</string>
+    <string name="encryption_enabled_desc">AES-128-CM + HMAC-SHA1-80 enabled</string>
+    <string name="encryption_disabled_desc">End-to-end audio encryption disabled</string>
+
+    <!-- About -->
+    <string name="section_about">About</string>
+    <string name="label_version">Version</string>
+    <string name="label_native_engine">Native Engine</string>
     
     <!-- First-run guide -->
     <string name="guide_welcome_title">Welcome to SoundBridge</string>
