@@ -29,6 +29,9 @@ pub use notifications::{NotificationConfig, NotificationManager, NotificationTyp
 pub mod audio_profile;
 pub use audio_profile::{AudioConfig, AudioProfile};
 
+pub mod auto_profile;
+pub use auto_profile::{AutoProfileConfig, AutoProfileManager, NetworkScore};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SampleFormat {
     I16,
