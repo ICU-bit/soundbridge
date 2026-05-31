@@ -11,7 +11,7 @@ namespace SoundBridge.UI;
 public partial class MainWindowViewModel : ObservableObject, IDisposable
 {
     private readonly ILogger<MainWindowViewModel> _logger;
-    private readonly ConnectionNotificationService? _notificationService;
+    private ConnectionNotificationService? _notificationService;
     private IntPtr _engine;
     private IntPtr _deviceStore;
     private IntPtr _discovery;
@@ -34,7 +34,7 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             _logger.LogInformation("Engine created: 0x{Addr}", _engine.ToString("X"));
 
-            // 注册连接状态回调 → 触发 Toast 通知
+            // 注册连接状态回调 → 触发通知（如果通知服务已注入）
             _notificationService?.Register(_engine);
 
             // 读取当前音频模式
@@ -81,6 +81,17 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         else
         {
             _logger.LogWarning("Failed to create discovery service");
+        }
+    }
+
+    /// <summary>延迟注册通知服务（App 在 ViewModel 之后创建通知服务）</summary>
+    public void RegisterNotificationService(ConnectionNotificationService notificationService)
+    {
+        _notificationService = notificationService;
+        if (_engine != IntPtr.Zero)
+        {
+            _notificationService.Register(_engine);
+            _logger.LogInformation("Notification service registered on engine 0x{Addr}", _engine.ToString("X"));
         }
     }
 

@@ -43,6 +43,10 @@ public partial class App : Application
         var logger = _host.Services.GetRequiredService<ILogger<ConnectionNotificationService>>();
         var dq = System.Windows.Threading.Dispatcher.CurrentDispatcher;
         _notificationService = new ConnectionNotificationService(logger, dq, _trayIcon);
+
+        // Register engine with notification service (ViewModel was created before this service)
+        var vm = _host.Services.GetRequiredService<MainWindowViewModel>();
+        vm.RegisterNotificationService(_notificationService);
     }
 
     private IntPtr WndProc(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
