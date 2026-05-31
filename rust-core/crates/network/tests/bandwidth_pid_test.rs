@@ -1,4 +1,6 @@
 use network::bandwidth_pid::*;
+use std::thread;
+use std::time::Duration;
 
 #[test]
 fn test_pid_default_config() {
@@ -10,6 +12,9 @@ fn test_pid_default_config() {
 fn test_pid_high_loss_decreases_bitrate() {
     let mut controller = PidBandwidthController::with_default_config();
     let initial = controller.current_bitrate();
+
+    // 等待超过 MIN_DT (10ms)
+    thread::sleep(Duration::from_millis(20));
 
     let metrics = NetworkMetrics {
         loss_rate: 0.10,
@@ -26,6 +31,9 @@ fn test_pid_low_loss_increases_bitrate() {
     let mut controller = PidBandwidthController::with_default_config();
     controller.set_bitrate(100_000);
     let initial = controller.current_bitrate();
+
+    // 等待超过 MIN_DT (10ms)
+    thread::sleep(Duration::from_millis(20));
 
     let metrics = NetworkMetrics {
         loss_rate: 0.001,

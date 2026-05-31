@@ -183,7 +183,9 @@ impl PidBandwidthController {
         let dt = now.duration_since(self.last_update).as_secs_f32();
         self.last_update = now;
 
-        if dt <= 0.0 {
+        // 最小间隔 10ms，防止微分项爆炸
+        const MIN_DT: f32 = 0.01;
+        if dt < MIN_DT {
             return self.current_bitrate;
         }
 
@@ -197,8 +199,9 @@ impl PidBandwidthController {
         self.integral += error * dt;
         self.integral = self.integral.clamp(-1000.0, 1000.0);
 
-        // 微分项
-        let derivative = (error - self.prev_error) / dt;
+        // 微分项（带限幅，防止 dt 过小时爆炸）
+        let raw_derivative = (error - self.prev_error) / dt;
+        let derivative = raw_derivative.clamp(-500.0, 500.0);
         self.prev_error = error;
 
         // PID 输出
